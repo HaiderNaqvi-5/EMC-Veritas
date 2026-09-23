@@ -33,11 +33,24 @@ All membership changes are immutable audit events. Closed-session memberships ca
 | `GET /api/admin/templates/{template_id}/analysis` | `TemplateAnalysisResponse` | Returns page count, extracted text, whether scanned pages were OCRed, whether any page still requires OCR/manual attention, and a signature/date-content warning. |
 | `GET /api/admin/templates/{template_id}/source` | inline protected PDF | Supplies the private source PDF to the field editor without exposing a Storage URL. |
 | `GET /api/admin/templates/{template_id}/pages/{page_number}` | PNG | Renders one protected source page for the visual drag/resize field-placement canvas. |
-| `POST /api/admin/templates/{template_id}/fields` | `TemplateFieldsCreate` → `TemplateResponse` | Field names, one-based PDF coordinates, bundled font (`helv`, `tiro`, or `cour`), optional fixed font size, hex text color, and the required `signature_handling` choice (`retain` or `replace`) are immutable once configured. |
+| `GET /api/admin/templates/{template_id}/fonts` | `TemplateFontResponse[]` | Lists the template-scoped private TTF/OTF assets available to its field editor. |
+| `POST /api/admin/templates/{template_id}/fonts/upload` | multipart TTF/OTF `file` → `TemplateFontResponse` | Validates and stores a private template-scoped custom font; no Storage URL or credential is returned. |
+| `POST /api/admin/templates/{template_id}/fields` | `TemplateFieldsCreate` → `TemplateResponse` | Field names, one-based PDF coordinates, bundled font (`helv`, `tiro`, or `cour`) or a selected uploaded custom font, optional fixed font size, hex text color, and the required `signature_handling` choice (`retain` or `replace`) are immutable once configured. |
 | `POST /api/admin/templates/{template_id}/approve` | `TemplateResponse` | Requires student name, roll number, activity name, activity date, and an explicit signature choice. |
 | `POST /api/admin/templates/{template_id}/preview` | `TemplatePreviewRequest` → inline PDF | Renders a participant-specific, watermarked `PREVIEW` in memory only; it never creates an official issued document. |
 
 Every template endpoint requires an active `SUPER_ADMIN` server session. The browser never receives a Supabase Storage credential.
+
+## Admin accounts (Super Admin only)
+
+| Endpoint | Contract | Notes |
+| --- | --- | --- |
+| `GET /api/admin/admins` | `AdminAccountResponse[]` | Lists Admin and Super Admin accounts with their linked student identity and active/temporary-password state. |
+| `POST /api/admin/admins` | `AdminAccountCreate` → `AdminAccountResponse` | Creates an active Admin or Super Admin for an active student with an Argon2-hashed temporary password. |
+| `POST /api/admin/admins/{admin_id}/deactivate` | `AdminAccountResponse` | Deactivates another account without deleting its history; self-deactivation is refused. |
+| `POST /api/admin/admins/{admin_id}/reset-password` | `AdminPasswordReset` → `AdminAccountResponse` | Sets a new Argon2-hashed temporary password and forces a password change at next sign-in. |
+
+Every account mutation emits an immutable audit event. Password values are never returned or audited.
 
 ## Activity certificate issuance (Admin or Super Admin)
 

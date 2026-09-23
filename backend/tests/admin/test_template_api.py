@@ -45,6 +45,12 @@ def test_template_font_management_requires_authenticated_super_admin() -> None:
     assert response.json() == {"detail": "Admin session required"}
 
 
+def test_admin_account_management_requires_authenticated_super_admin() -> None:
+    response = TestClient(app).get("/api/admin/admins")
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}
+
+
 def test_leadership_template_workflow_requires_authenticated_super_admin() -> None:
     response = TestClient(app).post(
         "/api/admin/leadership-templates/upload",

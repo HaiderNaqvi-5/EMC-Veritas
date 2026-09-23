@@ -8,6 +8,10 @@ from app.models.domain import Admin, Student
 hasher = PasswordHasher()
 
 
+def hash_password(password: str) -> str:
+    return hasher.hash(password)
+
+
 def find_admin_by_roll_number(db: Session, roll_number: str) -> Admin | None:
     return db.scalar(select(Admin).join(Student, Admin.student_id == Student.id).where(Student.roll_number == roll_number.strip()))
 

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.admin.activities import router as admin_activities_router
+from app.api.admin.admins import router as admin_admins_router
 from app.api.admin.audit import router as admin_audit_router
 from app.api.admin.auth import router as admin_auth_router
 from app.api.admin.documents import router as admin_documents_router
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
     app.include_router(readiness_router, prefix=settings.api_prefix)
     app.include_router(public_router, prefix=settings.api_prefix)
     app.include_router(admin_auth_router, prefix=f"{settings.api_prefix}/admin")
+    app.include_router(admin_admins_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_audit_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_activities_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_documents_router, prefix=f"{settings.api_prefix}/admin")
