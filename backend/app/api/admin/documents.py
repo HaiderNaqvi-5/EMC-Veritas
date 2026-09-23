@@ -4,6 +4,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -32,6 +33,23 @@ from app.services.templates.fields import missing_required_fields
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 EMC_TIMEZONE = ZoneInfo("Asia/Karachi")
+
+
+class DocumentListItem(BaseModel):
+    id: UUID
+    student_id: UUID
+    activity_id: UUID | None
+    executive_membership_id: UUID | None
+    document_type: DocumentType
+    verification_id: str
+    issue_date: date
+    status: DocumentStatus
+    version: int
+
+
+@router.get("", response_model=list[DocumentListItem])
+def list_documents(_: Admin = Depends(current_active_admin), db: Session = Depends(get_db)) -> list[IssuedDocument]:
+    return list(db.scalars(select(IssuedDocument).order_by(IssuedDocument.created_at.desc())).all())
 
 
 @router.post("/activities/{activity_id}/issue", response_model=ActivityIssueResponse)

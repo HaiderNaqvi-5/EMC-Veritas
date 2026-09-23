@@ -1,4 +1,4 @@
-const apiBase = import.meta.env.VITE_API_BASE_URL ?? "/api";
+export const apiBase = import.meta.env.VITE_API_BASE_URL ?? "/api";
 export const SESSION_EXPIRED_EVENT = "emc:admin-session-expired";
 
 export const apiUrl = (path: string) => `${apiBase}${path}`;
