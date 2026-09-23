@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_service_role_key: str | None = None
     supabase_storage_bucket: str = "emc-veritas"
+    session_secret: str
+    cookie_secure: bool = False
     frontend_origins_raw: str = Field(
         default="http://localhost:5173", validation_alias="FRONTEND_ORIGINS"
     )

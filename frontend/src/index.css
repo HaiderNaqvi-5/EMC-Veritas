@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light dark; font-family: Inter, system-ui, sans-serif; }
+:root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
 body { margin: 0; min-width: 320px; background: #f8fafc; color: #111827; }
 .student-portal { max-width: 48rem; margin: 0 auto; padding: 2rem 1rem; }
 .brand-bar { display: flex; align-items: center; justify-content: space-between; gap: 1.25rem; margin-bottom: 3rem; }

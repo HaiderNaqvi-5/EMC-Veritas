@@ -1,0 +1,32 @@
+const apiBase = import.meta.env.VITE_API_BASE_URL ?? "/api";
+
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const response = await fetch(`${apiBase}${path}`, {
+    credentials: "include",
+    headers,
+    ...init,
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new ApiError(response.status, body?.detail ?? "The request could not be completed.");
+  }
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+
+export function warmReadiness(): void {
+  const controller = new AbortController();
+  window.setTimeout(() => controller.abort(), 8_000);
+  void fetch(`${apiBase}/health/ready`, { credentials: "include", signal: controller.signal }).catch(() => {
+    // The visual shell remains usable while a free-tier backend wakes up.
+  });
+}

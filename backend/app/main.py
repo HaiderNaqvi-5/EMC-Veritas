@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
+from app.api.admin.auth import router as admin_auth_router
 from app.api.public.router import router as public_router
 from app.core.settings import settings
 from app.services.readiness.router import router as readiness_router
@@ -8,6 +10,7 @@ from app.services.readiness.router import router as readiness_router
 
 def create_app() -> FastAPI:
     app = FastAPI(title="EMC Veritas API", version="0.1.0")
+    app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, https_only=settings.cookie_secure, same_site="lax")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.frontend_origins,
@@ -17,6 +20,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(readiness_router, prefix=settings.api_prefix)
     app.include_router(public_router, prefix=settings.api_prefix)
+    app.include_router(admin_auth_router, prefix=f"{settings.api_prefix}/admin")
     return app
 
 
