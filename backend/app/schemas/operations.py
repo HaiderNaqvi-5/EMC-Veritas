@@ -39,6 +39,13 @@ class ActivityCreate(APIModel):
     template_id: UUID | None = None
 
 
+class ActivityUpdate(APIModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    activity_date: date
+    template_id: UUID | None = None
+
+
 class ActivityResponse(ActivityCreate):
     id: UUID
     issue_date: date | None
@@ -59,3 +66,13 @@ class ImportPreview(APIModel):
     conflicting_rows: int
     invalid_rows: int
     rows: list[ImportPreviewRow]
+
+
+class ImportCommitRow(APIModel):
+    roll_number: str = Field(min_length=1, max_length=64)
+    full_name: str = Field(min_length=1, max_length=255)
+    conflict_resolution: str | None = None
+
+
+class ImportCommit(APIModel):
+    rows: list[ImportCommitRow]

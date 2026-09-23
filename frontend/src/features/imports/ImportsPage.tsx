@@ -1,0 +1,15 @@
+import { ChangeEvent, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "../../lib/api/client";
+
+type Row = { row_number: number; roll_number: string | null; full_name: string | null; outcome: string; detail: string | null };
+type Preview = { valid_rows: number; duplicate_rows: number; conflicting_rows: number; invalid_rows: number; rows: Row[] };
+
+export function ImportsPage() {
+  const client = useQueryClient();
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const upload = useMutation({ mutationFn: (file: File) => { const data = new FormData(); data.append("file", file); return apiRequest<Preview>("/admin/imports/students/preview", { method: "POST", body: data }); }, onSuccess: setPreview });
+  const commit = useMutation({ mutationFn: () => apiRequest<{ created: number; skipped_conflicts: number }>("/admin/imports/students/commit", { method: "POST", body: JSON.stringify({ rows: preview?.rows.filter((row) => row.outcome === "valid" || row.outcome === "conflict").map((row) => ({ roll_number: row.roll_number, full_name: row.full_name, conflict_resolution: row.outcome === "conflict" ? "skip" : null })) ?? [] }) }), onSuccess: () => { void client.invalidateQueries({ queryKey: ["admin", "students"] }); setPreview(null); } });
+  function selectFile(event: ChangeEvent<HTMLInputElement>) { const file = event.target.files?.[0]; if (file) upload.mutate(file); }
+  return <section><h1 className="text-3xl font-bold">Student import</h1><p className="mt-2 text-slate-600 dark:text-slate-400">Upload an .xlsx file. Every row is reviewed before any student record is created. Existing name conflicts are skipped; nothing is overwritten.</p><input className="mt-6" type="file" accept=".xlsx" onChange={selectFile}/>{upload.isPending && <p className="mt-3">Reviewing spreadsheet…</p>}{upload.isError && <p role="alert" className="mt-3 text-red-700">{upload.error.message}</p>}{preview && <div className="mt-6"><p>{preview.valid_rows} valid · {preview.duplicate_rows} duplicate · {preview.conflicting_rows} conflicting · {preview.invalid_rows} invalid</p><div className="mt-3 overflow-x-auto rounded border"><table className="w-full text-left text-sm"><thead><tr><th className="p-2">Row</th><th className="p-2">Roll</th><th className="p-2">Name</th><th className="p-2">Result</th></tr></thead><tbody>{preview.rows.map((row) => <tr key={row.row_number} className="border-t"><td className="p-2">{row.row_number}</td><td className="p-2">{row.roll_number}</td><td className="p-2">{row.full_name}</td><td className="p-2">{row.outcome}{row.detail ? `: ${row.detail}` : ""}</td></tr>)}</tbody></table></div><button disabled={commit.isPending} onClick={() => commit.mutate()} className="mt-4 rounded bg-slate-900 px-4 py-2 text-white">Commit valid rows</button>{commit.isError && <p role="alert" className="mt-3 text-red-700">{commit.error.message}</p>}{commit.isSuccess && <p className="mt-3 text-green-700">Import completed: {commit.data.created} students created; {commit.data.skipped_conflicts} conflicts skipped.</p>}</div>}</section>;
+}
