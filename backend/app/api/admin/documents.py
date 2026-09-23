@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from datetime import date, datetime
 from uuid import UUID
@@ -14,6 +15,7 @@ from app.models.domain import (
     ActivityParticipant,
     ActivityStatus,
     Admin,
+    DocumentSignatory,
     DocumentStatus,
     DocumentType,
     IssuedDocument,
@@ -193,6 +195,11 @@ def reissue_document(
         raise HTTPException(status_code=404, detail="Issued document not found")
     if document.status != DocumentStatus.VALID:
         raise HTTPException(status_code=409, detail="Only valid documents can be reissued")
+    if document.document_type in {
+        DocumentType.LEADERSHIP_RECOGNITION,
+        DocumentType.END_OF_TENURE_APPRECIATION,
+    }:
+        return _reissue_leadership_document(db, document, admin)
     if document.activity_id is None or document.document_type != DocumentType.ACTIVITY_CERTIFICATE:
         raise HTTPException(status_code=409, detail="This document type cannot be reissued through activity issuance")
     activity = db.get(Activity, document.activity_id)
@@ -259,6 +266,58 @@ def reissue_document(
         actor_admin_id=admin.id,
         version=document.version + 1,
         signatories=tuple(selected_signatories.values()),
+    )
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="DOCUMENT_SUPERSEDED",
+        entity_type="issued_document",
+        entity_id=document.id,
+        payload={"replacement_document_id": str(replacement.id), "replacement_version": replacement.version},
+    )
+    db.commit()
+    return DocumentReissueResponse(
+        superseded_document_id=document.id,
+        replacement_document_id=replacement.id,
+        issue_date=issue_date,
+        version=replacement.version,
+    )
+
+
+def _reissue_leadership_document(
+    db: Session, document: IssuedDocument, admin: Admin
+) -> DocumentReissueResponse:
+    if document.executive_membership_id is None or document.leadership_template_id is None:
+        raise HTTPException(status_code=409, detail="The original leadership document snapshot is incomplete")
+    try:
+        values = json.loads(document.render_payload_json or "")
+    except json.JSONDecodeError as error:
+        raise HTTPException(status_code=409, detail="The original leadership document data is unavailable") from error
+    if not values:
+        raise HTTPException(status_code=409, detail="The original leadership document data is unavailable")
+    selected_signatories = tuple(
+        db.scalars(
+            select(Signatory)
+            .join(DocumentSignatory, DocumentSignatory.signatory_id == Signatory.id)
+            .where(DocumentSignatory.issued_document_id == document.id)
+        ).all()
+    )
+    if not selected_signatories:
+        raise HTTPException(status_code=409, detail="The original leadership signatory snapshot is unavailable")
+    issue_date = datetime.now(EMC_TIMEZONE).date()
+    values["issue_date"] = issue_date.isoformat()
+    document.status = DocumentStatus.SUPERSEDED
+    replacement = reserve_document(
+        db,
+        student_id=document.student_id,
+        executive_membership_id=document.executive_membership_id,
+        leadership_template_id=document.leadership_template_id,
+        document_type=document.document_type,
+        issue_date=issue_date,
+        render_values=values,
+        actor_admin_id=admin.id,
+        version=document.version + 1,
+        signatories=selected_signatories,
     )
     record_audit_event(
         db,
