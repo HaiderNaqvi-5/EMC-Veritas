@@ -12,12 +12,12 @@
 
 ## Required final joint/deployed checks
 
-These checks must be run after Haider’s remaining server contracts and deployed environments are available:
+All required server contracts are now integrated. These checks must be run after the Render, Supabase, and Cloudflare Pages production environments are configured:
 
 1. Import participants, configure an approved template and required signatories, issue an activity, download as the student, and verify the same document publicly.
 2. Verify revoked and superseded document results through both manual and QR verification paths.
 3. Verify Super Admin-only leadership-template management and automatic session-end recognition.
 4. Test Render cold start with a slow backend: no blank shell, lost roll number, duplicate action, or false empty result.
-5. Check deployed Cloudflare Pages and Render URLs against Supabase Storage/PostgreSQL using production-safe environment values.
+5. Check deployed Cloudflare Pages and Render URLs against Supabase Storage/PostgreSQL using production-safe environment values, including `COOKIE_SAME_SITE=none`, `COOKIE_SECURE=true`, the exact `FRONTEND_ORIGINS`, and `PUBLIC_APP_URL`.
 
 No deployment, push, or environment mutation is part of this local A4 work.
