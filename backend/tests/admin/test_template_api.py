@@ -25,6 +25,12 @@ def test_template_source_requires_authenticated_super_admin() -> None:
     assert response.json() == {"detail": "Admin session required"}
 
 
+def test_template_page_image_requires_authenticated_super_admin() -> None:
+    response = TestClient(app).get("/api/admin/templates/00000000-0000-0000-0000-000000000000/pages/1")
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}
+
+
 def test_leadership_template_workflow_requires_authenticated_super_admin() -> None:
     response = TestClient(app).post(
         "/api/admin/leadership-templates/upload",

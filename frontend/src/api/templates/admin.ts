@@ -52,6 +52,17 @@ export async function templateSource(templateId: string): Promise<Blob> {
   return response.blob();
 }
 
+export async function templatePageImage(templateId: string, pageNumber: number): Promise<Blob> {
+  const response = await fetch(`${apiBase}/admin/templates/${templateId}/pages/${pageNumber}`, {
+    credentials: "include",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new Error(body?.detail ?? "The template page could not be rendered.");
+  }
+  return response.blob();
+}
+
 export async function uploadTemplate(name: string, file: File): Promise<Template> {
   const data = new FormData();
   data.set("name", name);
