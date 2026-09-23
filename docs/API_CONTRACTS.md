@@ -34,6 +34,10 @@ Every template endpoint requires an active `SUPER_ADMIN` server session. The bro
 
 The service fixes the activity issue date using the EMC Pakistan business date on first issuance and records immutable audit events. It never creates PDFs during issue; final PDFs remain lazy and cached on the first valid public download.
 
+## Leadership templates (Super Admin only)
+
+Leadership-template contracts use exact Executive Council roles and only `LEADERSHIP_RECOGNITION` or `END_OF_TENURE_APPRECIATION` document types. Their field configuration is restricted to deterministic record placeholders: student name/roll number, role, society, tenure dates, session name, and issue date. No LLM-generated letter content is permitted.
+
 ## Signatory administration (Admin or Super Admin)
 
 | Endpoint | Contract | Notes |
