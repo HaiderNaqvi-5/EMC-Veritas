@@ -1,6 +1,11 @@
 import { FormEvent, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getStudentDocuments } from "../api/documents/public";
+import { documentDownloadUrl, getStudentDocuments, type PublicDocument } from "../api/documents/public";
+
+function DocumentList({ documents }: { documents: PublicDocument[] }) {
+  if (documents.length === 0) return <p>No documents are available in this group yet.</p>;
+  return <ul>{documents.map((item) => <li key={item.id}><a href={documentDownloadUrl(item.id)}>{item.title}</a></li>)}</ul>;
+}
 
 export function StudentPortal() {
   const [submittedRollNumber, setSubmittedRollNumber] = useState<string | null>(null);
@@ -24,7 +29,7 @@ export function StudentPortal() {
         </form>
         {query.isFetching && <p role="status">Still loading your records. This may take a moment on the first request.</p>}
         {query.isError && <p role="alert">{query.error.message}</p>}
-        {query.data && <section><h2>{query.data.full_name}</h2><h3>Activity Certificates</h3>{query.data.activity_certificates.map((item) => <p key={item.id}>{item.title}</p>)}<h3>Leadership & Recognition</h3>{query.data.leadership_recognition.map((item) => <p key={item.id}>{item.title}</p>)}</section>}
+        {query.data && <section><h2>{query.data.full_name}</h2><h3>Activity Certificates</h3><DocumentList documents={query.data.activity_certificates} /><h3>Leadership & Recognition</h3><DocumentList documents={query.data.leadership_recognition} /></section>}
       </section>
     </main>
   );
