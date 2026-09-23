@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.domain import MembershipStatus
+
 
 class APIModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -76,3 +78,42 @@ class ImportCommitRow(APIModel):
 
 class ImportCommit(APIModel):
     rows: list[ImportCommitRow]
+
+
+class SocietyResponse(APIModel):
+    id: UUID
+    name: str
+    active: bool
+
+
+class ExecutiveMembershipCreate(APIModel):
+    student_id: UUID
+    session_id: UUID
+    role: str = Field(min_length=1, max_length=80)
+    society_id: UUID | None = None
+    start_date: date
+    end_date: date | None = None
+    status: MembershipStatus = MembershipStatus.ACTIVE
+
+
+class ExecutiveMembershipUpdate(APIModel):
+    role: str | None = Field(default=None, min_length=1, max_length=80)
+    society_id: UUID | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    status: MembershipStatus | None = None
+
+
+class ExecutiveMembershipResponse(APIModel):
+    id: UUID
+    student_id: UUID
+    student_name: str
+    roll_number: str
+    session_id: UUID
+    session_name: str
+    society_id: UUID | None
+    society_name: str | None
+    role: str
+    start_date: date
+    end_date: date | None
+    status: MembershipStatus

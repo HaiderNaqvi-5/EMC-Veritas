@@ -11,6 +11,19 @@ This file is the hand-off point before frontend/backend dependent work begins. I
 
 Administrative contracts for templates, documents, signatories, executive memberships, leadership templates, admins, and audit logs are owned by Haider. Ahmed-owned operational contracts cover sessions, students, activities, participation, import/export, and authentication flow. Publish explicit validation errors—clients must not infer policy.
 
+## Executive Council memberships (Admin or Super Admin)
+
+| Endpoint | Contract | Notes |
+| --- | --- | --- |
+| `GET /api/admin/executive-memberships/societies` | `SocietyResponse[]` | Returns the five fixed active EMC societies. |
+| `GET /api/admin/executive-memberships?session_id=` | `ExecutiveMembershipResponse[]` | Lists memberships with student/session/society display data; filter is optional. |
+| `POST /api/admin/executive-memberships` | `ExecutiveMembershipCreate` → `ExecutiveMembershipResponse` | Creates an ACTIVE/COMPLETED/REMOVED membership in an active session only. Exact roles and Society Head rules are enforced server-side. |
+| `PUT /api/admin/executive-memberships/{membership_id}` | `ExecutiveMembershipUpdate` → `ExecutiveMembershipResponse` | Updates an active-session membership while preserving one role/student/session and non-overlapping Society Head tenure constraints. |
+| `POST /api/admin/executive-memberships/{membership_id}/complete` | `ExecutiveMembershipResponse` | Marks the membership completed and defaults its end date to the session end date. |
+| `POST /api/admin/executive-memberships/{membership_id}/remove` | `ExecutiveMembershipResponse` | Marks it removed; removed memberships never receive automatic recognition. |
+
+All membership changes are immutable audit events. Closed-session memberships cannot be altered.
+
 ## Template administration (Super Admin only)
 
 | Endpoint | Contract | Notes |
@@ -29,6 +42,8 @@ Every template endpoint requires an active `SUPER_ADMIN` server session. The bro
 | Endpoint | Contract | Notes |
 | --- | --- | --- |
 | `POST /api/admin/documents/activities/{activity_id}/issue` | `ActivityIssueResponse` | Reserves one immutable activity-certificate record for every active, eligible participant. It requires an approved template, all mandatory fields, an explicit signature choice, and effective President + DSA signatories. `replace` templates must configure their signature image boxes. The selected records are snapshotted at reservation. Existing valid records are skipped. |
+| `GET /api/admin/documents` | `AdminDocumentResponse[]` | Lists issued documents for Admin operations; supports optional `student_id`, `status_filter`, and `document_type` filters. |
+| `GET /api/admin/documents/{document_id}` | `AdminDocumentResponse` | Returns an individual issued document for revoke/reissue controls. |
 | `POST /api/admin/documents/{document_id}/revoke` | `204 No Content` | Marks a valid record `REVOKED`; it remains in audit/verification history but cannot be normally downloaded. |
 | `POST /api/admin/documents/{document_id}/reissue` | `DocumentReissueResponse` | Supersedes a valid old record and reserves a new version with a new verification ID. Activity certificates revalidate their current issuance policy; leadership letters retain their original membership/template/signatory snapshot. |
 

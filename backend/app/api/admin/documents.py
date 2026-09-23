@@ -19,12 +19,17 @@ from app.models.domain import (
     DocumentStatus,
     DocumentType,
     IssuedDocument,
+    LeadershipTemplate,
     Signatory,
     Student,
     Template,
     TemplateField,
 )
-from app.schemas.documents import ActivityIssueResponse, DocumentReissueResponse
+from app.schemas.documents import (
+    ActivityIssueResponse,
+    AdminDocumentResponse,
+    DocumentReissueResponse,
+)
 from app.services.audit import record_audit_event
 from app.services.documents.issuance import reserve_document
 from app.services.signatures.availability import missing_titles, select_effective_signatories
@@ -34,6 +39,67 @@ from app.services.templates.fields import missing_required_fields
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 EMC_TIMEZONE = ZoneInfo("Asia/Karachi")
+
+
+def _admin_document_response(
+    document: IssuedDocument, student: Student, activity_name: str | None, template_name: str | None
+) -> AdminDocumentResponse:
+    return AdminDocumentResponse(
+        id=document.id,
+        verification_id=document.verification_id,
+        student_id=student.id,
+        student_name=student.full_name,
+        roll_number=student.roll_number,
+        document_type=document.document_type.value,
+        context=activity_name or template_name or document.document_type.value.replace("_", " ").title(),
+        issue_date=document.issue_date,
+        status=document.status.value,
+        version=document.version,
+        storage_key=document.storage_key,
+        sha256=document.sha256,
+    )
+
+
+@router.get("", response_model=list[AdminDocumentResponse])
+def list_issued_documents(
+    student_id: UUID | None = None,
+    status_filter: DocumentStatus | None = None,
+    document_type: DocumentType | None = None,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(current_active_admin),
+) -> list[AdminDocumentResponse]:
+    query = (
+        select(IssuedDocument, Student, Activity.name, LeadershipTemplate.name)
+        .join(Student, IssuedDocument.student_id == Student.id)
+        .outerjoin(Activity, IssuedDocument.activity_id == Activity.id)
+        .outerjoin(LeadershipTemplate, IssuedDocument.leadership_template_id == LeadershipTemplate.id)
+        .order_by(IssuedDocument.created_at.desc())
+    )
+    if student_id is not None:
+        query = query.where(IssuedDocument.student_id == student_id)
+    if status_filter is not None:
+        query = query.where(IssuedDocument.status == status_filter)
+    if document_type is not None:
+        query = query.where(IssuedDocument.document_type == document_type)
+    return [_admin_document_response(*row) for row in db.execute(query).all()]
+
+
+@router.get("/{document_id}", response_model=AdminDocumentResponse)
+def get_issued_document(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(current_active_admin),
+) -> AdminDocumentResponse:
+    row = db.execute(
+        select(IssuedDocument, Student, Activity.name, LeadershipTemplate.name)
+        .join(Student, IssuedDocument.student_id == Student.id)
+        .outerjoin(Activity, IssuedDocument.activity_id == Activity.id)
+        .outerjoin(LeadershipTemplate, IssuedDocument.leadership_template_id == LeadershipTemplate.id)
+        .where(IssuedDocument.id == document_id)
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Issued document not found")
+    return _admin_document_response(*row)
 
 
 @router.post("/activities/{activity_id}/issue", response_model=ActivityIssueResponse)

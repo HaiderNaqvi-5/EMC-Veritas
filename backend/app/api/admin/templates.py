@@ -99,6 +99,25 @@ def analyze_template(
     )
 
 
+@router.get("/{template_id}/source")
+def template_source(
+    template_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> StreamingResponse:
+    """Serve the private source PDF only to the field editor; never expose Storage URLs."""
+    template = _template_or_404(db, template_id)
+    try:
+        pdf_bytes = SupabaseStorage().download(template.storage_key)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="Template storage is temporarily unavailable") from error
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="EMC-template-source.pdf"'},
+    )
+
+
 @router.post("/{template_id}/fields", response_model=TemplateResponse)
 def configure_template_fields(
     template_id: UUID,
