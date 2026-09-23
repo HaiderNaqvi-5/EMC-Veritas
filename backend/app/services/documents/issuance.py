@@ -20,3 +20,11 @@ def reserve_document(
     )
     db.add(document)
     return document
+
+
+def revoke_document(document: IssuedDocument) -> None:
+    document.status = DocumentStatus.REVOKED
+
+
+def supersede_document(document: IssuedDocument) -> None:
+    document.status = DocumentStatus.SUPERSEDED
