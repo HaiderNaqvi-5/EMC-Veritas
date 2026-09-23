@@ -24,6 +24,7 @@
 - Effective-dated signatory create, history list, and deactivation.
 - Certificate template PDF upload, analysis, required-field configuration, approval, and watermarked participant preview.
 - Activity certificate issue action, including the backend’s missing-signatory and template-policy errors.
+- Document revoke and reissue actions for a supplied issued-document ID.
 - Super Admin audit-log view.
 
 ## Still required from Haider before A3 can be fully accepted
