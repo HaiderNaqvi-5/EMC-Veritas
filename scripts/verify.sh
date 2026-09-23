@@ -8,6 +8,11 @@ echo "==> Backend: install, test, lint"
 (
   cd "$project_root/backend"
   python -m pip install -e '.[dev]'
+  # CI intentionally has no private .env file.  Use inert values only for
+  # import-time settings validation; tests replace database/storage boundaries.
+  DATABASE_URL="postgresql+psycopg://ci:ci@localhost:5432/emc_veritas_ci" \
+  SUPABASE_URL="https://example.supabase.co" \
+  SESSION_SECRET="ci-only-not-a-production-secret" \
   pytest
   ruff check app tests
 )
