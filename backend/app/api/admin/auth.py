@@ -2,7 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.auth import AdminLookupRequest, AdminLookupResponse, AdminSessionResponse, LoginRequest, PasswordChangeRequest
+from app.schemas.auth import (
+    AdminLookupRequest,
+    AdminLookupResponse,
+    AdminSessionResponse,
+    LoginRequest,
+    PasswordChangeRequest,
+)
 from app.services.audit import record_audit_event
 from app.services.auth import authenticate, change_password, find_admin_by_roll_number
 

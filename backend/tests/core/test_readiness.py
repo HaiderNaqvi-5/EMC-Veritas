@@ -3,6 +3,7 @@ import os
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://test:test@localhost/test")
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-only-key")
+os.environ.setdefault("SESSION_SECRET", "test-only-session-secret")
 
 from fastapi.testclient import TestClient
 

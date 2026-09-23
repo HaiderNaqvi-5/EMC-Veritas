@@ -31,3 +31,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/API_CONTRACTS.md](doc
 3. Frontend: `cd frontend && npm install && npm run dev`
 
 Schema changes go through Alembic only. Never commit secrets or generated document artifacts.
+
+## Before pushing to `main`
+
+Run the same verification command used by GitHub Actions:
+
+```bash
+./scripts/verify.sh
+```
+
+It installs backend development dependencies, runs backend tests and linting, then uses the locked frontend dependency versions to build the application. Push only after this command succeeds.

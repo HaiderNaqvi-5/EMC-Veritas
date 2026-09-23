@@ -2,8 +2,22 @@ import enum
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Enum, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
-from sqlalchemy.dialects.postgresql import ExcludeConstraint, UUID
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import UUID, ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
