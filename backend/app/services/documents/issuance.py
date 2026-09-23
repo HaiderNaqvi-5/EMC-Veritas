@@ -3,7 +3,13 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-from app.models.domain import DocumentStatus, DocumentType, IssuedDocument
+from app.models.domain import (
+    DocumentSignatory,
+    DocumentStatus,
+    DocumentType,
+    IssuedDocument,
+    Signatory,
+)
 from app.services.audit import record_audit_event
 from app.services.verification.identifiers import new_verification_id
 
@@ -17,6 +23,7 @@ def reserve_document(
     activity_id: UUID | None = None,
     actor_admin_id: UUID | None = None,
     version: int = 1,
+    signatories: tuple[Signatory, ...] = (),
 ) -> IssuedDocument:
     document = IssuedDocument(
         id=uuid4(),
@@ -29,6 +36,14 @@ def reserve_document(
         version=version,
     )
     db.add(document)
+    for signatory in signatories:
+        db.add(
+            DocumentSignatory(
+                issued_document_id=document.id,
+                signatory_id=signatory.id,
+                official_title=signatory.official_title,
+            )
+        )
     record_audit_event(
         db,
         actor_admin_id=actor_admin_id,
@@ -39,6 +54,7 @@ def reserve_document(
             "document_type": document_type.value,
             "issue_date": issue_date.isoformat(),
             "version": version,
+            "signatory_ids": [str(signatory.id) for signatory in signatories],
         },
     )
     return document

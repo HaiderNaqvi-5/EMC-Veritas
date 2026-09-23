@@ -110,3 +110,26 @@ def test_public_download_rejects_revoked_document(monkeypatch) -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 410
+
+
+def test_replacement_signature_download_uses_document_snapshot_assets() -> None:
+    document = SimpleNamespace(id=uuid4())
+    president = SimpleNamespace(official_title="President")
+    president_asset = SimpleNamespace(signature_storage_key="signatures/president.png")
+    dsa = SimpleNamespace(official_title="DSA")
+    dsa_asset = SimpleNamespace(signature_storage_key="signatures/dsa.png")
+
+    class SnapshotDb:
+        def execute(self, query: object) -> SimpleNamespace:
+            return SimpleNamespace(all=lambda: [(president, president_asset), (dsa, dsa_asset)])
+
+    class Storage:
+        def download(self, key: str) -> bytes:
+            return key.encode()
+
+    import app.api.public.router as public_router
+
+    assert public_router._signature_images_for_document(SnapshotDb(), document, Storage()) == {
+        "signature_president": b"signatures/president.png",
+        "signature_dsa": b"signatures/dsa.png",
+    }

@@ -29,6 +29,7 @@ def generate_on_first_download(
     storage: object,
     public_base_url: str,
     actor_admin_id: UUID | None = None,
+    image_values: Mapping[str, bytes] | None = None,
 ) -> bytes:
     """Return an issued PDF, creating and caching it only on the first valid download."""
     if document.status is not DocumentStatus.VALID:
@@ -43,6 +44,7 @@ def generate_on_first_download(
             template_fields,
             values,
             verification_url=verification_url(public_base_url, document.verification_id),
+            image_values=image_values,
         )
     except CertificateRenderingError as error:
         raise DocumentLifecycleError(str(error)) from error

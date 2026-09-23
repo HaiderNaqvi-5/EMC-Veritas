@@ -10,18 +10,37 @@ from app.core.settings import settings
 from app.db.session import get_db
 from app.models.domain import (
     Activity,
+    DocumentSignatory,
     DocumentStatus,
     DocumentType,
     IssuedDocument,
+    Signatory,
     Student,
     Template,
     TemplateField,
 )
 from app.schemas.public import PublicDocument, StudentDocumentsResponse, VerificationResponse
 from app.services.documents.lifecycle import DocumentLifecycleError, generate_on_first_download
+from app.services.signatures.rendering import signature_field_name
 from app.services.storage.supabase import SupabaseStorage
 
 router = APIRouter(prefix="/public", tags=["public"])
+
+
+def _signature_images_for_document(
+    db: Session, document: IssuedDocument, storage: SupabaseStorage
+) -> dict[str, bytes]:
+    rows = db.execute(
+        select(DocumentSignatory, Signatory)
+        .join(Signatory, DocumentSignatory.signatory_id == Signatory.id)
+        .where(DocumentSignatory.issued_document_id == document.id)
+    ).all()
+    if not rows:
+        raise DocumentLifecycleError("The document has no reserved signature snapshot")
+    return {
+        signature_field_name(snapshot.official_title): storage.download(signatory.signature_storage_key)
+        for snapshot, signatory in rows
+    }
 
 @router.get("/students/{roll_number}/documents", response_model=StudentDocumentsResponse)
 def student_documents(roll_number: str, db: Session = Depends(get_db)) -> StudentDocumentsResponse:
@@ -118,6 +137,11 @@ def download_document(document_id: UUID, db: Session = Depends(get_db)) -> Strea
     try:
         storage = SupabaseStorage()
         template_pdf = storage.download(template.storage_key)
+        image_values = (
+            _signature_images_for_document(db, document, storage)
+            if getattr(template, "signature_handling", "retain") == "replace"
+            else None
+        )
         output = generate_on_first_download(
             db,
             document=document,
@@ -126,6 +150,7 @@ def download_document(document_id: UUID, db: Session = Depends(get_db)) -> Strea
             values=values,
             storage=storage,
             public_base_url=settings.public_app_url,
+            image_values=image_values,
         )
         db.commit()
     except RuntimeError as error:

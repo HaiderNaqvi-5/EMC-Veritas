@@ -153,6 +153,17 @@ class Signatory(Timestamped, Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
+class DocumentSignatory(Base):
+    """Immutable signatory snapshot chosen when a document is reserved."""
+
+    __tablename__ = "document_signatories"
+    issued_document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("issued_documents.id"), primary_key=True
+    )
+    signatory_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("signatories.id"), primary_key=True)
+    official_title: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
 class IssuedDocument(Timestamped, Base):
     __tablename__ = "issued_documents"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

@@ -27,7 +27,7 @@ Every template endpoint requires an active `SUPER_ADMIN` server session. The bro
 
 | Endpoint | Contract | Notes |
 | --- | --- | --- |
-| `POST /api/admin/documents/activities/{activity_id}/issue` | `ActivityIssueResponse` | Reserves one immutable activity-certificate record for every active, eligible participant. It requires an approved template, all mandatory fields, an explicit signature choice, and effective President + DSA signatories. Existing valid records are skipped. |
+| `POST /api/admin/documents/activities/{activity_id}/issue` | `ActivityIssueResponse` | Reserves one immutable activity-certificate record for every active, eligible participant. It requires an approved template, all mandatory fields, an explicit signature choice, and effective President + DSA signatories. `replace` templates must configure their signature image boxes. The selected records are snapshotted at reservation. Existing valid records are skipped. |
 | `POST /api/admin/documents/{document_id}/revoke` | `204 No Content` | Marks a valid record `REVOKED`; it remains in audit/verification history but cannot be normally downloaded. |
 | `POST /api/admin/documents/{document_id}/reissue` | `DocumentReissueResponse` | Revalidates the current activity template/signatories, supersedes the valid old record, and reserves a new version with a new verification ID. |
 
