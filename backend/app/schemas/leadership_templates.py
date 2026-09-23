@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 LeadershipDocumentType = Literal["LEADERSHIP_RECOGNITION", "END_OF_TENURE_APPRECIATION"]
 
@@ -21,6 +21,8 @@ class LeadershipTemplateFieldsCreate(BaseModel):
 
 
 class LeadershipTemplateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     name: str
     role: str

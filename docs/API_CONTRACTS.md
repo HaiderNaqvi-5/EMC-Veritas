@@ -38,6 +38,17 @@ The service fixes the activity issue date using the EMC Pakistan business date o
 
 Leadership-template contracts use exact Executive Council roles and only `LEADERSHIP_RECOGNITION` or `END_OF_TENURE_APPRECIATION` document types. Their field configuration is restricted to deterministic record placeholders: student name/roll number, role, society, tenure dates, session name, and issue date. No LLM-generated letter content is permitted.
 
+| Endpoint | Contract | Notes |
+| --- | --- | --- |
+| `GET /api/admin/leadership-templates` | `LeadershipTemplateResponse[]` | Lists non-archived role-specific letter templates. |
+| `POST /api/admin/leadership-templates/upload` | multipart `name`, official `role`, allowed `document_type`, and PDF `file` → `LeadershipTemplateResponse` | Stores a new inactive PDF privately. |
+| `POST /api/admin/leadership-templates/{template_id}/fields` | `LeadershipTemplateFieldsCreate` → `LeadershipTemplateResponse` | Defines immutable, uniquely named coordinates before activation. |
+| `POST /api/admin/leadership-templates/{template_id}/activate` | `LeadershipTemplateResponse` | Requires all eight deterministic leadership fields, then atomically replaces the active template for its role/type. |
+| `POST /api/admin/leadership-templates/{template_id}/deactivate` | `LeadershipTemplateResponse` | Retires an active template without deleting history. |
+| `POST /api/admin/leadership-templates/{template_id}/archive` | `LeadershipTemplateResponse` | Archives a template and deactivates it permanently. |
+
+Every state change records an immutable audit event. No endpoint accepts arbitrary role names or document types.
+
 ## Signatory administration (Admin or Super Admin)
 
 | Endpoint | Contract | Notes |
