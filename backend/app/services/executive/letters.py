@@ -13,10 +13,16 @@ REQUIRED_LEADERSHIP_FIELDS = frozenset(
         "issue_date",
     }
 )
+REQUIRED_LEADERSHIP_TEMPLATE_FIELDS = REQUIRED_LEADERSHIP_FIELDS | {"qr_code"}
 
 
 def missing_leadership_fields(field_names: set[str]) -> set[str]:
     return REQUIRED_LEADERSHIP_FIELDS - field_names
+
+
+def missing_leadership_template_fields(field_names: set[str]) -> set[str]:
+    """Include the required QR placement in addition to fixed record placeholders."""
+    return REQUIRED_LEADERSHIP_TEMPLATE_FIELDS - field_names
 
 
 def leadership_letter_values(

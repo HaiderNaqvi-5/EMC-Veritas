@@ -9,6 +9,10 @@ from app.db.session import get_db
 from app.models.domain import EmcSession
 from app.schemas.operations import SessionCreate, SessionResponse
 from app.services.audit import record_audit_event
+from app.services.executive.issuance import (
+    RecognitionPrerequisiteError,
+    reserve_session_recognition,
+)
 from app.services.sessions import close_session, create_session, list_sessions
 
 router = APIRouter(prefix="/sessions", tags=["admin-sessions"])
@@ -27,4 +31,11 @@ def add_session(payload: SessionCreate, admin_id: UUID = Depends(require_admin),
 def close(session_id: str, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)) -> EmcSession:
     item = db.get(EmcSession, session_id)
     if item is None: raise HTTPException(status_code=404, detail="Session not found")
-    close_session(db, item); record_audit_event(db, event_type="SESSION_CLOSED", entity_type="session", entity_id=item.id, payload={}, actor_admin_id=admin_id); db.commit(); db.refresh(item); return item
+    try:
+        close_session(db, item)
+        reserve_session_recognition(db, session=item, actor_admin_id=admin_id)
+        record_audit_event(db, event_type="SESSION_CLOSED", entity_type="session", entity_id=item.id, payload={}, actor_admin_id=admin_id)
+        db.commit(); db.refresh(item); return item
+    except RecognitionPrerequisiteError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(error)) from error

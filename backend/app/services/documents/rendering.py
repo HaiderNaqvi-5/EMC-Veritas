@@ -7,7 +7,7 @@ import fitz
 from app.models.domain import TemplateField
 from app.services.documents.qr_image import qr_png
 from app.services.documents.text_fit import fit_font_size
-from app.services.templates.fields import missing_required_fields
+from app.services.templates.fields import REQUIRED_CERTIFICATE_FIELDS
 
 
 class CertificateRenderingError(ValueError):
@@ -62,6 +62,7 @@ def render_certificate(
     verification_url: str,
     watermark: str | None = None,
     image_values: Mapping[str, bytes] | None = None,
+    required_field_names: frozenset[str] = REQUIRED_CERTIFICATE_FIELDS,
 ) -> bytes:
     """Overlay configured fields and an optional QR code onto a PDF certificate template.
 
@@ -70,7 +71,7 @@ def render_certificate(
     """
     field_list = list(fields)
     configured_names = {field.field_name for field in field_list}
-    missing = missing_required_fields(configured_names)
+    missing = required_field_names - configured_names
     if missing:
         raise CertificateRenderingError(
             "Template is missing required fields: " + ", ".join(sorted(missing))

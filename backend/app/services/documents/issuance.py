@@ -1,3 +1,5 @@
+import json
+from collections.abc import Mapping
 from datetime import date
 from uuid import UUID, uuid4
 
@@ -21,6 +23,9 @@ def reserve_document(
     document_type: DocumentType,
     issue_date: date,
     activity_id: UUID | None = None,
+    executive_membership_id: UUID | None = None,
+    leadership_template_id: UUID | None = None,
+    render_values: Mapping[str, str | date] | None = None,
     actor_admin_id: UUID | None = None,
     version: int = 1,
     signatories: tuple[Signatory, ...] = (),
@@ -29,11 +34,24 @@ def reserve_document(
         id=uuid4(),
         student_id=student_id,
         activity_id=activity_id,
+        executive_membership_id=executive_membership_id,
+        leadership_template_id=leadership_template_id,
         document_type=document_type,
         issue_date=issue_date,
         verification_id=new_verification_id(),
         status=DocumentStatus.VALID,
         version=version,
+        render_payload_json=(
+            json.dumps(
+                {
+                    name: value.isoformat() if isinstance(value, date) else str(value)
+                    for name, value in render_values.items()
+                },
+                sort_keys=True,
+            )
+            if render_values is not None
+            else None
+        ),
     )
     db.add(document)
     for signatory in signatories:
@@ -55,6 +73,8 @@ def reserve_document(
             "issue_date": issue_date.isoformat(),
             "version": version,
             "signatory_ids": [str(signatory.id) for signatory in signatories],
+            "executive_membership_id": str(executive_membership_id) if executive_membership_id else None,
+            "leadership_template_id": str(leadership_template_id) if leadership_template_id else None,
         },
     )
     return document

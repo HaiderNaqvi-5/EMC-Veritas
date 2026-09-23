@@ -151,6 +151,8 @@ class LeadershipTemplate(Timestamped, Base):
         Enum(DocumentType, name="document_type", create_type=False), nullable=False
     )
     storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    # Set only after a Super Admin explicitly chooses retain or replace.
+    signature_handling: Mapped[str | None] = mapped_column(String(16))
     active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     __table_args__ = (
@@ -208,6 +210,12 @@ class IssuedDocument(Timestamped, Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False)
     activity_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("activities.id"))
+    executive_membership_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("executive_memberships.id")
+    )
+    leadership_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("leadership_templates.id")
+    )
     document_type: Mapped[DocumentType] = mapped_column(Enum(DocumentType, name="document_type"), nullable=False)
     verification_id: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
     issue_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -215,6 +223,16 @@ class IssuedDocument(Timestamped, Base):
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     storage_key: Mapped[str | None] = mapped_column(String(500))
     sha256: Mapped[str | None] = mapped_column(String(64))
+    # A leadership letter must render from its reserved record, not mutable live membership data.
+    render_payload_json: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = (
+        UniqueConstraint(
+            "executive_membership_id",
+            "document_type",
+            "version",
+            name="uq_leadership_document_membership_type_version",
+        ),
+    )
 
 
 class AuditLog(Base):

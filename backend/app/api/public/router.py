@@ -1,3 +1,4 @@
+import json
 from io import BytesIO
 from uuid import UUID
 
@@ -14,6 +15,8 @@ from app.models.domain import (
     DocumentStatus,
     DocumentType,
     IssuedDocument,
+    LeadershipTemplate,
+    LeadershipTemplateField,
     Signatory,
     Student,
     Template,
@@ -21,6 +24,7 @@ from app.models.domain import (
 )
 from app.schemas.public import PublicDocument, StudentDocumentsResponse, VerificationResponse
 from app.services.documents.lifecycle import DocumentLifecycleError, generate_on_first_download
+from app.services.executive.letters import REQUIRED_LEADERSHIP_TEMPLATE_FIELDS
 from app.services.signatures.rendering import signature_field_name
 from app.services.storage.supabase import SupabaseStorage
 
@@ -112,28 +116,44 @@ def download_document(document_id: UUID, db: Session = Depends(get_db)) -> Strea
     document, student, activity = row
     if document.status != DocumentStatus.VALID:
         raise HTTPException(status_code=410, detail="This document is no longer available for download")
-    if activity is None or activity.template_id is None:
-        raise HTTPException(status_code=409, detail="No certificate template is assigned to this document")
-
-    template = db.scalar(
-        select(Template).where(
-            Template.id == activity.template_id,
-            Template.approved.is_(True),
-            Template.archived.is_(False),
+    leadership_template_id = getattr(document, "leadership_template_id", None)
+    if leadership_template_id is not None:
+        template = db.scalar(select(LeadershipTemplate).where(LeadershipTemplate.id == leadership_template_id))
+        if template is None:
+            raise HTTPException(status_code=409, detail="The reserved leadership template is unavailable")
+        fields = db.scalars(
+            select(LeadershipTemplateField).where(
+                LeadershipTemplateField.leadership_template_id == template.id
+            )
+        ).all()
+        try:
+            values = json.loads(document.render_payload_json or "")
+        except (AttributeError, json.JSONDecodeError) as error:
+            raise HTTPException(status_code=409, detail="The reserved leadership document data is unavailable") from error
+        values["verification_id"] = document.verification_id
+        required_field_names = REQUIRED_LEADERSHIP_TEMPLATE_FIELDS
+    else:
+        if activity is None or activity.template_id is None:
+            raise HTTPException(status_code=409, detail="No certificate template is assigned to this document")
+        template = db.scalar(
+            select(Template).where(
+                Template.id == activity.template_id,
+                Template.approved.is_(True),
+                Template.archived.is_(False),
+            )
         )
-    )
-    if template is None:
-        raise HTTPException(status_code=409, detail="The assigned certificate template is unavailable")
-
-    fields = db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all()
-    values = {
-        "student_name": student.full_name,
-        "roll_number": student.roll_number,
-        "activity_name": activity.name,
-        "activity_date": activity.activity_date,
-        "issue_date": document.issue_date,
-        "verification_id": document.verification_id,
-    }
+        if template is None:
+            raise HTTPException(status_code=409, detail="The assigned certificate template is unavailable")
+        fields = db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all()
+        values = {
+            "student_name": student.full_name,
+            "roll_number": student.roll_number,
+            "activity_name": activity.name,
+            "activity_date": activity.activity_date,
+            "issue_date": document.issue_date,
+            "verification_id": document.verification_id,
+        }
+        required_field_names = None
     try:
         storage = SupabaseStorage()
         template_pdf = storage.download(template.storage_key)
@@ -151,6 +171,7 @@ def download_document(document_id: UUID, db: Session = Depends(get_db)) -> Strea
             storage=storage,
             public_base_url=settings.public_app_url,
             image_values=image_values,
+            required_field_names=required_field_names,
         )
         db.commit()
     except RuntimeError as error:

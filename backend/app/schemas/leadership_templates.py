@@ -18,6 +18,7 @@ class LeadershipTemplateFieldInput(BaseModel):
 
 class LeadershipTemplateFieldsCreate(BaseModel):
     fields: list[LeadershipTemplateFieldInput] = Field(min_length=1)
+    signature_handling: Literal["retain", "replace"]
 
 
 class LeadershipTemplateResponse(BaseModel):
@@ -27,6 +28,7 @@ class LeadershipTemplateResponse(BaseModel):
     name: str
     role: str
     document_type: LeadershipDocumentType
+    signature_handling: Literal["retain", "replace"] | None
     active: bool
     archived: bool
     created_at: datetime

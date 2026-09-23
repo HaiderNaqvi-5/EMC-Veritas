@@ -42,12 +42,14 @@ Leadership-template contracts use exact Executive Council roles and only `LEADER
 | --- | --- | --- |
 | `GET /api/admin/leadership-templates` | `LeadershipTemplateResponse[]` | Lists non-archived role-specific letter templates. |
 | `POST /api/admin/leadership-templates/upload` | multipart `name`, official `role`, allowed `document_type`, and PDF `file` → `LeadershipTemplateResponse` | Stores a new inactive PDF privately. |
-| `POST /api/admin/leadership-templates/{template_id}/fields` | `LeadershipTemplateFieldsCreate` → `LeadershipTemplateResponse` | Defines immutable, uniquely named coordinates before activation. |
-| `POST /api/admin/leadership-templates/{template_id}/activate` | `LeadershipTemplateResponse` | Requires all eight deterministic leadership fields, then atomically replaces the active template for its role/type. |
+| `POST /api/admin/leadership-templates/{template_id}/fields` | `LeadershipTemplateFieldsCreate` → `LeadershipTemplateResponse` | Defines immutable deterministic-field/QR coordinates and the explicit `retain` or `replace` signature choice before activation. |
+| `POST /api/admin/leadership-templates/{template_id}/activate` | `LeadershipTemplateResponse` | Requires the eight deterministic leadership fields plus a QR box, then atomically replaces the active template for its role/type. |
 | `POST /api/admin/leadership-templates/{template_id}/deactivate` | `LeadershipTemplateResponse` | Retires an active template without deleting history. |
 | `POST /api/admin/leadership-templates/{template_id}/archive` | `LeadershipTemplateResponse` | Archives a template and deactivates it permanently. |
 
 Every state change records an immutable audit event. No endpoint accepts arbitrary role names or document types.
+
+Closing a session now atomically preflights completed memberships and reserves both leadership document types exactly once per membership. It blocks closure with a precise missing template, field, signature choice, signature box, or effective-signatory error; no PDFs are generated until an authorized public download.
 
 ## Signatory administration (Admin or Super Admin)
 

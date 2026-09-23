@@ -15,8 +15,12 @@ from app.schemas.leadership_templates import (
 )
 from app.services.audit import record_audit_event
 from app.services.executive.constants import EXECUTIVE_ROLES
-from app.services.executive.letters import missing_leadership_fields
+from app.services.executive.letters import (
+    REQUIRED_LEADERSHIP_TEMPLATE_FIELDS,
+    missing_leadership_template_fields,
+)
 from app.services.storage.supabase import SupabaseStorage
+from app.services.templates.signature_choice import require_signature_choice
 from app.services.templates.validation import ensure_pdf
 
 router = APIRouter(prefix="/leadership-templates", tags=["leadership templates"])
@@ -24,6 +28,8 @@ router = APIRouter(prefix="/leadership-templates", tags=["leadership templates"]
 _ALLOWED_DOCUMENT_TYPES = frozenset(
     {DocumentType.LEADERSHIP_RECOGNITION, DocumentType.END_OF_TENURE_APPRECIATION}
 )
+_ALLOWED_SIGNATURE_FIELDS = frozenset({"signature_president", "signature_dsa", "signature_hod"})
+_ALLOWED_FIELD_NAMES = REQUIRED_LEADERSHIP_TEMPLATE_FIELDS | _ALLOWED_SIGNATURE_FIELDS
 
 
 def _template_or_404(db: Session, template_id: UUID) -> LeadershipTemplate:
@@ -114,15 +120,25 @@ def configure_leadership_template_fields(
     names = [field.field_name for field in payload.fields]
     if len(names) != len(set(names)):
         raise HTTPException(status_code=422, detail="Template field names must be unique")
+    unsupported = set(names) - _ALLOWED_FIELD_NAMES
+    if unsupported:
+        raise HTTPException(
+            status_code=422,
+            detail="Unsupported leadership template fields: " + ", ".join(sorted(unsupported)),
+        )
     for field in payload.fields:
         db.add(LeadershipTemplateField(leadership_template_id=template.id, **field.model_dump()))
+    try:
+        template.signature_handling = require_signature_choice(payload.signature_handling)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     record_audit_event(
         db,
         actor_admin_id=admin.id,
         event_type="LEADERSHIP_TEMPLATE_FIELDS_CONFIGURED",
         entity_type="leadership_template",
         entity_id=template.id,
-        payload={"fields": names},
+        payload={"fields": names, "signature_handling": template.signature_handling},
     )
     db.commit()
     db.refresh(template)
@@ -143,11 +159,16 @@ def activate_leadership_template(
             )
         ).all()
     )
-    missing = missing_leadership_fields(field_names)
+    missing = missing_leadership_template_fields(field_names)
     if missing:
         raise HTTPException(
             status_code=422,
             detail="Required leadership fields are missing: " + ", ".join(sorted(missing)),
+        )
+    if template.signature_handling is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Choose whether to retain or replace sample signatures before activation",
         )
 
     # Lock the role/type set so a concurrent replacement cannot leave two active templates.
