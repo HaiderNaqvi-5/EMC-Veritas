@@ -3,5 +3,15 @@
 @tailwind utilities;
 
 :root { color-scheme: light dark; font-family: Inter, system-ui, sans-serif; }
-body { margin: 0; min-width: 320px; }
-main { max-width: 48rem; margin: 0 auto; padding: 2rem 1rem; }
+body { margin: 0; min-width: 320px; background: #f8fafc; color: #111827; }
+.student-portal { max-width: 48rem; margin: 0 auto; padding: 2rem 1rem; }
+.brand-bar { display: flex; align-items: center; justify-content: space-between; gap: 1.25rem; margin-bottom: 3rem; }
+.brand-bar img { display: block; width: auto; max-height: 3.5rem; max-width: 45%; object-fit: contain; }
+.lookup-card { max-width: 38rem; padding: clamp(1.5rem, 5vw, 3rem); border: 1px solid #e2e8f0; border-radius: 1rem; background: #fff; box-shadow: 0 20px 40px rgb(15 23 42 / 8%); }
+.eyebrow { margin: 0; color: #7f1d1d; font-size: .875rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+h1 { margin: .5rem 0 1rem; font-size: clamp(2.25rem, 7vw, 4rem); line-height: 1; }
+form { display: grid; gap: .75rem; margin-top: 2rem; }
+input, button { min-height: 2.75rem; border-radius: .5rem; font: inherit; }
+input { border: 1px solid #94a3b8; padding: 0 .75rem; }
+button { cursor: pointer; border: 0; padding: 0 1rem; color: #fff; background: #7f1d1d; font-weight: 700; }
+@media (prefers-color-scheme: dark) { body { background: #0f172a; color: #f8fafc; } .lookup-card { border-color: #334155; background: #172033; } }
