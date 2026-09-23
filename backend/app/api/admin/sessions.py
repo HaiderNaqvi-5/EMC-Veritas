@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 from app.api.admin.students import require_admin
 from app.db.session import get_db
 from app.models.domain import EmcSession
-from app.schemas.operations import SessionCreate, SessionResponse
+from app.schemas.operations import SessionCreate, SessionResponse, SessionUpdate
 from app.services.audit import record_audit_event
-from app.services.sessions import close_session, create_session, list_sessions
+from app.services.sessions import close_session, create_session, list_sessions, update_session
 
 router = APIRouter(prefix="/sessions", tags=["admin-sessions"])
 
@@ -28,3 +28,18 @@ def close(session_id: str, admin_id: UUID = Depends(require_admin), db: Session 
     item = db.get(EmcSession, session_id)
     if item is None: raise HTTPException(status_code=404, detail="Session not found")
     close_session(db, item); record_audit_event(db, event_type="SESSION_CLOSED", entity_type="session", entity_id=item.id, payload={}, actor_admin_id=admin_id); db.commit(); db.refresh(item); return item
+
+
+@router.put("/{session_id}", response_model=SessionResponse)
+def edit_session(session_id: str, payload: SessionUpdate, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)) -> EmcSession:
+    item = db.get(EmcSession, session_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        update_session(db, item, payload)
+        record_audit_event(db, event_type="SESSION_UPDATED", entity_type="session", entity_id=item.id, payload={}, actor_admin_id=admin_id)
+        db.commit(); db.refresh(item)
+        return item
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Session dates or name conflict with an existing record")

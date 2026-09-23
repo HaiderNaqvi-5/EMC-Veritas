@@ -26,6 +26,10 @@ class SessionCreate(APIModel):
     end_date: date
 
 
+class SessionUpdate(SessionCreate):
+    pass
+
+
 class SessionResponse(SessionCreate):
     id: UUID
     status: str

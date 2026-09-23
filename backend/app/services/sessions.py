@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.domain import EmcSession, SessionStatus
-from app.schemas.operations import SessionCreate
+from app.schemas.operations import SessionCreate, SessionUpdate
 
 
 def list_sessions(db: Session) -> list[EmcSession]:
@@ -17,5 +17,13 @@ def create_session(db: Session, payload: SessionCreate) -> EmcSession:
 
 def close_session(db: Session, item: EmcSession) -> EmcSession:
     item.status = SessionStatus.CLOSED
+    db.flush()
+    return item
+
+
+def update_session(db: Session, item: EmcSession, payload: SessionUpdate) -> EmcSession:
+    item.name = payload.name.strip()
+    item.start_date = payload.start_date
+    item.end_date = payload.end_date
     db.flush()
     return item
