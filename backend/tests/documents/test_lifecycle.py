@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import fitz
+from PIL import Image
 from reportlab.pdfgen.canvas import Canvas
 
 from app.models.domain import DocumentStatus, DocumentType, IssuedDocument
@@ -137,3 +138,28 @@ def test_preview_watermark_is_rendered_without_creating_a_document_record() -> N
     )
     rendered = fitz.open(stream=output, filetype="pdf")
     assert "PREVIEW" in rendered[0].get_text()
+
+
+def test_renderer_places_configured_signature_image() -> None:
+    signature = BytesIO()
+    Image.new("RGBA", (80, 30), (0, 0, 0, 255)).save(signature, format="PNG")
+    output = render_certificate(
+        _blank_template(),
+        [
+            _field("student_name", 150, 160),
+            _field("roll_number", 150, 210),
+            _field("activity_name", 150, 260),
+            _field("activity_date", 150, 310),
+            _field("signature_president", 100, 500, 100, 40),
+        ],
+        {
+            "student_name": "Ayesha Khan",
+            "roll_number": "FA21-BCS-001",
+            "activity_name": "Welcome Week",
+            "activity_date": date(2026, 9, 1),
+        },
+        verification_url="https://portal.example.edu/verify/EMC-TEST123",
+        image_values={"signature_president": signature.getvalue()},
+    )
+    rendered = fitz.open(stream=output, filetype="pdf")
+    assert rendered[0].get_images(full=True)

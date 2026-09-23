@@ -13,6 +13,26 @@ def test_template_upload_requires_authenticated_super_admin() -> None:
     assert response.json() == {"detail": "Admin session required"}
 
 
+def test_template_listing_requires_authenticated_super_admin() -> None:
+    response = TestClient(app).get("/api/admin/templates")
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}
+
+
+def test_leadership_template_workflow_requires_authenticated_super_admin() -> None:
+    response = TestClient(app).post(
+        "/api/admin/leadership-templates/upload",
+        data={
+            "name": "President recognition",
+            "role": "President",
+            "document_type": "LEADERSHIP_RECOGNITION",
+        },
+        files={"file": ("letter.pdf", b"%PDF-1.4", "application/pdf")},
+    )
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}
+
+
 def test_template_configuration_requires_authenticated_super_admin() -> None:
     response = TestClient(app).post(
         "/api/admin/templates/00000000-0000-0000-0000-000000000000/fields",

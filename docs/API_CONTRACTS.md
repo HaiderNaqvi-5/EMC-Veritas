@@ -15,6 +15,7 @@ Administrative contracts for templates, documents, signatories, executive member
 
 | Endpoint | Contract | Notes |
 | --- | --- | --- |
+| `GET /api/admin/templates` | `TemplateResponse[]` | Lists non-archived templates for the Super Admin template editor. |
 | `POST /api/admin/templates/upload` | multipart `name` + PDF `file` → `TemplateResponse` | Stores the supplied PDF in private Storage as an unapproved template. |
 | `GET /api/admin/templates/{template_id}/analysis` | `TemplateAnalysisResponse` | Returns page count, extracted text, whether scanned pages were OCRed, whether any page still requires OCR/manual attention, and a signature/date-content warning. |
 | `POST /api/admin/templates/{template_id}/fields` | `TemplateFieldsCreate` → `TemplateResponse` | Field names, one-based PDF coordinates, and the required `signature_handling` choice (`retain` or `replace`) are immutable once configured. |
@@ -27,11 +28,28 @@ Every template endpoint requires an active `SUPER_ADMIN` server session. The bro
 
 | Endpoint | Contract | Notes |
 | --- | --- | --- |
-| `POST /api/admin/documents/activities/{activity_id}/issue` | `ActivityIssueResponse` | Reserves one immutable activity-certificate record for every active, eligible participant. It requires an approved template, all mandatory fields, an explicit signature choice, and effective President + DSA signatories. Existing valid records are skipped. |
+| `POST /api/admin/documents/activities/{activity_id}/issue` | `ActivityIssueResponse` | Reserves one immutable activity-certificate record for every active, eligible participant. It requires an approved template, all mandatory fields, an explicit signature choice, and effective President + DSA signatories. `replace` templates must configure their signature image boxes. The selected records are snapshotted at reservation. Existing valid records are skipped. |
 | `POST /api/admin/documents/{document_id}/revoke` | `204 No Content` | Marks a valid record `REVOKED`; it remains in audit/verification history but cannot be normally downloaded. |
 | `POST /api/admin/documents/{document_id}/reissue` | `DocumentReissueResponse` | Revalidates the current activity template/signatories, supersedes the valid old record, and reserves a new version with a new verification ID. |
 
 The service fixes the activity issue date using the EMC Pakistan business date on first issuance and records immutable audit events. It never creates PDFs during issue; final PDFs remain lazy and cached on the first valid public download.
+
+## Leadership templates (Super Admin only)
+
+Leadership-template contracts use exact Executive Council roles and only `LEADERSHIP_RECOGNITION` or `END_OF_TENURE_APPRECIATION` document types. Their field configuration is restricted to deterministic record placeholders: student name/roll number, role, society, tenure dates, session name, and issue date. No LLM-generated letter content is permitted.
+
+| Endpoint | Contract | Notes |
+| --- | --- | --- |
+| `GET /api/admin/leadership-templates` | `LeadershipTemplateResponse[]` | Lists non-archived role-specific letter templates. |
+| `POST /api/admin/leadership-templates/upload` | multipart `name`, official `role`, allowed `document_type`, and PDF `file` → `LeadershipTemplateResponse` | Stores a new inactive PDF privately. |
+| `POST /api/admin/leadership-templates/{template_id}/fields` | `LeadershipTemplateFieldsCreate` → `LeadershipTemplateResponse` | Defines immutable deterministic-field/QR coordinates and the explicit `retain` or `replace` signature choice before activation. |
+| `POST /api/admin/leadership-templates/{template_id}/activate` | `LeadershipTemplateResponse` | Requires the eight deterministic leadership fields plus a QR box, then atomically replaces the active template for its role/type. |
+| `POST /api/admin/leadership-templates/{template_id}/deactivate` | `LeadershipTemplateResponse` | Retires an active template without deleting history. |
+| `POST /api/admin/leadership-templates/{template_id}/archive` | `LeadershipTemplateResponse` | Archives a template and deactivates it permanently. |
+
+Every state change records an immutable audit event. No endpoint accepts arbitrary role names or document types.
+
+Closing a session now atomically preflights completed memberships and reserves both leadership document types exactly once per membership. It blocks closure with a precise missing template, field, signature choice, signature box, or effective-signatory error; no PDFs are generated until an authorized public download.
 
 ## Signatory administration (Admin or Super Admin)
 

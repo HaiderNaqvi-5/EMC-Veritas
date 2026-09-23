@@ -7,7 +7,7 @@ import fitz
 from app.models.domain import TemplateField
 from app.services.documents.qr_image import qr_png
 from app.services.documents.text_fit import fit_font_size
-from app.services.templates.fields import missing_required_fields
+from app.services.templates.fields import REQUIRED_CERTIFICATE_FIELDS
 
 
 class CertificateRenderingError(ValueError):
@@ -42,6 +42,18 @@ def _insert_qr(page: fitz.Page, field: TemplateField, verification_url: str) -> 
     page.insert_image(rectangle, stream=qr_png(verification_url), keep_proportion=True)
 
 
+def _insert_image(page: fitz.Page, field: TemplateField, image_bytes: bytes) -> None:
+    if field.width <= 0 or field.height <= 0:
+        raise CertificateRenderingError(f"Template field '{field.field_name}' has an invalid box")
+    rectangle = fitz.Rect(field.x, field.y, field.x + field.width, field.y + field.height)
+    try:
+        page.insert_image(rectangle, stream=image_bytes, keep_proportion=True)
+    except (ValueError, RuntimeError) as error:
+        raise CertificateRenderingError(
+            f"Signature image for template field '{field.field_name}' is unreadable"
+        ) from error
+
+
 def render_certificate(
     template_pdf: bytes,
     fields: Iterable[TemplateField],
@@ -49,6 +61,8 @@ def render_certificate(
     *,
     verification_url: str,
     watermark: str | None = None,
+    image_values: Mapping[str, bytes] | None = None,
+    required_field_names: frozenset[str] = REQUIRED_CERTIFICATE_FIELDS,
 ) -> bytes:
     """Overlay configured fields and an optional QR code onto a PDF certificate template.
 
@@ -57,7 +71,7 @@ def render_certificate(
     """
     field_list = list(fields)
     configured_names = {field.field_name for field in field_list}
-    missing = missing_required_fields(configured_names)
+    missing = required_field_names - configured_names
     if missing:
         raise CertificateRenderingError(
             "Template is missing required fields: " + ", ".join(sorted(missing))
@@ -67,7 +81,13 @@ def render_certificate(
         name: value.isoformat() if isinstance(value, date) else str(value)
         for name, value in values.items()
     }
-    needed_values = configured_names - {"qr_code"}
+    images = image_values or {}
+    unknown_images = set(images) - configured_names
+    if unknown_images:
+        raise CertificateRenderingError(
+            "Template is missing image fields: " + ", ".join(sorted(unknown_images))
+        )
+    needed_values = configured_names - {"qr_code", *images}
     absent_values = sorted(name for name in needed_values if name not in normalized_values)
     if absent_values:
         raise CertificateRenderingError(
@@ -88,6 +108,8 @@ def render_certificate(
             page = document[field.page_number - 1]
             if field.field_name == "qr_code":
                 _insert_qr(page, field, verification_url)
+            elif field.field_name in images:
+                _insert_image(page, field, images[field.field_name])
             else:
                 _insert_text(page, field, normalized_values[field.field_name])
         if watermark:

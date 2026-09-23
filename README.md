@@ -32,6 +32,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/API_CONTRACTS.md](doc
 
 Schema changes go through Alembic only. Never commit secrets or generated document artifacts.
 
+## Deployment
+
+The Render Blueprint is at `infra/render/render.yaml`. It installs the backend, runs `alembic upgrade head` in Render's pre-deploy phase, then starts the lightweight readiness-enabled API. Configure the Supabase connection, Storage service-role key, frontend origin, and public app URL as Render secrets; do not put them in the blueprint or repository. Persistent PDFs, uploaded templates, and signature assets stay in Supabase Storage—Render disk is never durable storage.
+
 ## Before pushing to `main`
 
 Run the same verification command used by GitHub Actions:

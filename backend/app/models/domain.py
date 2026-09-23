@@ -142,6 +142,47 @@ class TemplateField(Timestamped, Base):
     __table_args__ = (UniqueConstraint("template_id", "field_name", name="uq_template_field"),)
 
 
+class LeadershipTemplate(Timestamped, Base):
+    __tablename__ = "leadership_templates"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(80), nullable=False)
+    document_type: Mapped[DocumentType] = mapped_column(
+        Enum(DocumentType, name="document_type", create_type=False), nullable=False
+    )
+    storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    # Set only after a Super Admin explicitly chooses retain or replace.
+    signature_handling: Mapped[str | None] = mapped_column(String(16))
+    active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    __table_args__ = (
+        Index(
+            "uq_active_leadership_template",
+            "role",
+            "document_type",
+            unique=True,
+            postgresql_where=(active.is_(True) & archived.is_(False)),
+        ),
+    )
+
+
+class LeadershipTemplateField(Timestamped, Base):
+    __tablename__ = "leadership_template_fields"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    leadership_template_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("leadership_templates.id"), nullable=False
+    )
+    field_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    x: Mapped[int] = mapped_column(Integer, nullable=False)
+    y: Mapped[int] = mapped_column(Integer, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("leadership_template_id", "field_name", name="uq_leadership_template_field"),
+    )
+
+
 class Signatory(Timestamped, Base):
     __tablename__ = "signatories"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -153,11 +194,28 @@ class Signatory(Timestamped, Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
+class DocumentSignatory(Base):
+    """Immutable signatory snapshot chosen when a document is reserved."""
+
+    __tablename__ = "document_signatories"
+    issued_document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("issued_documents.id"), primary_key=True
+    )
+    signatory_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("signatories.id"), primary_key=True)
+    official_title: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
 class IssuedDocument(Timestamped, Base):
     __tablename__ = "issued_documents"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False)
     activity_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("activities.id"))
+    executive_membership_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("executive_memberships.id")
+    )
+    leadership_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("leadership_templates.id")
+    )
     document_type: Mapped[DocumentType] = mapped_column(Enum(DocumentType, name="document_type"), nullable=False)
     verification_id: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
     issue_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -165,6 +223,16 @@ class IssuedDocument(Timestamped, Base):
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     storage_key: Mapped[str | None] = mapped_column(String(500))
     sha256: Mapped[str | None] = mapped_column(String(64))
+    # A leadership letter must render from its reserved record, not mutable live membership data.
+    render_payload_json: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = (
+        UniqueConstraint(
+            "executive_membership_id",
+            "document_type",
+            "version",
+            name="uq_leadership_document_membership_type_version",
+        ),
+    )
 
 
 class AuditLog(Base):

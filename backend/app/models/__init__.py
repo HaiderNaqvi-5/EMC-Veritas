@@ -3,9 +3,12 @@ from app.models.domain import (
     ActivityParticipant,
     Admin,
     AuditLog,
+    DocumentSignatory,
     EmcSession,
     ExecutiveMembership,
     IssuedDocument,
+    LeadershipTemplate,
+    LeadershipTemplateField,
     Signatory,
     Society,
     Student,
@@ -13,4 +16,4 @@ from app.models.domain import (
     TemplateField,
 )
 
-__all__ = ["Activity", "ActivityParticipant", "Admin", "AuditLog", "EmcSession", "ExecutiveMembership", "IssuedDocument", "Signatory", "Society", "Student", "Template", "TemplateField"]
+__all__ = ["Activity", "ActivityParticipant", "Admin", "AuditLog", "DocumentSignatory", "EmcSession", "ExecutiveMembership", "IssuedDocument", "LeadershipTemplate", "LeadershipTemplateField", "Signatory", "Society", "Student", "Template", "TemplateField"]
