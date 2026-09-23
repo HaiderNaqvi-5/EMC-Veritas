@@ -42,6 +42,14 @@ The service fixes the activity issue date using the EMC Pakistan business date o
 
 The issue service selects records effective on the governing activity date; it blocks with the missing official-title list when policy cannot be met.
 
+## Full audit visibility (Super Admin only)
+
+| Endpoint | Contract | Notes |
+| --- | --- | --- |
+| `GET /api/admin/audit?limit=100` | `AuditEventResponse[]` | Returns immutable audit events newest first; only a Super Admin session may view the full log. |
+
+There are deliberately no audit update or delete endpoints.
+
 ## Ahmed baseline available now
 
 `backend/app/schemas/operations.py` contains the shared Pydantic request/response baseline for students, sessions, activities, and XLSX import previews. Ahmed should implement his route/service modules against these models and the applied Alembic head `c8dc00f20398`; he must not create tables manually or alter existing migrations.

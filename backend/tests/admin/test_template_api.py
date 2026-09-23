@@ -58,3 +58,9 @@ def test_document_reissue_requires_authenticated_admin() -> None:
     )
     assert response.status_code == 401
     assert response.json() == {"detail": "Admin session required"}
+
+
+def test_audit_log_requires_authenticated_super_admin() -> None:
+    response = TestClient(app).get("/api/admin/audit")
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}
