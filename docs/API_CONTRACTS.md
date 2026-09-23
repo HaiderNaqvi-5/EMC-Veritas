@@ -30,6 +30,16 @@ Every template endpoint requires an active `SUPER_ADMIN` server session. The bro
 
 The service fixes the activity issue date using the EMC Pakistan business date on first issuance and records immutable audit events. It never creates PDFs during issue; final PDFs remain lazy and cached on the first valid public download.
 
+## Signatory administration (Admin or Super Admin)
+
+| Endpoint | Contract | Notes |
+| --- | --- | --- |
+| `POST /api/admin/signatories` | multipart identity, effective dates, PNG/JPEG signature → `SignatoryResponse` | Stores the signature image in private Storage and retains the effective-dated history. |
+| `GET /api/admin/signatories` | `SignatoryResponse[]` | Lists active and historical records for policy review. |
+| `POST /api/admin/signatories/{signatory_id}/deactivate` | `SignatoryResponse` | Retires a record without deleting its history or signature asset. |
+
+The issue service selects records effective on the governing activity date; it blocks with the missing official-title list when policy cannot be met.
+
 ## Ahmed baseline available now
 
 `backend/app/schemas/operations.py` contains the shared Pydantic request/response baseline for students, sessions, activities, and XLSX import previews. Ahmed should implement his route/service modules against these models and the applied Alembic head `c8dc00f20398`; he must not create tables manually or alter existing migrations.

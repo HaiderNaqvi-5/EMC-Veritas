@@ -28,3 +28,17 @@ def test_activity_issue_requires_authenticated_admin() -> None:
     )
     assert response.status_code == 401
     assert response.json() == {"detail": "Admin session required"}
+
+
+def test_signatory_management_requires_authenticated_admin() -> None:
+    response = TestClient(app).post(
+        "/api/admin/signatories",
+        data={
+            "name": "Dr. Example",
+            "official_title": "DSA",
+            "effective_start_date": "2026-01-01",
+        },
+        files={"signature": ("signature.png", b"png", "image/png")},
+    )
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}
