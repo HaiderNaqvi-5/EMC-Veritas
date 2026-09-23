@@ -4,10 +4,15 @@ import { useNavigate } from "react-router-dom";
 import { documentDownloadUrl, getStudentDocuments, type PublicDocument } from "../api/documents/public";
 import { AdminLoginModal } from "../features/auth/AdminLoginModal";
 import { authApi } from "../features/auth/contracts";
+import { Skeleton } from "../components/ui/Skeleton";
 
 function DocumentList({ documents }: { documents: PublicDocument[] }) {
   if (documents.length === 0) return <p>No documents are available in this group yet.</p>;
   return <ul>{documents.map((item) => <li key={item.id}><a href={documentDownloadUrl(item.id)}>{item.title}</a></li>)}</ul>;
+}
+
+function ResultSkeleton() {
+  return <section aria-label="Loading student records" className="mt-6 space-y-4"><Skeleton className="h-7 w-48"/><Skeleton className="h-4 w-36"/><Skeleton className="h-20 w-full"/><Skeleton className="h-4 w-44"/><Skeleton className="h-20 w-full"/></section>;
 }
 
 export function StudentPortal() {
@@ -56,7 +61,7 @@ export function StudentPortal() {
           <button type="submit" disabled={query.isFetching || checkingLookup}>{checkingLookup ? "Checking…" : "Find documents"}</button>
         </form>
         {lookupError && <p role="alert">{lookupError}</p>}
-        {query.isFetching && <p role="status">Still loading your records. This may take a moment on the first request.</p>}
+        {query.isFetching && <><p role="status">Still loading your records. This may take a moment on the first request.</p><ResultSkeleton /></>}
         {query.isError && <p role="alert">{query.error.message}</p>}
         {query.data && <section><h2>{query.data.full_name}</h2><h3>Activity Certificates</h3><DocumentList documents={query.data.activity_certificates} /><h3>Leadership & Recognition</h3><DocumentList documents={query.data.leadership_recognition} /></section>}
       </section>
