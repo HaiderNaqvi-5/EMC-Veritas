@@ -18,3 +18,15 @@ class StudentDocumentsResponse(BaseModel):
     roll_number: str
     activity_certificates: list[PublicDocument]
     leadership_recognition: list[PublicDocument]
+
+
+class VerificationResponse(BaseModel):
+    verified: bool
+    status: str
+    verification_id: str
+    full_name: str
+    roll_number: str
+    document_type: str
+    context: str
+    activity_date: date | None
+    issue_date: date
