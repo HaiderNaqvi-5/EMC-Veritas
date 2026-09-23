@@ -14,24 +14,38 @@ class CertificateRenderingError(ValueError):
     """Raised when an approved PDF template cannot produce a safe certificate."""
 
 
-def _text_width(text: str, size: float) -> float:
-    return fitz.get_text_length(text, fontname="helv", fontsize=size)
+def _text_width(text: str, size: float, font_family: str) -> float:
+    return fitz.get_text_length(text, fontname=font_family, fontsize=size)
+
+
+def _color(value: str) -> tuple[float, float, float]:
+    if len(value) != 7 or not value.startswith("#"):
+        raise CertificateRenderingError("Template text color is invalid")
+    try:
+        return tuple(int(value[index : index + 2], 16) / 255 for index in (1, 3, 5))  # type: ignore[return-value]
+    except ValueError as error:
+        raise CertificateRenderingError("Template text color is invalid") from error
 
 
 def _insert_text(page: fitz.Page, field: TemplateField, value: str) -> None:
     if field.width <= 0 or field.height < 6:
         raise CertificateRenderingError(f"Template field '{field.field_name}' has an invalid box")
-    font_size = fit_font_size(value, field.width, min(18, field.height - 2), _text_width)
+    font_family = getattr(field, "font_family", "helv")
+    if font_family not in {"helv", "tiro", "cour"}:
+        raise CertificateRenderingError("Template font is invalid")
+    preferred = getattr(field, "font_size", None)
+    maximum = min(preferred or 18, field.height - 2)
+    font_size = fit_font_size(value, field.width, maximum, lambda text, size: _text_width(text, size, font_family))
     if font_size <= 4:
         raise CertificateRenderingError(f"Value for template field '{field.field_name}' does not fit")
-    text_width = _text_width(value, font_size)
+    text_width = _text_width(value, font_size, font_family)
     point = fitz.Point(field.x + max((field.width - text_width) / 2, 0), field.y + (field.height + font_size) / 2)
     page.insert_text(
         point,
         value,
-        fontname="helv",
+        fontname=font_family,
         fontsize=font_size,
-        color=(0, 0, 0),
+        color=_color(getattr(field, "text_color", "#000000")),
     )
 
 
