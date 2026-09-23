@@ -139,6 +139,9 @@ class TemplateField(Timestamped, Base):
     page_number: Mapped[int] = mapped_column(Integer, nullable=False)
     x: Mapped[int] = mapped_column(Integer, nullable=False); y: Mapped[int] = mapped_column(Integer, nullable=False)
     width: Mapped[int] = mapped_column(Integer, nullable=False); height: Mapped[int] = mapped_column(Integer, nullable=False)
+    font_family: Mapped[str] = mapped_column(String(16), default="helv", nullable=False)
+    font_size: Mapped[int | None] = mapped_column(Integer)
+    text_color: Mapped[str] = mapped_column(String(7), default="#000000", nullable=False)
     __table_args__ = (UniqueConstraint("template_id", "field_name", name="uq_template_field"),)
 
 

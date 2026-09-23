@@ -16,6 +16,9 @@ export type TemplateField = {
   y: number;
   width: number;
   height: number;
+  font_family?: "helv" | "tiro" | "cour";
+  font_size?: number | null;
+  text_color?: string;
 };
 
 export type TemplateAnalysis = {

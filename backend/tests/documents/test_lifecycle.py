@@ -163,3 +163,28 @@ def test_renderer_places_configured_signature_image() -> None:
     )
     rendered = fitz.open(stream=output, filetype="pdf")
     assert rendered[0].get_images(full=True)
+
+
+def test_renderer_honors_configured_bundled_font_and_color() -> None:
+    field = _field("student_name", 150, 160)
+    field.font_family = "cour"
+    field.font_size = 14
+    field.text_color = "#1E3A8A"
+    output = render_certificate(
+        _blank_template(),
+        [
+            field,
+            _field("roll_number", 150, 210),
+            _field("activity_name", 150, 260),
+            _field("activity_date", 150, 310),
+        ],
+        {
+            "student_name": "Ayesha Khan",
+            "roll_number": "FA21-BCS-001",
+            "activity_name": "Welcome Week",
+            "activity_date": date(2026, 9, 1),
+        },
+        verification_url="https://portal.example.edu/verify/EMC-TEST123",
+    )
+    rendered = fitz.open(stream=output, filetype="pdf")
+    assert "Ayesha Khan" in rendered[0].get_text()
