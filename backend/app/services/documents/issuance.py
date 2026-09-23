@@ -9,7 +9,13 @@ from app.services.verification.identifiers import new_verification_id
 
 
 def reserve_document(
-    db: Session, *, student_id: UUID, document_type: DocumentType, issue_date: date, activity_id: UUID | None = None
+    db: Session,
+    *,
+    student_id: UUID,
+    document_type: DocumentType,
+    issue_date: date,
+    activity_id: UUID | None = None,
+    actor_admin_id: UUID | None = None,
 ) -> IssuedDocument:
     document = IssuedDocument(
         id=uuid4(),
@@ -21,7 +27,14 @@ def reserve_document(
         status=DocumentStatus.VALID,
     )
     db.add(document)
-    record_audit_event(db, event_type="DOCUMENT_RESERVED", entity_type="issued_document", entity_id=document.id, payload={"document_type": document_type.value, "issue_date": issue_date.isoformat()})
+    record_audit_event(
+        db,
+        actor_admin_id=actor_admin_id,
+        event_type="DOCUMENT_RESERVED",
+        entity_type="issued_document",
+        entity_id=document.id,
+        payload={"document_type": document_type.value, "issue_date": issue_date.isoformat()},
+    )
     return document
 
 

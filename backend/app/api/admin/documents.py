@@ -1,0 +1,139 @@
+from collections import defaultdict
+from datetime import date, datetime
+from uuid import UUID
+from zoneinfo import ZoneInfo
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.api.admin.dependencies import current_active_admin
+from app.db.session import get_db
+from app.models.domain import (
+    Activity,
+    ActivityParticipant,
+    ActivityStatus,
+    Admin,
+    DocumentStatus,
+    DocumentType,
+    IssuedDocument,
+    Signatory,
+    Student,
+    Template,
+    TemplateField,
+)
+from app.schemas.documents import ActivityIssueResponse
+from app.services.audit import record_audit_event
+from app.services.documents.issuance import reserve_document
+from app.services.signatures.availability import missing_titles
+from app.services.signatures.policy import required_titles
+from app.services.templates.fields import missing_required_fields
+
+router = APIRouter(prefix="/documents", tags=["documents"])
+EMC_TIMEZONE = ZoneInfo("Asia/Karachi")
+
+
+@router.post("/activities/{activity_id}/issue", response_model=ActivityIssueResponse)
+def issue_activity_documents(
+    activity_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(current_active_admin),
+) -> ActivityIssueResponse:
+    activity = db.get(Activity, activity_id)
+    if activity is None or activity.status == ActivityStatus.ARCHIVED:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if activity.template_id is None:
+        raise HTTPException(status_code=409, detail="An approved certificate template is required before issue")
+    template = db.scalar(
+        select(Template).where(
+            Template.id == activity.template_id,
+            Template.approved.is_(True),
+            Template.archived.is_(False),
+        )
+    )
+    if template is None:
+        raise HTTPException(status_code=409, detail="An approved certificate template is required before issue")
+    field_names = set(
+        db.scalars(select(TemplateField.field_name).where(TemplateField.template_id == template.id)).all()
+    )
+    missing_fields = missing_required_fields(field_names)
+    if missing_fields:
+        raise HTTPException(
+            status_code=409,
+            detail="Template is missing required fields: " + ", ".join(sorted(missing_fields)),
+        )
+
+    available_signatories: dict[str, list[tuple[date, date | None]]] = defaultdict(list)
+    for signatory in db.scalars(select(Signatory).where(Signatory.active.is_(True))).all():
+        available_signatories[signatory.official_title].append(
+            (signatory.effective_start_date, signatory.effective_end_date)
+        )
+    missing_signatories = missing_titles(
+        required_titles(), available_signatories, activity.activity_date
+    )
+    if missing_signatories:
+        raise HTTPException(
+            status_code=409,
+            detail="Required signatories are unavailable: " + ", ".join(missing_signatories),
+        )
+
+    issue_date = activity.issue_date or datetime.now(EMC_TIMEZONE).date()
+    eligible_student_ids = list(
+        db.scalars(
+            select(ActivityParticipant.student_id)
+            .join(Student, ActivityParticipant.student_id == Student.id)
+            .where(
+                ActivityParticipant.activity_id == activity.id,
+                ActivityParticipant.eligible.is_(True),
+                Student.active.is_(True),
+            )
+        ).all()
+    )
+    if not eligible_student_ids:
+        raise HTTPException(status_code=409, detail="No eligible participants are available for issue")
+
+    existing_student_ids = set(
+        db.scalars(
+            select(IssuedDocument.student_id).where(
+                IssuedDocument.activity_id == activity.id,
+                IssuedDocument.document_type == DocumentType.ACTIVITY_CERTIFICATE,
+                IssuedDocument.status == DocumentStatus.VALID,
+            )
+        ).all()
+    )
+    issued_document_ids: list[UUID] = []
+    skipped_student_ids: list[UUID] = []
+    for student_id in eligible_student_ids:
+        if student_id in existing_student_ids:
+            skipped_student_ids.append(student_id)
+            continue
+        document = reserve_document(
+            db,
+            student_id=student_id,
+            activity_id=activity.id,
+            document_type=DocumentType.ACTIVITY_CERTIFICATE,
+            issue_date=issue_date,
+            actor_admin_id=admin.id,
+        )
+        issued_document_ids.append(document.id)
+    activity.issue_date = issue_date
+    activity.status = ActivityStatus.PUBLISHED
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="ACTIVITY_DOCUMENTS_ISSUED",
+        entity_type="activity",
+        entity_id=activity.id,
+        payload={
+            "issue_date": issue_date.isoformat(),
+            "issued_count": len(issued_document_ids),
+            "skipped_count": len(skipped_student_ids),
+        },
+    )
+    db.commit()
+    return ActivityIssueResponse(
+        activity_id=activity.id,
+        issue_date=issue_date,
+        issued_document_ids=issued_document_ids,
+        skipped_student_ids=skipped_student_ids,
+    )

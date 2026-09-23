@@ -22,6 +22,14 @@ Administrative contracts for templates, documents, signatories, executive member
 
 Every template endpoint requires an active `SUPER_ADMIN` server session. The browser never receives a Supabase Storage credential.
 
+## Activity certificate issuance (Admin or Super Admin)
+
+| Endpoint | Contract | Notes |
+| --- | --- | --- |
+| `POST /api/admin/documents/activities/{activity_id}/issue` | `ActivityIssueResponse` | Reserves one immutable activity-certificate record for every active, eligible participant. It requires an approved template, all mandatory fields, and effective President + DSA signatories. Existing valid records are skipped. |
+
+The service fixes the activity issue date using the EMC Pakistan business date on first issuance and records immutable audit events. It never creates PDFs during issue; final PDFs remain lazy and cached on the first valid public download.
+
 ## Ahmed baseline available now
 
 `backend/app/schemas/operations.py` contains the shared Pydantic request/response baseline for students, sessions, activities, and XLSX import previews. Ahmed should implement his route/service modules against these models and the applied Alembic head `c8dc00f20398`; he must not create tables manually or alter existing migrations.
