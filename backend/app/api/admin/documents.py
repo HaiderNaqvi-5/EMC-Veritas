@@ -3,7 +3,7 @@ from datetime import date, datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -137,3 +137,26 @@ def issue_activity_documents(
         issued_document_ids=issued_document_ids,
         skipped_student_ids=skipped_student_ids,
     )
+
+
+@router.post("/{document_id}/revoke", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_issued_document(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(current_active_admin),
+) -> None:
+    document = db.get(IssuedDocument, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Issued document not found")
+    if document.status != DocumentStatus.VALID:
+        raise HTTPException(status_code=409, detail="Only valid documents can be revoked")
+    document.status = DocumentStatus.REVOKED
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="DOCUMENT_REVOKED",
+        entity_type="issued_document",
+        entity_id=document.id,
+        payload={"verification_id": document.verification_id, "version": document.version},
+    )
+    db.commit()

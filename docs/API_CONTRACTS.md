@@ -27,6 +27,7 @@ Every template endpoint requires an active `SUPER_ADMIN` server session. The bro
 | Endpoint | Contract | Notes |
 | --- | --- | --- |
 | `POST /api/admin/documents/activities/{activity_id}/issue` | `ActivityIssueResponse` | Reserves one immutable activity-certificate record for every active, eligible participant. It requires an approved template, all mandatory fields, and effective President + DSA signatories. Existing valid records are skipped. |
+| `POST /api/admin/documents/{document_id}/revoke` | `204 No Content` | Marks a valid record `REVOKED`; it remains in audit/verification history but cannot be normally downloaded. |
 
 The service fixes the activity issue date using the EMC Pakistan business date on first issuance and records immutable audit events. It never creates PDFs during issue; final PDFs remain lazy and cached on the first valid public download.
 

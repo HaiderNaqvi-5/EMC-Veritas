@@ -42,3 +42,11 @@ def test_signatory_management_requires_authenticated_admin() -> None:
     )
     assert response.status_code == 401
     assert response.json() == {"detail": "Admin session required"}
+
+
+def test_document_revocation_requires_authenticated_admin() -> None:
+    response = TestClient(app).post(
+        "/api/admin/documents/00000000-0000-0000-0000-000000000000/revoke"
+    )
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}
