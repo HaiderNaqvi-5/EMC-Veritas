@@ -6,4 +6,4 @@ The repository baseline is established: React/Vite/Tailwind frontend structure, 
 
 The local Supabase PostgreSQL connection and private `emc-veritas` Storage bucket are configured and verified. Alembic is configured, and the initial migration plus the Society Head tenure constraint migration have been applied and tested.
 
-Ahmed can now implement his operational services against the shared schemas and Alembic head; see `docs/AHMED_BASELINE_HANDOFF.md`. Next Haider work: public discovery/download/verification contracts and services.
+Ahmed can now implement his operational services against the shared schemas and Alembic head; see `docs/AHMED_BASELINE_HANDOFF.md`. Haider public implementation has started with the backend-authoritative student document discovery endpoint. Next Haider work: document download and public verification services.
