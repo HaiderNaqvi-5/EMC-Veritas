@@ -7,6 +7,8 @@ from app.core.settings import settings
 
 class SupabaseStorage:
     def __init__(self) -> None:
+        if not settings.supabase_service_role_key:
+            raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY is required for persistent Storage operations")
         self.bucket = settings.supabase_storage_bucket
         self.base_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/{self.bucket}"
         self.headers = {
