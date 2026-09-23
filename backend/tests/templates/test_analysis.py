@@ -34,3 +34,8 @@ def test_analysis_uses_ocr_for_a_scanned_page(monkeypatch) -> None:
     assert result.pages == ["Scanned template"]
     assert result.ocr_used is True
     assert result.ocr_required is False
+
+
+def test_analysis_flags_signature_or_date_labels_for_editor_warning() -> None:
+    assert analysis.has_signature_like_content(["President Signature\nDate: 2026-01-01"])
+    assert not analysis.has_signature_like_content(["Certificate of participation"])

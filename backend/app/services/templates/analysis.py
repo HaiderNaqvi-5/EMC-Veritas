@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from io import BytesIO
 
@@ -11,6 +12,16 @@ class PdfTextAnalysis:
     pages: list[str]
     ocr_used: bool
     ocr_required: bool
+
+
+def has_signature_like_content(pages: list[str]) -> bool:
+    """Flag text that merits an explicit retain/replace signature decision.
+
+    Image-only handwritten signatures cannot be reliably classified as text, so
+    every template still requires the explicit choice. This signal warns the
+    editor when the PDF itself exposes date/signature labels.
+    """
+    return bool(re.search(r"\b(signature|signatory|signed|date)\b", "\n".join(pages), re.IGNORECASE))
 
 
 def extract_pdf_text(pdf_bytes: bytes) -> list[str]:

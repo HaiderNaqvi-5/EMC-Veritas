@@ -21,8 +21,9 @@ from app.services.audit import record_audit_event
 from app.services.documents.qr import verification_url
 from app.services.documents.rendering import CertificateRenderingError, render_certificate
 from app.services.storage.supabase import SupabaseStorage
-from app.services.templates.analysis import analyze_pdf_text
+from app.services.templates.analysis import analyze_pdf_text, has_signature_like_content
 from app.services.templates.fields import missing_required_fields
+from app.services.templates.signature_choice import require_signature_choice
 from app.services.templates.validation import ensure_pdf
 
 router = APIRouter(prefix="/templates", tags=["templates"])
@@ -87,6 +88,7 @@ def analyze_template(
         extracted_text=analysis.pages,
         ocr_used=analysis.ocr_used,
         ocr_required=analysis.ocr_required,
+        signature_content_detected=has_signature_like_content(analysis.pages),
     )
 
 
@@ -102,18 +104,23 @@ def configure_template_fields(
         raise HTTPException(status_code=409, detail="Approved templates are immutable; upload a new version")
     if db.scalar(select(TemplateField.id).where(TemplateField.template_id == template.id)) is not None:
         raise HTTPException(status_code=409, detail="Template fields are already configured")
+    try:
+        signature_handling = require_signature_choice(payload.signature_handling)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     names = [field.field_name for field in payload.fields]
     if len(names) != len(set(names)):
         raise HTTPException(status_code=422, detail="Template field names must be unique")
     for field in payload.fields:
         db.add(TemplateField(template_id=template.id, **field.model_dump()))
+    template.signature_handling = signature_handling
     record_audit_event(
         db,
         actor_admin_id=admin.id,
         event_type="TEMPLATE_FIELDS_CONFIGURED",
         entity_type="template",
         entity_id=template.id,
-        payload={"fields": names},
+        payload={"fields": names, "signature_handling": signature_handling},
     )
     db.commit()
     db.refresh(template)
@@ -173,6 +180,11 @@ def approve_template(
         raise HTTPException(
             status_code=422,
             detail="Required template fields are missing: " + ", ".join(sorted(missing)),
+        )
+    if template.signature_handling is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Choose whether to retain or replace sample signatures before approval",
         )
     template.approved = True
     record_audit_event(

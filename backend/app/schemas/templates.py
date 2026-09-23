@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -15,6 +16,7 @@ class TemplateFieldInput(BaseModel):
 
 class TemplateFieldsCreate(BaseModel):
     fields: list[TemplateFieldInput] = Field(min_length=1)
+    signature_handling: Literal["retain", "replace"]
 
 
 class TemplateResponse(BaseModel):
@@ -22,6 +24,7 @@ class TemplateResponse(BaseModel):
     name: str
     approved: bool
     archived: bool
+    signature_handling: Literal["retain", "replace"] | None
     created_at: datetime
 
 
@@ -30,6 +33,7 @@ class TemplateAnalysisResponse(BaseModel):
     extracted_text: list[str]
     ocr_used: bool
     ocr_required: bool
+    signature_content_detected: bool
 
 
 class TemplatePreviewRequest(BaseModel):

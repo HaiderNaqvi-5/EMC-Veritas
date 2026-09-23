@@ -16,9 +16,9 @@ Administrative contracts for templates, documents, signatories, executive member
 | Endpoint | Contract | Notes |
 | --- | --- | --- |
 | `POST /api/admin/templates/upload` | multipart `name` + PDF `file` → `TemplateResponse` | Stores the supplied PDF in private Storage as an unapproved template. |
-| `GET /api/admin/templates/{template_id}/analysis` | `TemplateAnalysisResponse` | Returns page count, extracted text, whether scanned pages were OCRed, and whether any page still requires OCR/manual attention. |
-| `POST /api/admin/templates/{template_id}/fields` | `TemplateFieldsCreate` → `TemplateResponse` | Field names and one-based PDF coordinates are immutable once configured. |
-| `POST /api/admin/templates/{template_id}/approve` | `TemplateResponse` | Requires student name, roll number, activity name, and activity date fields. |
+| `GET /api/admin/templates/{template_id}/analysis` | `TemplateAnalysisResponse` | Returns page count, extracted text, whether scanned pages were OCRed, whether any page still requires OCR/manual attention, and a signature/date-content warning. |
+| `POST /api/admin/templates/{template_id}/fields` | `TemplateFieldsCreate` → `TemplateResponse` | Field names, one-based PDF coordinates, and the required `signature_handling` choice (`retain` or `replace`) are immutable once configured. |
+| `POST /api/admin/templates/{template_id}/approve` | `TemplateResponse` | Requires student name, roll number, activity name, activity date, and an explicit signature choice. |
 | `POST /api/admin/templates/{template_id}/preview` | `TemplatePreviewRequest` → inline PDF | Renders a participant-specific, watermarked `PREVIEW` in memory only; it never creates an official issued document. |
 
 Every template endpoint requires an active `SUPER_ADMIN` server session. The browser never receives a Supabase Storage credential.
@@ -27,7 +27,7 @@ Every template endpoint requires an active `SUPER_ADMIN` server session. The bro
 
 | Endpoint | Contract | Notes |
 | --- | --- | --- |
-| `POST /api/admin/documents/activities/{activity_id}/issue` | `ActivityIssueResponse` | Reserves one immutable activity-certificate record for every active, eligible participant. It requires an approved template, all mandatory fields, and effective President + DSA signatories. Existing valid records are skipped. |
+| `POST /api/admin/documents/activities/{activity_id}/issue` | `ActivityIssueResponse` | Reserves one immutable activity-certificate record for every active, eligible participant. It requires an approved template, all mandatory fields, an explicit signature choice, and effective President + DSA signatories. Existing valid records are skipped. |
 | `POST /api/admin/documents/{document_id}/revoke` | `204 No Content` | Marks a valid record `REVOKED`; it remains in audit/verification history but cannot be normally downloaded. |
 | `POST /api/admin/documents/{document_id}/reissue` | `DocumentReissueResponse` | Revalidates the current activity template/signatories, supersedes the valid old record, and reserves a new version with a new verification ID. |
 

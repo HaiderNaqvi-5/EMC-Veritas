@@ -127,6 +127,8 @@ class Template(Timestamped, Base):
     storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
     approved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Set only after a Super Admin explicitly chooses retain or replace.
+    signature_handling: Mapped[str | None] = mapped_column(String(16))
 
 
 class TemplateField(Timestamped, Base):

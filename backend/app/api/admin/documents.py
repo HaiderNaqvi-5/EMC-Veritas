@@ -53,6 +53,11 @@ def issue_activity_documents(
     )
     if template is None:
         raise HTTPException(status_code=409, detail="An approved certificate template is required before issue")
+    if template.signature_handling is None:
+        raise HTTPException(
+            status_code=409,
+            detail="The template requires an explicit retain or replace signature choice before issue",
+        )
     field_names = set(
         db.scalars(select(TemplateField.field_name).where(TemplateField.template_id == template.id)).all()
     )
@@ -187,6 +192,11 @@ def reissue_document(
     )
     if template is None:
         raise HTTPException(status_code=409, detail="An approved certificate template is required before reissue")
+    if template.signature_handling is None:
+        raise HTTPException(
+            status_code=409,
+            detail="The template requires an explicit retain or replace signature choice before reissue",
+        )
     field_names = set(
         db.scalars(select(TemplateField.field_name).where(TemplateField.template_id == template.id)).all()
     )
