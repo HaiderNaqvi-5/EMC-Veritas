@@ -28,6 +28,7 @@ class TemplateResponse(BaseModel):
 class TemplateAnalysisResponse(BaseModel):
     page_count: int
     extracted_text: list[str]
+    ocr_used: bool
     ocr_required: bool
 
 

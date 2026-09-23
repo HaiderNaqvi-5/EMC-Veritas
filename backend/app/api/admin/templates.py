@@ -21,7 +21,7 @@ from app.services.audit import record_audit_event
 from app.services.documents.qr import verification_url
 from app.services.documents.rendering import CertificateRenderingError, render_certificate
 from app.services.storage.supabase import SupabaseStorage
-from app.services.templates.analysis import extract_pdf_text, requires_ocr
+from app.services.templates.analysis import analyze_pdf_text
 from app.services.templates.fields import missing_required_fields
 from app.services.templates.validation import ensure_pdf
 
@@ -79,13 +79,14 @@ def analyze_template(
         document = fitz.open(stream=pdf_bytes, filetype="pdf")
         page_count = document.page_count
         document.close()
-        pages = extract_pdf_text(pdf_bytes)
+        analysis = analyze_pdf_text(pdf_bytes)
     except (RuntimeError, fitz.FileDataError) as error:
         raise HTTPException(status_code=503, detail="Template analysis is temporarily unavailable") from error
     return TemplateAnalysisResponse(
         page_count=page_count,
-        extracted_text=pages,
-        ocr_required=requires_ocr(pages),
+        extracted_text=analysis.pages,
+        ocr_used=analysis.ocr_used,
+        ocr_required=analysis.ocr_required,
     )
 
 

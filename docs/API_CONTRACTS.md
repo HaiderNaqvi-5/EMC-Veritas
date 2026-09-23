@@ -16,7 +16,7 @@ Administrative contracts for templates, documents, signatories, executive member
 | Endpoint | Contract | Notes |
 | --- | --- | --- |
 | `POST /api/admin/templates/upload` | multipart `name` + PDF `file` → `TemplateResponse` | Stores the supplied PDF in private Storage as an unapproved template. |
-| `GET /api/admin/templates/{template_id}/analysis` | `TemplateAnalysisResponse` | Returns page count, extracted text, and whether OCR is required. |
+| `GET /api/admin/templates/{template_id}/analysis` | `TemplateAnalysisResponse` | Returns page count, extracted text, whether scanned pages were OCRed, and whether any page still requires OCR/manual attention. |
 | `POST /api/admin/templates/{template_id}/fields` | `TemplateFieldsCreate` → `TemplateResponse` | Field names and one-based PDF coordinates are immutable once configured. |
 | `POST /api/admin/templates/{template_id}/approve` | `TemplateResponse` | Requires student name, roll number, activity name, and activity date fields. |
 | `POST /api/admin/templates/{template_id}/preview` | `TemplatePreviewRequest` → inline PDF | Renders a participant-specific, watermarked `PREVIEW` in memory only; it never creates an official issued document. |
