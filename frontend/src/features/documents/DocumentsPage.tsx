@@ -1,0 +1,17 @@
+import { FormEvent, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "../../lib/api/client";
+
+type IssueResult = { issue_date: string; issued_document_ids: string[]; skipped_student_ids: string[] };
+type ReissueResult = { replacement_document_id: string; issue_date: string; version: number };
+
+export function DocumentsPage() {
+  const [activityId, setActivityId] = useState(""); const [documentId, setDocumentId] = useState(""); const [message, setMessage] = useState("");
+  const issue = useMutation({ mutationFn: () => apiRequest<IssueResult>(`/admin/documents/activities/${activityId}/issue`, { method: "POST" }), onSuccess: (result) => setMessage(`Issued ${result.issued_document_ids.length} records on ${result.issue_date}; ${result.skipped_student_ids.length} existing valid records were skipped.`) });
+  const revoke = useMutation({ mutationFn: () => apiRequest<void>(`/admin/documents/${documentId}/revoke`, { method: "POST" }), onSuccess: () => setMessage("Document revoked. It remains available in audit and verification history.") });
+  const reissue = useMutation({ mutationFn: () => apiRequest<ReissueResult>(`/admin/documents/${documentId}/reissue`, { method: "POST" }), onSuccess: (result) => setMessage(`New version ${result.version} reserved for ${result.issue_date}: ${result.replacement_document_id}`) });
+  function submitIssue(event: FormEvent) { event.preventDefault(); setMessage(""); issue.mutate(); }
+  function submitDocument(event: FormEvent, action: "revoke" | "reissue") { event.preventDefault(); setMessage(""); if (action === "revoke") revoke.mutate(); else reissue.mutate(); }
+  const error = issue.error?.message ?? revoke.error?.message ?? reissue.error?.message;
+  return <section><h1 className="text-3xl font-bold">Document operations</h1><p className="mt-2 text-slate-600 dark:text-slate-400">Issue certificates for an eligible activity, or revoke/reissue an existing document. The backend remains authoritative for templates, signatories, eligibility, and immutable history.</p><form onSubmit={submitIssue} className="mt-6 grid gap-3 rounded-xl border p-4 md:grid-cols-2"><input required value={activityId} onChange={(event) => setActivityId(event.target.value)} placeholder="Activity ID" className="rounded border p-2"/><button disabled={issue.isPending} className="rounded bg-slate-900 p-2 text-white">Issue eligible certificates</button></form><form onSubmit={(event) => submitDocument(event, "reissue")} className="mt-4 grid gap-3 rounded-xl border p-4 md:grid-cols-3"><input required value={documentId} onChange={(event) => setDocumentId(event.target.value)} placeholder="Issued document ID" className="rounded border p-2 md:col-span-1"/><button disabled={reissue.isPending} className="rounded border p-2">Reissue as new version</button><button type="button" disabled={revoke.isPending} onClick={() => { if (documentId) revoke.mutate(); }} className="rounded border border-red-600 p-2 text-red-700">Revoke document</button></form>{error && <p role="alert" className="mt-4 rounded bg-red-50 p-3 text-red-700">{error}</p>}{message && <p className="mt-4 rounded bg-green-50 p-3 text-green-800">{message}</p>}<p className="mt-6 text-sm text-slate-500">The document-discovery API is still pending from Haider; use an issued document ID from the activity issue result, audit log, or verification record until that list API is available.</p></section>;
+}
