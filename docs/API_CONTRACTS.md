@@ -10,3 +10,9 @@ This file is the hand-off point before frontend/backend dependent work begins. I
 | `GET /api/public/verify/{verification_id}` | authoritative verification status and context | verification UI/QR |
 
 Administrative contracts for templates, documents, signatories, executive memberships, leadership templates, admins, and audit logs are owned by Haider. Ahmed-owned operational contracts cover sessions, students, activities, participation, import/export, and authentication flow. Publish explicit validation errors—clients must not infer policy.
+
+## Ahmed baseline available now
+
+`backend/app/schemas/operations.py` contains the shared Pydantic request/response baseline for students, sessions, activities, and XLSX import previews. Ahmed should implement his route/service modules against these models and the applied Alembic head `c8dc00f20398`; he must not create tables manually or alter existing migrations.
+
+The admin routes are deliberately not implemented in this hand-off: they remain Ahmed-owned. The database guarantees unique student roll numbers, one active EMC session, one participant per activity/student, one EC membership per student/session, and no overlapping Society Head terms within a society/session.

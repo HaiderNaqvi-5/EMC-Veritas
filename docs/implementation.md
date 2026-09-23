@@ -4,6 +4,6 @@
 
 The repository baseline is established: React/Vite/Tailwind frontend structure, FastAPI application entry point, an intentionally lightweight readiness endpoint, deployment scaffolding, typed-contract location, and supplied EMC/NFC-IET logo assets.
 
-The local Supabase PostgreSQL connection and private `emc-veritas` Storage bucket are configured and verified. Database models are initial domain scaffolding only; they are not a completed migration baseline.
+The local Supabase PostgreSQL connection and private `emc-veritas` Storage bucket are configured and verified. Alembic is configured, and the initial migration plus the Society Head tenure constraint migration have been applied and tested.
 
-Next approved work: create and test the first Alembic revision before Ahmed connects any operational service.
+Ahmed can now implement his operational services against the shared schemas and Alembic head; see `docs/AHMED_BASELINE_HANDOFF.md`. Next Haider work: public discovery/download/verification contracts and services.

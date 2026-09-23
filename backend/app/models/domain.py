@@ -2,8 +2,8 @@ import enum
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Enum, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy.dialects.postgresql import ExcludeConstraint, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -46,7 +46,10 @@ class EmcSession(Timestamped, Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[SessionStatus] = mapped_column(Enum(SessionStatus, name="session_status"), nullable=False)
-    __table_args__ = (CheckConstraint("end_date >= start_date", name="session_valid_dates"),)
+    __table_args__ = (
+        CheckConstraint("end_date >= start_date", name="session_valid_dates"),
+        Index("uq_active_emc_session", "status", unique=True, postgresql_where=(status == SessionStatus.ACTIVE)),
+    )
 
 
 class Activity(Timestamped, Base):
@@ -88,7 +91,18 @@ class ExecutiveMembership(Timestamped, Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date | None] = mapped_column(Date)
     status: Mapped[MembershipStatus] = mapped_column(Enum(MembershipStatus, name="membership_status"), nullable=False)
-    __table_args__ = (UniqueConstraint("student_id", "session_id", name="uq_ec_role_per_student_session"), CheckConstraint("end_date IS NULL OR end_date >= start_date", name="membership_valid_dates"))
+    __table_args__ = (
+        UniqueConstraint("student_id", "session_id", name="uq_ec_role_per_student_session"),
+        CheckConstraint("end_date IS NULL OR end_date >= start_date", name="membership_valid_dates"),
+        ExcludeConstraint(
+            ("session_id", "="),
+            ("society_id", "="),
+            (func.daterange(start_date, func.coalesce(end_date, text("'infinity'::date")), "[]"), "&&"),
+            name="excl_society_head_tenure",
+            using="gist",
+            where=(role == "Society Head"),
+        ),
+    )
 
 
 class Template(Timestamped, Base):
