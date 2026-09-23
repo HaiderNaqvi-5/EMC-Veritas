@@ -9,3 +9,10 @@ class ActivityIssueResponse(BaseModel):
     issue_date: date
     issued_document_ids: list[UUID]
     skipped_student_ids: list[UUID]
+
+
+class DocumentReissueResponse(BaseModel):
+    superseded_document_id: UUID
+    replacement_document_id: UUID
+    issue_date: date
+    version: int

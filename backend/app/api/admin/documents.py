@@ -22,7 +22,7 @@ from app.models.domain import (
     Template,
     TemplateField,
 )
-from app.schemas.documents import ActivityIssueResponse
+from app.schemas.documents import ActivityIssueResponse, DocumentReissueResponse
 from app.services.audit import record_audit_event
 from app.services.documents.issuance import reserve_document
 from app.services.signatures.availability import missing_titles
@@ -160,3 +160,79 @@ def revoke_issued_document(
         payload={"verification_id": document.verification_id, "version": document.version},
     )
     db.commit()
+
+
+@router.post("/{document_id}/reissue", response_model=DocumentReissueResponse)
+def reissue_document(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(current_active_admin),
+) -> DocumentReissueResponse:
+    document = db.get(IssuedDocument, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Issued document not found")
+    if document.status != DocumentStatus.VALID:
+        raise HTTPException(status_code=409, detail="Only valid documents can be reissued")
+    if document.activity_id is None or document.document_type != DocumentType.ACTIVITY_CERTIFICATE:
+        raise HTTPException(status_code=409, detail="This document type cannot be reissued through activity issuance")
+    activity = db.get(Activity, document.activity_id)
+    if activity is None or activity.status == ActivityStatus.ARCHIVED or activity.template_id is None:
+        raise HTTPException(status_code=409, detail="The source activity is no longer issuable")
+    template = db.scalar(
+        select(Template).where(
+            Template.id == activity.template_id,
+            Template.approved.is_(True),
+            Template.archived.is_(False),
+        )
+    )
+    if template is None:
+        raise HTTPException(status_code=409, detail="An approved certificate template is required before reissue")
+    field_names = set(
+        db.scalars(select(TemplateField.field_name).where(TemplateField.template_id == template.id)).all()
+    )
+    missing_fields = missing_required_fields(field_names)
+    if missing_fields:
+        raise HTTPException(
+            status_code=409,
+            detail="Template is missing required fields: " + ", ".join(sorted(missing_fields)),
+        )
+    available_signatories: dict[str, list[tuple[date, date | None]]] = defaultdict(list)
+    for signatory in db.scalars(select(Signatory).where(Signatory.active.is_(True))).all():
+        available_signatories[signatory.official_title].append(
+            (signatory.effective_start_date, signatory.effective_end_date)
+        )
+    missing_signatories = missing_titles(
+        required_titles(), available_signatories, activity.activity_date
+    )
+    if missing_signatories:
+        raise HTTPException(
+            status_code=409,
+            detail="Required signatories are unavailable: " + ", ".join(missing_signatories),
+        )
+
+    issue_date = datetime.now(EMC_TIMEZONE).date()
+    document.status = DocumentStatus.SUPERSEDED
+    replacement = reserve_document(
+        db,
+        student_id=document.student_id,
+        activity_id=activity.id,
+        document_type=document.document_type,
+        issue_date=issue_date,
+        actor_admin_id=admin.id,
+        version=document.version + 1,
+    )
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="DOCUMENT_SUPERSEDED",
+        entity_type="issued_document",
+        entity_id=document.id,
+        payload={"replacement_document_id": str(replacement.id), "replacement_version": replacement.version},
+    )
+    db.commit()
+    return DocumentReissueResponse(
+        superseded_document_id=document.id,
+        replacement_document_id=replacement.id,
+        issue_date=issue_date,
+        version=replacement.version,
+    )

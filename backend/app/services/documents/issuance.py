@@ -16,6 +16,7 @@ def reserve_document(
     issue_date: date,
     activity_id: UUID | None = None,
     actor_admin_id: UUID | None = None,
+    version: int = 1,
 ) -> IssuedDocument:
     document = IssuedDocument(
         id=uuid4(),
@@ -25,6 +26,7 @@ def reserve_document(
         issue_date=issue_date,
         verification_id=new_verification_id(),
         status=DocumentStatus.VALID,
+        version=version,
     )
     db.add(document)
     record_audit_event(
@@ -33,7 +35,11 @@ def reserve_document(
         event_type="DOCUMENT_RESERVED",
         entity_type="issued_document",
         entity_id=document.id,
-        payload={"document_type": document_type.value, "issue_date": issue_date.isoformat()},
+        payload={
+            "document_type": document_type.value,
+            "issue_date": issue_date.isoformat(),
+            "version": version,
+        },
     )
     return document
 
