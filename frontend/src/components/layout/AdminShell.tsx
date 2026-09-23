@@ -7,6 +7,9 @@ const navigation = [
   ["Activities", "/admin/activities"],
   ["Sessions", "/admin/sessions"],
   ["Imports", "/admin/imports"],
+  ["Signatories", "/admin/signatories"],
+  ["Certificate templates", "/admin/templates"],
+  ["Audit log", "/admin/audit"],
 ];
 
 export function AdminShell() {
