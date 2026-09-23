@@ -1,9 +1,10 @@
 from datetime import date
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
 from app.models.domain import DocumentStatus, DocumentType, IssuedDocument
+from app.services.audit import record_audit_event
 from app.services.verification.identifiers import new_verification_id
 
 
@@ -11,6 +12,7 @@ def reserve_document(
     db: Session, *, student_id: UUID, document_type: DocumentType, issue_date: date, activity_id: UUID | None = None
 ) -> IssuedDocument:
     document = IssuedDocument(
+        id=uuid4(),
         student_id=student_id,
         activity_id=activity_id,
         document_type=document_type,
@@ -19,6 +21,7 @@ def reserve_document(
         status=DocumentStatus.VALID,
     )
     db.add(document)
+    record_audit_event(db, event_type="DOCUMENT_RESERVED", entity_type="issued_document", entity_id=document.id, payload={"document_type": document_type.value, "issue_date": issue_date.isoformat()})
     return document
 
 
