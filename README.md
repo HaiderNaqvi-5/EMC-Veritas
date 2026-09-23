@@ -41,3 +41,9 @@ Run the same verification command used by GitHub Actions:
 ```
 
 It installs backend development dependencies, runs backend tests and linting, then uses the locked frontend dependency versions to build the application. Push only after this command succeeds.
+
+This checkout is configured to run it automatically before each push. A collaborator can enable the tracked hook after cloning with:
+
+```bash
+git config core.hooksPath .githooks
+```
