@@ -70,21 +70,21 @@ class EmcSession(Timestamped, Base):
 class Activity(Timestamped, Base):
     __tablename__ = "activities"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("emc_sessions.id"), nullable=False)
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("emc_sessions.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     activity_date: Mapped[date] = mapped_column(Date, nullable=False)
     issue_date: Mapped[date | None] = mapped_column(Date)
     status: Mapped[ActivityStatus] = mapped_column(Enum(ActivityStatus, name="activity_status"), default=ActivityStatus.DRAFT, nullable=False)
-    template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("templates.id"))
-    created_by_admin_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admins.id"), nullable=False)
+    template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("templates.id"), index=True)
+    created_by_admin_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admins.id"), nullable=False, index=True)
 
 
 class ActivityParticipant(Timestamped, Base):
     __tablename__ = "activity_participants"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     activity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("activities.id"), nullable=False)
-    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False)
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
     eligible: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     __table_args__ = (UniqueConstraint("activity_id", "student_id", name="uq_participant_per_activity"),)
 
@@ -101,7 +101,7 @@ class ExecutiveMembership(Timestamped, Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False)
     session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("emc_sessions.id"), nullable=False)
-    society_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("societies.id"))
+    society_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("societies.id"), index=True)
     role: Mapped[str] = mapped_column(String(80), nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date | None] = mapped_column(Date)
@@ -211,8 +211,8 @@ class DocumentSignatory(Base):
 class IssuedDocument(Timestamped, Base):
     __tablename__ = "issued_documents"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False)
-    activity_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("activities.id"))
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
+    activity_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("activities.id"), index=True)
     executive_membership_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("executive_memberships.id")
     )
@@ -241,7 +241,7 @@ class IssuedDocument(Timestamped, Base):
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    actor_admin_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admins.id"))
+    actor_admin_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admins.id"), index=True)
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(100), nullable=False)
     entity_id: Mapped[str] = mapped_column(String(64), nullable=False)
