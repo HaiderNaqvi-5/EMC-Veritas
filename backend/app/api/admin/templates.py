@@ -99,6 +99,48 @@ def analyze_template(
     )
 
 
+@router.get("/{template_id}/source")
+def template_source(
+    template_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> StreamingResponse:
+    """Serve the private source PDF only to the field editor; never expose Storage URLs."""
+    template = _template_or_404(db, template_id)
+    try:
+        pdf_bytes = SupabaseStorage().download(template.storage_key)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="Template storage is temporarily unavailable") from error
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="EMC-template-source.pdf"'},
+    )
+
+
+@router.get("/{template_id}/pages/{page_number}")
+def template_page_image(
+    template_id: UUID,
+    page_number: int,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> StreamingResponse:
+    """Render one private source page for the browser field-placement surface."""
+    template = _template_or_404(db, template_id)
+    try:
+        pdf_bytes = SupabaseStorage().download(template.storage_key)
+        document = fitz.open(stream=pdf_bytes, filetype="pdf")
+        if page_number < 1 or page_number > document.page_count:
+            document.close()
+            raise HTTPException(status_code=404, detail="Template page not found")
+        page = document[page_number - 1]
+        image = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
+        document.close()
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="Template storage is temporarily unavailable") from error
+    return StreamingResponse(BytesIO(image.tobytes("png")), media_type="image/png")
+
+
 @router.post("/{template_id}/fields", response_model=TemplateResponse)
 def configure_template_fields(
     template_id: UUID,

@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from datetime import date, datetime
 from uuid import UUID
@@ -15,15 +16,21 @@ from app.models.domain import (
     ActivityParticipant,
     ActivityStatus,
     Admin,
+    DocumentSignatory,
     DocumentStatus,
     DocumentType,
     IssuedDocument,
+    LeadershipTemplate,
     Signatory,
     Student,
     Template,
     TemplateField,
 )
-from app.schemas.documents import ActivityIssueResponse, DocumentReissueResponse
+from app.schemas.documents import (
+    ActivityIssueResponse,
+    AdminDocumentResponse,
+    DocumentReissueResponse,
+)
 from app.services.audit import record_audit_event
 from app.services.documents.issuance import reserve_document
 from app.services.signatures.availability import missing_titles, select_effective_signatories
@@ -35,21 +42,65 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 EMC_TIMEZONE = ZoneInfo("Asia/Karachi")
 
 
-class DocumentListItem(BaseModel):
-    id: UUID
-    student_id: UUID
-    activity_id: UUID | None
-    executive_membership_id: UUID | None
-    document_type: DocumentType
-    verification_id: str
-    issue_date: date
-    status: DocumentStatus
-    version: int
+def _admin_document_response(
+    document: IssuedDocument, student: Student, activity_name: str | None, template_name: str | None
+) -> AdminDocumentResponse:
+    return AdminDocumentResponse(
+        id=document.id,
+        verification_id=document.verification_id,
+        student_id=student.id,
+        student_name=student.full_name,
+        roll_number=student.roll_number,
+        document_type=document.document_type.value,
+        context=activity_name or template_name or document.document_type.value.replace("_", " ").title(),
+        issue_date=document.issue_date,
+        status=document.status.value,
+        version=document.version,
+        storage_key=document.storage_key,
+        sha256=document.sha256,
+    )
 
 
-@router.get("", response_model=list[DocumentListItem])
-def list_documents(_: Admin = Depends(current_active_admin), db: Session = Depends(get_db)) -> list[IssuedDocument]:
-    return list(db.scalars(select(IssuedDocument).order_by(IssuedDocument.created_at.desc())).all())
+@router.get("", response_model=list[AdminDocumentResponse])
+def list_issued_documents(
+    student_id: UUID | None = None,
+    status_filter: DocumentStatus | None = None,
+    document_type: DocumentType | None = None,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(current_active_admin),
+) -> list[AdminDocumentResponse]:
+    query = (
+        select(IssuedDocument, Student, Activity.name, LeadershipTemplate.name)
+        .join(Student, IssuedDocument.student_id == Student.id)
+        .outerjoin(Activity, IssuedDocument.activity_id == Activity.id)
+        .outerjoin(LeadershipTemplate, IssuedDocument.leadership_template_id == LeadershipTemplate.id)
+        .order_by(IssuedDocument.created_at.desc())
+    )
+    if student_id is not None:
+        query = query.where(IssuedDocument.student_id == student_id)
+    if status_filter is not None:
+        query = query.where(IssuedDocument.status == status_filter)
+    if document_type is not None:
+        query = query.where(IssuedDocument.document_type == document_type)
+    return [_admin_document_response(*row) for row in db.execute(query).all()]
+
+
+@router.get("/{document_id}", response_model=AdminDocumentResponse)
+def get_issued_document(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(current_active_admin),
+) -> AdminDocumentResponse:
+    row = db.execute(
+        select(IssuedDocument, Student, Activity.name, LeadershipTemplate.name)
+        .join(Student, IssuedDocument.student_id == Student.id)
+        .outerjoin(Activity, IssuedDocument.activity_id == Activity.id)
+        .outerjoin(LeadershipTemplate, IssuedDocument.leadership_template_id == LeadershipTemplate.id)
+        .where(IssuedDocument.id == document_id)
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Issued document not found")
+    return _admin_document_response(*row)
 
 
 @router.post("/activities/{activity_id}/issue", response_model=ActivityIssueResponse)
@@ -211,6 +262,11 @@ def reissue_document(
         raise HTTPException(status_code=404, detail="Issued document not found")
     if document.status != DocumentStatus.VALID:
         raise HTTPException(status_code=409, detail="Only valid documents can be reissued")
+    if document.document_type in {
+        DocumentType.LEADERSHIP_RECOGNITION,
+        DocumentType.END_OF_TENURE_APPRECIATION,
+    }:
+        return _reissue_leadership_document(db, document, admin)
     if document.activity_id is None or document.document_type != DocumentType.ACTIVITY_CERTIFICATE:
         raise HTTPException(status_code=409, detail="This document type cannot be reissued through activity issuance")
     activity = db.get(Activity, document.activity_id)
@@ -277,6 +333,58 @@ def reissue_document(
         actor_admin_id=admin.id,
         version=document.version + 1,
         signatories=tuple(selected_signatories.values()),
+    )
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="DOCUMENT_SUPERSEDED",
+        entity_type="issued_document",
+        entity_id=document.id,
+        payload={"replacement_document_id": str(replacement.id), "replacement_version": replacement.version},
+    )
+    db.commit()
+    return DocumentReissueResponse(
+        superseded_document_id=document.id,
+        replacement_document_id=replacement.id,
+        issue_date=issue_date,
+        version=replacement.version,
+    )
+
+
+def _reissue_leadership_document(
+    db: Session, document: IssuedDocument, admin: Admin
+) -> DocumentReissueResponse:
+    if document.executive_membership_id is None or document.leadership_template_id is None:
+        raise HTTPException(status_code=409, detail="The original leadership document snapshot is incomplete")
+    try:
+        values = json.loads(document.render_payload_json or "")
+    except json.JSONDecodeError as error:
+        raise HTTPException(status_code=409, detail="The original leadership document data is unavailable") from error
+    if not values:
+        raise HTTPException(status_code=409, detail="The original leadership document data is unavailable")
+    selected_signatories = tuple(
+        db.scalars(
+            select(Signatory)
+            .join(DocumentSignatory, DocumentSignatory.signatory_id == Signatory.id)
+            .where(DocumentSignatory.issued_document_id == document.id)
+        ).all()
+    )
+    if not selected_signatories:
+        raise HTTPException(status_code=409, detail="The original leadership signatory snapshot is unavailable")
+    issue_date = datetime.now(EMC_TIMEZONE).date()
+    values["issue_date"] = issue_date.isoformat()
+    document.status = DocumentStatus.SUPERSEDED
+    replacement = reserve_document(
+        db,
+        student_id=document.student_id,
+        executive_membership_id=document.executive_membership_id,
+        leadership_template_id=document.leadership_template_id,
+        document_type=document.document_type,
+        issue_date=issue_date,
+        render_values=values,
+        actor_admin_id=admin.id,
+        version=document.version + 1,
+        signatories=selected_signatories,
     )
     record_audit_event(
         db,
