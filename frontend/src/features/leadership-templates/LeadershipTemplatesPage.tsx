@@ -1,0 +1,10 @@
+const roles = ["President", "Vice President", "Deputy Vice President", "General Secretary", "Finance Head", "Director of Club Operations (DCO)", "External Affairs", "Society Head"];
+const placeholders = ["student_name", "roll_number", "role", "society_name", "role_start_date", "role_end_date", "session_name", "issue_date"];
+
+export function LeadershipTemplatesPage() {
+  return <section><h1 className="text-3xl font-bold">Leadership templates</h1><p className="mt-2 text-slate-600 dark:text-slate-400">Super Admin workspace for deterministic leadership documents. No LLM-generated content is used.</p><div className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:bg-amber-950/30 dark:text-amber-100"><p className="font-semibold">API connection pending</p><p className="mt-1 text-sm">The secure leadership-template API is not yet available. Create, edit, activate, deactivate, replace, and substituted-preview controls will remain disabled until Haider publishes the server contract. No template data is stored in the browser.</p></div><section className="mt-6"><h2 className="font-semibold">Supported placeholders</h2><div className="mt-3 flex flex-wrap gap-2">{placeholders.map((placeholder) => <code key={placeholder} className="rounded bg-slate-100 px-2 py-1 text-sm dark:bg-slate-800">{`{{${placeholder}}}`}</code>)}</div></section><section className="mt-8"><h2 className="font-semibold">Exact EC roles</h2><div className="mt-4 grid gap-4 md:grid-cols-2">{roles.map((role) => <article key={role} className="rounded-xl border p-4"><h3 className="font-medium">{role}</h3><div className="mt-4 grid gap-3 sm:grid-cols-2"><TemplateSlot label="Letter of Recognition"/><TemplateSlot label="End-of-Tenure Appreciation"/></div></article>)}</div></section></section>;
+}
+
+function TemplateSlot({ label }: { label: string }) {
+  return <div className="rounded border bg-slate-50 p-3 dark:bg-slate-900"><p className="text-sm font-medium">{label}</p><p className="mt-1 text-xs text-slate-500">No server template connected</p><button disabled className="mt-3 rounded border px-2 py-1 text-xs disabled:opacity-50">Manage template</button></div>;
+}

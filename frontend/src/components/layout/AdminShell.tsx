@@ -10,6 +10,7 @@ const navigation = [
   ["Imports", "/admin/imports"],
   ["Signatories", "/admin/signatories"],
   ["Certificate templates", "/admin/templates"],
+  ["Leadership templates", "/admin/leadership-templates"],
   ["Documents", "/admin/documents"],
   ["Audit log", "/admin/audit"],
 ];
