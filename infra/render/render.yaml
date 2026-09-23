@@ -21,6 +21,8 @@ services:
         generateValue: true
       - key: COOKIE_SECURE
         value: "true"
+      - key: COOKIE_SAME_SITE
+        value: "none"
       - key: FRONTEND_ORIGINS
         sync: false
       - key: PUBLIC_APP_URL

@@ -21,7 +21,12 @@ from app.services.readiness.router import router as readiness_router
 
 def create_app() -> FastAPI:
     app = FastAPI(title="EMC Veritas API", version="0.1.0")
-    app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, https_only=settings.cookie_secure, same_site="lax")
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.session_secret,
+        https_only=settings.cookie_secure,
+        same_site=settings.cookie_same_site,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.frontend_origins,

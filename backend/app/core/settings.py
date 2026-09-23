@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     supabase_storage_bucket: str = "emc-veritas"
     session_secret: str
     cookie_secure: bool = False
+    cookie_same_site: Literal["lax", "strict", "none"] = "lax"
     public_app_url: str = "http://localhost:5173"
     frontend_origins_raw: str = Field(
         default="http://localhost:5173", validation_alias="FRONTEND_ORIGINS"
