@@ -32,3 +32,15 @@ class LeadershipTemplateResponse(BaseModel):
     active: bool
     archived: bool
     created_at: datetime
+
+
+class LeadershipTemplateAnalysisResponse(BaseModel):
+    page_count: int
+    extracted_text: list[str]
+    ocr_used: bool
+    ocr_required: bool
+    signature_content_detected: bool
+
+
+class LeadershipTemplatePreviewRequest(BaseModel):
+    membership_id: UUID

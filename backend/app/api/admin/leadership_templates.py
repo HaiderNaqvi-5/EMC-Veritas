@@ -1,25 +1,47 @@
+from io import BytesIO
 from uuid import UUID, uuid4
 
 import fitz
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.admin.dependencies import super_admin_required
+from app.core.settings import settings
 from app.db.session import get_db
-from app.models.domain import Admin, DocumentType, LeadershipTemplate, LeadershipTemplateField
+from app.models.domain import (
+    Admin,
+    DocumentType,
+    EmcSession,
+    ExecutiveMembership,
+    LeadershipTemplate,
+    LeadershipTemplateField,
+    Signatory,
+    Society,
+    Student,
+)
 from app.schemas.leadership_templates import (
     LeadershipDocumentType,
+    LeadershipTemplateAnalysisResponse,
     LeadershipTemplateFieldsCreate,
+    LeadershipTemplatePreviewRequest,
     LeadershipTemplateResponse,
 )
 from app.services.audit import record_audit_event
+from app.services.documents.qr import verification_url
+from app.services.documents.rendering import CertificateRenderingError, render_certificate
 from app.services.executive.constants import EXECUTIVE_ROLES
 from app.services.executive.letters import (
     REQUIRED_LEADERSHIP_TEMPLATE_FIELDS,
+    leadership_letter_values,
     missing_leadership_template_fields,
 )
+from app.services.signatures.availability import missing_titles, select_effective_signatories
+from app.services.signatures.policy import required_titles
+from app.services.signatures.rendering import missing_signature_fields, signature_field_name
 from app.services.storage.supabase import SupabaseStorage
+from app.services.templates.analysis import analyze_pdf_text, has_signature_like_content
 from app.services.templates.signature_choice import require_signature_choice
 from app.services.templates.validation import ensure_pdf
 
@@ -103,6 +125,30 @@ async def upload_leadership_template(
     return template
 
 
+@router.get("/{template_id}/analysis", response_model=LeadershipTemplateAnalysisResponse)
+def analyze_leadership_template(
+    template_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> LeadershipTemplateAnalysisResponse:
+    template = _template_or_404(db, template_id)
+    try:
+        pdf_bytes = SupabaseStorage().download(template.storage_key)
+        document = fitz.open(stream=pdf_bytes, filetype="pdf")
+        page_count = document.page_count
+        document.close()
+        analysis = analyze_pdf_text(pdf_bytes)
+    except (RuntimeError, fitz.FileDataError) as error:
+        raise HTTPException(status_code=503, detail="Template analysis is temporarily unavailable") from error
+    return LeadershipTemplateAnalysisResponse(
+        page_count=page_count,
+        extracted_text=analysis.pages,
+        ocr_used=analysis.ocr_used,
+        ocr_required=analysis.ocr_required,
+        signature_content_detected=has_signature_like_content(analysis.pages),
+    )
+
+
 @router.post("/{template_id}/fields", response_model=LeadershipTemplateResponse)
 def configure_leadership_template_fields(
     template_id: UUID,
@@ -143,6 +189,102 @@ def configure_leadership_template_fields(
     db.commit()
     db.refresh(template)
     return template
+
+
+@router.post("/{template_id}/preview")
+def preview_leadership_template(
+    template_id: UUID,
+    payload: LeadershipTemplatePreviewRequest,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> StreamingResponse:
+    template = _template_or_404(db, template_id)
+    membership = db.get(ExecutiveMembership, payload.membership_id)
+    if membership is None:
+        raise HTTPException(status_code=404, detail="Executive membership not found")
+    if membership.role != template.role:
+        raise HTTPException(status_code=422, detail="The selected membership role does not match this template")
+    student = db.get(Student, membership.student_id)
+    session = db.get(EmcSession, membership.session_id)
+    society_name = (
+        db.scalar(select(Society.name).where(Society.id == membership.society_id))
+        if membership.society_id is not None
+        else None
+    )
+    if student is None or session is None:
+        raise HTTPException(status_code=409, detail="The selected membership lacks required student or session data")
+    fields = list(
+        db.scalars(
+            select(LeadershipTemplateField).where(LeadershipTemplateField.leadership_template_id == template.id)
+        ).all()
+    )
+    missing = missing_leadership_template_fields({field.field_name for field in fields})
+    if missing:
+        raise HTTPException(status_code=422, detail="Template is missing fields: " + ", ".join(sorted(missing)))
+    end_date = membership.end_date or session.end_date
+    values = leadership_letter_values(
+        student_name=student.full_name,
+        roll_number=student.roll_number,
+        role=membership.role,
+        society_name=society_name,
+        role_start_date=membership.start_date,
+        role_end_date=end_date,
+        session_name=session.name,
+        issue_date=session.end_date,
+    )
+    image_values: dict[str, bytes] | None = None
+    try:
+        storage = SupabaseStorage()
+        template_pdf = storage.download(template.storage_key)
+        if template.signature_handling == "replace":
+            titles = required_titles(
+                role=membership.role,
+                appreciation=template.document_type is DocumentType.END_OF_TENURE_APPRECIATION,
+            )
+            signatories = list(db.scalars(select(Signatory).where(Signatory.active.is_(True))).all())
+            available = {
+                title: [
+                    (signatory.effective_start_date, signatory.effective_end_date)
+                    for signatory in signatories
+                    if signatory.official_title == title
+                ]
+                for title in titles
+            }
+            missing_signatories = missing_titles(titles, available, end_date)
+            if missing_signatories:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Required signatories are unavailable: " + ", ".join(missing_signatories),
+                )
+            selected = select_effective_signatories(signatories, titles, end_date)
+            missing_boxes = missing_signature_fields(fields, selected)
+            if missing_boxes:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Template is missing signature fields: " + ", ".join(missing_boxes),
+                )
+            image_values = {
+                signature_field_name(signatory.official_title): storage.download(signatory.signature_storage_key)
+                for signatory in selected.values()
+            }
+        output = render_certificate(
+            template_pdf,
+            fields,
+            values,
+            verification_url=verification_url(settings.public_app_url, "PREVIEW"),
+            watermark="PREVIEW",
+            image_values=image_values,
+            required_field_names=REQUIRED_LEADERSHIP_TEMPLATE_FIELDS,
+        )
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="Template storage is temporarily unavailable") from error
+    except CertificateRenderingError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return StreamingResponse(
+        BytesIO(output),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="EMC-leadership-template-preview.pdf"'},
+    )
 
 
 @router.post("/{template_id}/activate", response_model=LeadershipTemplateResponse)
