@@ -15,6 +15,7 @@ Administrative contracts for templates, documents, signatories, executive member
 
 | Endpoint | Contract | Notes |
 | --- | --- | --- |
+| `GET /api/admin/templates` | `TemplateResponse[]` | Lists non-archived templates for the Super Admin template editor. |
 | `POST /api/admin/templates/upload` | multipart `name` + PDF `file` → `TemplateResponse` | Stores the supplied PDF in private Storage as an unapproved template. |
 | `GET /api/admin/templates/{template_id}/analysis` | `TemplateAnalysisResponse` | Returns page count, extracted text, whether scanned pages were OCRed, whether any page still requires OCR/manual attention, and a signature/date-content warning. |
 | `POST /api/admin/templates/{template_id}/fields` | `TemplateFieldsCreate` → `TemplateResponse` | Field names, one-based PDF coordinates, and the required `signature_handling` choice (`retain` or `replace`) are immutable once configured. |

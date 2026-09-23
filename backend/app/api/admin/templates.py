@@ -36,6 +36,13 @@ def _template_or_404(db: Session, template_id: UUID) -> Template:
     return template
 
 
+@router.get("", response_model=list[TemplateResponse])
+def list_templates(
+    db: Session = Depends(get_db), admin: Admin = Depends(super_admin_required)
+) -> list[Template]:
+    return list(db.scalars(select(Template).where(Template.archived.is_(False)).order_by(Template.created_at.desc())).all())
+
+
 @router.post("/upload", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
 async def upload_template(
     name: str = Form(..., min_length=1, max_length=255),
