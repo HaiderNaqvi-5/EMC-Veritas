@@ -13,6 +13,7 @@ class SessionStatus(str, enum.Enum): ACTIVE = "ACTIVE"; CLOSED = "CLOSED"
 class ActivityStatus(str, enum.Enum): DRAFT = "DRAFT"; READY = "READY"; PUBLISHED = "PUBLISHED"; ARCHIVED = "ARCHIVED"
 class MembershipStatus(str, enum.Enum): ACTIVE = "ACTIVE"; COMPLETED = "COMPLETED"; REMOVED = "REMOVED"
 class DocumentStatus(str, enum.Enum): VALID = "VALID"; REVOKED = "REVOKED"; SUPERSEDED = "SUPERSEDED"
+class DocumentType(str, enum.Enum): ACTIVITY_CERTIFICATE = "ACTIVITY_CERTIFICATE"; LEADERSHIP_RECOGNITION = "LEADERSHIP_RECOGNITION"; END_OF_TENURE_APPRECIATION = "END_OF_TENURE_APPRECIATION"
 class AdminRole(str, enum.Enum): ADMIN = "ADMIN"; SUPER_ADMIN = "SUPER_ADMIN"
 
 
@@ -141,6 +142,7 @@ class IssuedDocument(Timestamped, Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False)
     activity_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("activities.id"))
+    document_type: Mapped[DocumentType] = mapped_column(Enum(DocumentType, name="document_type"), nullable=False)
     verification_id: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
     issue_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[DocumentStatus] = mapped_column(Enum(DocumentStatus, name="document_status"), default=DocumentStatus.VALID, nullable=False)
