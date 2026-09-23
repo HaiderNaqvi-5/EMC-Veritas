@@ -27,11 +27,14 @@
 - Document revoke and reissue actions for a supplied issued-document ID.
 - Super Admin audit-log view.
 
-## Still required from Haider before A3 can be fully accepted
+## Completed local A3 integration
 
-- Executive-membership API contracts and data needed to select exact EC roles and Society Heads.
-- Super Admin leadership-template APIs for deterministic Letter of Recognition and End-of-Tenure templates: list, create, edit, activate, deactivate, replace, placeholder metadata, and substituted preview.
-- A template list/detail contract and rendered editor data for the certificate-template UI, including stored field positions and existing-field review. The current API accepts upload/configure/approve but does not provide discovery/detail/editor-rendering data.
-- Document record list/detail contract for Admin UI revoke/reissue controls. The available API supports the mutations when a document ID is known, but does not expose Admin document discovery.
+- Leadership-template list, upload, placeholder configuration, substituted preview, activation, deactivation, and archival are now consumed by the Super Admin UI.
+- The Admin document-discovery contract is provided and consumed for revoke/reissue selection.
+- The Executive Membership discovery/create/update contract is provided so role-matched memberships can be selected for leadership previews.
 
-These are server-owned contracts. The frontend must consume them rather than recreating role, signature, template, or issuance policy in the browser.
+The frontend consumes server-side contracts and does not recreate role, signature, template, or issuance policy in the browser.
+
+## Remaining release verification
+
+The integrated flows require a deployed Supabase/Render environment with configured storage before they can be exercised using real templates, signatories, memberships, and issued documents.
