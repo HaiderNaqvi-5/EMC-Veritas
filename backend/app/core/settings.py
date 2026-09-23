@@ -9,6 +9,9 @@ class Settings(BaseSettings):
 
     api_prefix: str = "/api"
     database_url: str
+    supabase_url: str
+    supabase_service_role_key: str
+    supabase_storage_bucket: str = "emc-veritas"
     frontend_origins_raw: str = Field(
         default="http://localhost:5173", validation_alias="FRONTEND_ORIGINS"
     )
