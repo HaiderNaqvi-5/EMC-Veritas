@@ -8,6 +8,7 @@ from reportlab.pdfgen.canvas import Canvas
 
 from app.models.domain import DocumentStatus, DocumentType, IssuedDocument
 from app.services.documents.lifecycle import DocumentLifecycleError, generate_on_first_download
+from app.services.documents.rendering import render_certificate
 
 
 def _blank_template() -> bytes:
@@ -114,3 +115,25 @@ def test_invalid_document_is_never_generated() -> None:
             storage=_Storage(),
             public_base_url="https://portal.example.edu",
         )
+
+
+def test_preview_watermark_is_rendered_without_creating_a_document_record() -> None:
+    output = render_certificate(
+        _blank_template(),
+        [
+            _field("student_name", 150, 160),
+            _field("roll_number", 150, 210),
+            _field("activity_name", 150, 260),
+            _field("activity_date", 150, 310),
+        ],
+        {
+            "student_name": "Ayesha Khan",
+            "roll_number": "FA21-BCS-001",
+            "activity_name": "Welcome Week",
+            "activity_date": date(2026, 9, 1),
+        },
+        verification_url="https://portal.example.edu/verify/PREVIEW",
+        watermark="PREVIEW",
+    )
+    rendered = fitz.open(stream=output, filetype="pdf")
+    assert "PREVIEW" in rendered[0].get_text()

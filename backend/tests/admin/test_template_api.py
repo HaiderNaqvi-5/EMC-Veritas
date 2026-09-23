@@ -64,3 +64,15 @@ def test_audit_log_requires_authenticated_super_admin() -> None:
     response = TestClient(app).get("/api/admin/audit")
     assert response.status_code == 401
     assert response.json() == {"detail": "Admin session required"}
+
+
+def test_template_preview_requires_authenticated_admin() -> None:
+    response = TestClient(app).post(
+        "/api/admin/templates/00000000-0000-0000-0000-000000000000/preview",
+        json={
+            "student_id": "00000000-0000-0000-0000-000000000000",
+            "activity_id": "00000000-0000-0000-0000-000000000000",
+        },
+    )
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}

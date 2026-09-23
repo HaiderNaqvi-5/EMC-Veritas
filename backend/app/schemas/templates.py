@@ -29,3 +29,8 @@ class TemplateAnalysisResponse(BaseModel):
     page_count: int
     extracted_text: list[str]
     ocr_required: bool
+
+
+class TemplatePreviewRequest(BaseModel):
+    student_id: UUID
+    activity_id: UUID

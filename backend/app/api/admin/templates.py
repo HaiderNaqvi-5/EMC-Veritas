@@ -1,19 +1,25 @@
+from io import BytesIO
 from uuid import UUID, uuid4
 
 import fitz
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.admin.dependencies import super_admin_required
+from app.api.admin.dependencies import current_active_admin, super_admin_required
+from app.core.settings import settings
 from app.db.session import get_db
-from app.models.domain import Admin, Template, TemplateField
+from app.models.domain import Activity, Admin, Student, Template, TemplateField
 from app.schemas.templates import (
     TemplateAnalysisResponse,
     TemplateFieldsCreate,
+    TemplatePreviewRequest,
     TemplateResponse,
 )
 from app.services.audit import record_audit_event
+from app.services.documents.qr import verification_url
+from app.services.documents.rendering import CertificateRenderingError, render_certificate
 from app.services.storage.supabase import SupabaseStorage
 from app.services.templates.analysis import extract_pdf_text, requires_ocr
 from app.services.templates.fields import missing_required_fields
@@ -111,6 +117,46 @@ def configure_template_fields(
     db.commit()
     db.refresh(template)
     return template
+
+
+@router.post("/{template_id}/preview")
+def preview_template(
+    template_id: UUID,
+    payload: TemplatePreviewRequest,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(current_active_admin),
+) -> StreamingResponse:
+    template = _template_or_404(db, template_id)
+    student = db.get(Student, payload.student_id)
+    activity = db.get(Activity, payload.activity_id)
+    if student is None or not student.active:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if activity is None:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    fields = db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all()
+    try:
+        template_pdf = SupabaseStorage().download(template.storage_key)
+        output = render_certificate(
+            template_pdf,
+            fields,
+            {
+                "student_name": student.full_name,
+                "roll_number": student.roll_number,
+                "activity_name": activity.name,
+                "activity_date": activity.activity_date,
+            },
+            verification_url=verification_url(settings.public_app_url, "PREVIEW"),
+            watermark="PREVIEW",
+        )
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="Template storage is temporarily unavailable") from error
+    except CertificateRenderingError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return StreamingResponse(
+        BytesIO(output),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="EMC-template-preview.pdf"'},
+    )
 
 
 @router.post("/{template_id}/approve", response_model=TemplateResponse)

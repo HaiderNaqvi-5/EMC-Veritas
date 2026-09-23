@@ -48,6 +48,7 @@ def render_certificate(
     values: Mapping[str, str | date],
     *,
     verification_url: str,
+    watermark: str | None = None,
 ) -> bytes:
     """Overlay configured fields and an optional QR code onto a PDF certificate template.
 
@@ -89,6 +90,17 @@ def render_certificate(
                 _insert_qr(page, field, verification_url)
             else:
                 _insert_text(page, field, normalized_values[field.field_name])
+        if watermark:
+            for page in document:
+                center = fitz.Point(page.rect.width / 2 - 110, page.rect.height / 2)
+                page.insert_text(
+                    center,
+                    watermark,
+                    fontname="helv",
+                    fontsize=42,
+                    color=(0.75, 0.75, 0.75),
+                    fill_opacity=0.45,
+                )
         output = BytesIO()
         document.save(output, garbage=4, deflate=True)
         return output.getvalue()
