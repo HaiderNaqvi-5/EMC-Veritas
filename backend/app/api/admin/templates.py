@@ -10,10 +10,11 @@ from sqlalchemy.orm import Session
 from app.api.admin.dependencies import current_active_admin, super_admin_required
 from app.core.settings import settings
 from app.db.session import get_db
-from app.models.domain import Activity, Admin, Student, Template, TemplateField
+from app.models.domain import Activity, Admin, Student, Template, TemplateField, TemplateFont
 from app.schemas.templates import (
     TemplateAnalysisResponse,
     TemplateFieldsCreate,
+    TemplateFontResponse,
     TemplatePreviewRequest,
     TemplateResponse,
 )
@@ -24,7 +25,7 @@ from app.services.storage.supabase import SupabaseStorage
 from app.services.templates.analysis import analyze_pdf_text, has_signature_like_content
 from app.services.templates.fields import missing_required_fields
 from app.services.templates.signature_choice import require_signature_choice
-from app.services.templates.validation import ensure_pdf
+from app.services.templates.validation import ensure_font, ensure_pdf
 
 router = APIRouter(prefix="/templates", tags=["templates"])
 
@@ -34,6 +35,15 @@ def _template_or_404(db: Session, template_id: UUID) -> Template:
     if template is None or template.archived:
         raise HTTPException(status_code=404, detail="Template not found")
     return template
+
+
+def _font_response(font: TemplateFont) -> TemplateFontResponse:
+    return TemplateFontResponse(
+        id=font.id,
+        name=font.name,
+        content_type=font.content_type,  # type: ignore[arg-type]
+        created_at=font.created_at,
+    )
 
 
 @router.get("", response_model=list[TemplateResponse])
@@ -73,6 +83,65 @@ async def upload_template(
     db.commit()
     db.refresh(template)
     return template
+
+
+@router.get("/{template_id}/fonts", response_model=list[TemplateFontResponse])
+def list_template_fonts(
+    template_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> list[TemplateFontResponse]:
+    template = _template_or_404(db, template_id)
+    fonts = db.scalars(
+        select(TemplateFont)
+        .where(TemplateFont.template_id == template.id)
+        .order_by(TemplateFont.created_at.desc())
+    ).all()
+    return [_font_response(font) for font in fonts]
+
+
+@router.post(
+    "/{template_id}/fonts/upload",
+    response_model=TemplateFontResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_template_font(
+    template_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> TemplateFontResponse:
+    template = _template_or_404(db, template_id)
+    content = await file.read()
+    try:
+        content_type = ensure_font(file.filename or "", file.content_type, content)
+        fitz.Font(fontbuffer=content)
+    except (ValueError, RuntimeError) as error:
+        raise HTTPException(status_code=422, detail="Uploaded template font is not a readable TTF or OTF") from error
+    suffix = (file.filename or "font.ttf").rsplit(".", 1)[-1].lower()
+    font = TemplateFont(
+        id=uuid4(),
+        template_id=template.id,
+        name=(file.filename or f"template-font.{suffix}")[:255],
+        storage_key=f"templates/{template.id}/fonts/{uuid4()}.{suffix}",
+        content_type=content_type,
+    )
+    try:
+        SupabaseStorage().upload(font.storage_key, content, font.content_type)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="Template font storage is temporarily unavailable") from error
+    db.add(font)
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="TEMPLATE_FONT_UPLOADED",
+        entity_type="template_font",
+        entity_id=font.id,
+        payload={"template_id": str(template.id), "name": font.name},
+    )
+    db.commit()
+    db.refresh(font)
+    return _font_response(font)
 
 
 @router.get("/{template_id}/analysis", response_model=TemplateAnalysisResponse)
@@ -161,7 +230,17 @@ def configure_template_fields(
     if len(names) != len(set(names)):
         raise HTTPException(status_code=422, detail="Template field names must be unique")
     for field in payload.fields:
-        db.add(TemplateField(template_id=template.id, **field.model_dump()))
+        field_data = field.model_dump(exclude={"custom_font_id"})
+        if field.font_family == "custom":
+            if field.custom_font_id is None:
+                raise HTTPException(status_code=422, detail="Custom template fonts require a selected uploaded font")
+            custom_font = db.get(TemplateFont, field.custom_font_id)
+            if custom_font is None or custom_font.template_id != template.id:
+                raise HTTPException(status_code=422, detail="Selected custom font does not belong to this template")
+            field_data["custom_font_storage_key"] = custom_font.storage_key
+        elif field.custom_font_id is not None:
+            raise HTTPException(status_code=422, detail="Built-in template fonts cannot include a custom font")
+        db.add(TemplateField(template_id=template.id, **field_data))
     template.signature_handling = signature_handling
     record_audit_event(
         db,
@@ -192,7 +271,13 @@ def preview_template(
         raise HTTPException(status_code=404, detail="Activity not found")
     fields = db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all()
     try:
-        template_pdf = SupabaseStorage().download(template.storage_key)
+        storage = SupabaseStorage()
+        template_pdf = storage.download(template.storage_key)
+        custom_fonts = {
+            field.custom_font_storage_key: storage.download(field.custom_font_storage_key)
+            for field in fields
+            if field.custom_font_storage_key
+        }
         output = render_certificate(
             template_pdf,
             fields,
@@ -204,6 +289,7 @@ def preview_template(
             },
             verification_url=verification_url(settings.public_app_url, "PREVIEW"),
             watermark="PREVIEW",
+            custom_fonts=custom_fonts,
         )
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail="Template storage is temporarily unavailable") from error

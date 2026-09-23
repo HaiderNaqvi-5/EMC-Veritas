@@ -16,9 +16,17 @@ export type TemplateField = {
   y: number;
   width: number;
   height: number;
-  font_family?: "helv" | "tiro" | "cour";
+  font_family?: "helv" | "tiro" | "cour" | "custom";
+  custom_font_id?: string | null;
   font_size?: number | null;
   text_color?: string;
+};
+
+export type TemplateFont = {
+  id: string;
+  name: string;
+  content_type: "font/ttf" | "font/otf";
+  created_at: string;
 };
 
 export type TemplateAnalysis = {
@@ -43,6 +51,17 @@ export const configureTemplate = (
   });
 export const approveTemplate = (templateId: string) =>
   apiRequest<Template>(`/admin/templates/${templateId}/approve`, { method: "POST" });
+export const listTemplateFonts = (templateId: string) =>
+  apiRequest<TemplateFont[]>(`/admin/templates/${templateId}/fonts`);
+
+export async function uploadTemplateFont(templateId: string, file: File): Promise<TemplateFont> {
+  const data = new FormData();
+  data.set("file", file);
+  return apiRequest<TemplateFont>(`/admin/templates/${templateId}/fonts/upload`, {
+    method: "POST",
+    body: data,
+  });
+}
 
 export async function templateSource(templateId: string): Promise<Blob> {
   const response = await fetch(`${apiBase}/admin/templates/${templateId}/source`, {

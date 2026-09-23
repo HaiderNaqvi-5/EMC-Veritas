@@ -1,5 +1,6 @@
 from datetime import date
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -185,6 +186,34 @@ def test_renderer_honors_configured_bundled_font_and_color() -> None:
             "activity_date": date(2026, 9, 1),
         },
         verification_url="https://portal.example.edu/verify/EMC-TEST123",
+    )
+    rendered = fitz.open(stream=output, filetype="pdf")
+    assert "Ayesha Khan" in rendered[0].get_text()
+
+
+def test_renderer_honors_uploaded_ttf_font() -> None:
+    font_path = Path("/usr/share/fonts/Adwaita/AdwaitaSans-Regular.ttf")
+    assert font_path.exists(), "The test environment must provide the bundled Adwaita font"
+    custom_font_key = "templates/example/fonts/adwaita.ttf"
+    field = _field("student_name", 150, 160)
+    field.font_family = "custom"
+    field.custom_font_storage_key = custom_font_key
+    output = render_certificate(
+        _blank_template(),
+        [
+            field,
+            _field("roll_number", 150, 210),
+            _field("activity_name", 150, 260),
+            _field("activity_date", 150, 310),
+        ],
+        {
+            "student_name": "Ayesha Khan",
+            "roll_number": "FA21-BCS-001",
+            "activity_name": "Welcome Week",
+            "activity_date": date(2026, 9, 1),
+        },
+        verification_url="https://portal.example.edu/verify/EMC-TEST123",
+        custom_fonts={custom_font_key: font_path.read_bytes()},
     )
     rendered = fitz.open(stream=output, filetype="pdf")
     assert "Ayesha Khan" in rendered[0].get_text()

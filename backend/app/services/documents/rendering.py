@@ -14,7 +14,9 @@ class CertificateRenderingError(ValueError):
     """Raised when an approved PDF template cannot produce a safe certificate."""
 
 
-def _text_width(text: str, size: float, font_family: str) -> float:
+def _text_width(text: str, size: float, font_family: str, font_bytes: bytes | None = None) -> float:
+    if font_bytes is not None:
+        return fitz.Font(fontbuffer=font_bytes).text_length(text, fontsize=size)
     return fitz.get_text_length(text, fontname=font_family, fontsize=size)
 
 
@@ -27,23 +29,55 @@ def _color(value: str) -> tuple[float, float, float]:
         raise CertificateRenderingError("Template text color is invalid") from error
 
 
-def _insert_text(page: fitz.Page, field: TemplateField, value: str) -> None:
+def _insert_text(
+    page: fitz.Page,
+    field: TemplateField,
+    value: str,
+    custom_fonts: Mapping[str, bytes],
+) -> None:
     if field.width <= 0 or field.height < 6:
         raise CertificateRenderingError(f"Template field '{field.field_name}' has an invalid box")
     font_family = getattr(field, "font_family", "helv")
-    if font_family not in {"helv", "tiro", "cour"}:
+    custom_font_key = getattr(field, "custom_font_storage_key", None)
+    if font_family == "custom":
+        if not custom_font_key or custom_font_key not in custom_fonts:
+            raise CertificateRenderingError(
+                f"Template field '{field.field_name}' references an unavailable custom font"
+            )
+        font_bytes = custom_fonts[custom_font_key]
+        font_name = f"EMCF{abs(hash(custom_font_key)) % 10_000_000}"
+        try:
+            page.insert_font(fontname=font_name, fontbuffer=font_bytes)
+        except (RuntimeError, ValueError) as error:
+            raise CertificateRenderingError(
+                f"Custom font for template field '{field.field_name}' is unreadable"
+            ) from error
+    elif font_family in {"helv", "tiro", "cour"} and custom_font_key is None:
+        font_bytes = None
+        font_name = font_family
+    else:
         raise CertificateRenderingError("Template font is invalid")
     preferred = getattr(field, "font_size", None)
     maximum = min(preferred or 18, field.height - 2)
-    font_size = fit_font_size(value, field.width, maximum, lambda text, size: _text_width(text, size, font_family))
+    try:
+        font_size = fit_font_size(
+            value,
+            field.width,
+            maximum,
+            lambda text, size: _text_width(text, size, font_name, font_bytes),
+        )
+        text_width = _text_width(value, font_size, font_name, font_bytes)
+    except (RuntimeError, ValueError) as error:
+        raise CertificateRenderingError(
+            f"Custom font for template field '{field.field_name}' is unreadable"
+        ) from error
     if font_size <= 4:
         raise CertificateRenderingError(f"Value for template field '{field.field_name}' does not fit")
-    text_width = _text_width(value, font_size, font_family)
     point = fitz.Point(field.x + max((field.width - text_width) / 2, 0), field.y + (field.height + font_size) / 2)
     page.insert_text(
         point,
         value,
-        fontname=font_family,
+        fontname=font_name,
         fontsize=font_size,
         color=_color(getattr(field, "text_color", "#000000")),
     )
@@ -76,6 +110,7 @@ def render_certificate(
     verification_url: str,
     watermark: str | None = None,
     image_values: Mapping[str, bytes] | None = None,
+    custom_fonts: Mapping[str, bytes] | None = None,
     required_field_names: frozenset[str] = REQUIRED_CERTIFICATE_FIELDS,
 ) -> bytes:
     """Overlay configured fields and an optional QR code onto a PDF certificate template.
@@ -96,6 +131,7 @@ def render_certificate(
         for name, value in values.items()
     }
     images = image_values or {}
+    fonts = custom_fonts or {}
     unknown_images = set(images) - configured_names
     if unknown_images:
         raise CertificateRenderingError(
@@ -125,7 +161,7 @@ def render_certificate(
             elif field.field_name in images:
                 _insert_image(page, field, images[field.field_name])
             else:
-                _insert_text(page, field, normalized_values[field.field_name])
+                _insert_text(page, field, normalized_values[field.field_name], fonts)
         if watermark:
             for page in document:
                 center = fitz.Point(page.rect.width / 2 - 110, page.rect.height / 2)

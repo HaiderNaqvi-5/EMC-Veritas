@@ -41,12 +41,19 @@ def generate_on_first_download(
         return storage.download(document.storage_key)
 
     try:
+        field_list = list(template_fields)
+        custom_fonts = {
+            field.custom_font_storage_key: storage.download(field.custom_font_storage_key)
+            for field in field_list
+            if getattr(field, "custom_font_storage_key", None)
+        }
         output = render_certificate(
             template_pdf,
-            template_fields,
+            field_list,
             values,
             verification_url=verification_url(public_base_url, document.verification_id),
             image_values=image_values,
+            custom_fonts=custom_fonts,
             required_field_names=required_field_names or REQUIRED_CERTIFICATE_FIELDS,
         )
     except CertificateRenderingError as error:

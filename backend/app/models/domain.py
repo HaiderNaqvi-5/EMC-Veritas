@@ -140,9 +140,23 @@ class TemplateField(Timestamped, Base):
     x: Mapped[int] = mapped_column(Integer, nullable=False); y: Mapped[int] = mapped_column(Integer, nullable=False)
     width: Mapped[int] = mapped_column(Integer, nullable=False); height: Mapped[int] = mapped_column(Integer, nullable=False)
     font_family: Mapped[str] = mapped_column(String(16), default="helv", nullable=False)
+    # Kept as a storage key snapshot so issued documents can render even if an
+    # administrator later removes an uploaded font from the selection UI.
+    custom_font_storage_key: Mapped[str | None] = mapped_column(String(500))
     font_size: Mapped[int | None] = mapped_column(Integer)
     text_color: Mapped[str] = mapped_column(String(7), default="#000000", nullable=False)
     __table_args__ = (UniqueConstraint("template_id", "field_name", name="uq_template_field"),)
+
+
+class TemplateFont(Timestamped, Base):
+    """A private, template-scoped uploaded TTF or OTF asset."""
+
+    __tablename__ = "template_fonts"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("templates.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
+    content_type: Mapped[str] = mapped_column(String(80), nullable=False)
 
 
 class LeadershipTemplate(Timestamped, Base):

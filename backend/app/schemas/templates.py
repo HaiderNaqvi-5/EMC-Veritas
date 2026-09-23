@@ -12,7 +12,8 @@ class TemplateFieldInput(BaseModel):
     y: int = Field(ge=0)
     width: int = Field(gt=0)
     height: int = Field(gt=0)
-    font_family: Literal["helv", "tiro", "cour"] = "helv"
+    font_family: Literal["helv", "tiro", "cour", "custom"] = "helv"
+    custom_font_id: UUID | None = None
     font_size: int | None = Field(default=None, ge=5, le=72)
     text_color: str = Field(default="#000000", pattern=r"^#[0-9A-Fa-f]{6}$")
 
@@ -28,6 +29,13 @@ class TemplateResponse(BaseModel):
     approved: bool
     archived: bool
     signature_handling: Literal["retain", "replace"] | None
+    created_at: datetime
+
+
+class TemplateFontResponse(BaseModel):
+    id: UUID
+    name: str
+    content_type: Literal["font/ttf", "font/otf"]
     created_at: datetime
 
 
