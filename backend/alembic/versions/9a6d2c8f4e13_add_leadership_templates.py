@@ -8,6 +8,7 @@ Create Date: 2026-09-23 21:04:00.000000
 from typing import Sequence, Union
 
 from alembic import op
+from sqlalchemy.dialects import postgresql
 import sqlalchemy as sa
 
 
@@ -18,7 +19,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    document_type = sa.Enum(name="document_type")
+    # This enum is created by the initial schema migration.  Referencing it
+    # here must not emit a second CREATE TYPE on an existing Supabase database.
+    document_type = postgresql.ENUM(name="document_type", create_type=False)
     op.create_table(
         "leadership_templates",
         sa.Column("id", sa.UUID(), nullable=False),
