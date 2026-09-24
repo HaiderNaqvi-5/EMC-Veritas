@@ -149,15 +149,14 @@ function CertificatePreview() {
 }
 function RecognitionCanvas() {
   return (
-    <motion.aside className="record-preview" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .55, delay: .12 }} aria-label="Example recognition record">
-      <div className="record-preview__header"><span>EMC VERITAS</span><span>RECORD / 001</span></div>
-      <div className="record-preview__body">
-        <p className="landing-eyebrow">Recognition archive</p>
-        <h2>One place for work that deserves to be remembered.</h2>
-        <p>Search by roll number. Keep your official records close. Verify them when they matter.</p>
+    <motion.aside className="portal-preview" initial={{ opacity: 0, y: 28, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: .8, delay: .12, ease: [0.22, 1, 0.36, 1] }} aria-label="EMC Veritas portal preview">
+      <div className="portal-preview__rail"><strong>EMC<br />VERITAS</strong><span className="portal-preview__rail-dot" /><span>ARCHIVE</span><span>VERIFY</span><span>RECORDS</span></div>
+      <div className="portal-preview__main">
+        <div className="portal-preview__header"><span>RECOGNITION RECORD</span><span className="portal-preview__status"><Shield /> VERIFIED SYSTEM</span></div>
+        <div className="portal-preview__identity"><div className="portal-preview__avatar">EV</div><div><p>EMC Veritas archive</p><strong>Your issued records, in one place.</strong><span>Search by roll number to begin</span></div></div>
+        <div className="portal-preview__tabs"><span className="is-active">Overview</span><span>Records</span><span>Verification</span></div>
+        <div className="portal-preview__content"><div className="portal-preview__timeline"><p>WHAT A RECORD CAN INCLUDE</p><div><i /><span><strong>Participation</strong><small>Official event involvement</small></span></div><div><i /><span><strong>Appreciation</strong><small>Recognised contribution</small></span></div><div><i /><span><strong>Leadership</strong><small>Role and responsibility</small></span></div></div><div className="portal-preview__certificate"><p>ISSUED BY EMC</p><FileIcon /><strong>A record designed<br />to be useful.</strong><span>Downloadable · Verifiable</span><VeritasSeal small /></div></div>
       </div>
-      <div className="record-preview__footer"><span><Shield /> Verified record</span><VeritasSeal small /></div>
-      <div className="record-preview__rule" />
     </motion.aside>
   );
 }
@@ -308,15 +307,15 @@ export function StudentPortal() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.65 }}
           >
-            <p className="landing-eyebrow">Student recognition portal</p>
+            <p className="landing-eyebrow">Event Management Club · NFC-IET Multan</p>
             <h1 className="landing-hero-title mt-5">
-              Your achievements,
+              Your work deserves
               <br />
-              <em>officially recognised.</em>
+              <em>a record.</em>
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-8 text-slate-200">
-              Enter your roll number to find certificates and recognition
-              letters earned through EMC.
+              A permanent, verifiable archive for the contributions you make
+              through EMC.
             </p>
             <form
               id="document-lookup"
@@ -339,13 +338,11 @@ export function StudentPortal() {
                 type="submit"
                 disabled={query.isFetching || checkingLookup}
               >
-                {checkingLookup ? "Checking…" : "Find my documents"}
+                {checkingLookup ? "Checking…" : "Find my record"}
                 <Arrow />
               </Button>
             </form>
-            <p className="mt-4 text-xs tracking-[.14em] text-slate-400">
-              YOUR EFFORTS CREATE A BRIGHTER CAMPUS
-            </p>
+            <div className="hero-principles mt-7"><span>Find</span><span>Keep</span><span>Verify</span></div>
             {lookupError && (
               <p
                 role="alert"
