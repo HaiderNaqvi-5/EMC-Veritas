@@ -439,42 +439,45 @@ export function StudentPortal() {
       </section>
       <section id="how-it-works" className="landing-shell py-24">
         <SectionTitle
-          eyebrow="Simple steps · lasting recognition"
-          title="Find your recognition in seconds."
+          eyebrow="How the archive works"
+          title="Built for the moment you need proof."
+          copy="A quiet, direct path from an EMC activity to a record you can retrieve and validate."
         />
-        <div className="landing-steps-shell mt-12 grid gap-4 md:grid-cols-3">
+        <div className="record-flow mt-14">
           {[
             [
-              "1",
-              "Enter your roll number",
-              "Type your roll number to access your personal records.",
+              "01",
+              "Locate your record",
+              "Use the roll number NFC-IET already knows you by. There is no new account to create.",
+              "YOUR ROLL NUMBER",
               <FileIcon />,
             ],
             [
-              "2",
-              "View your recognised achievements",
-              "See all your certificates and recognition letters in one place.",
+              "02",
+              "Review what is issued",
+              "See participation, appreciation, and leadership records that EMC has officially issued to you.",
+              "YOUR ISSUED RECORDS",
               <Spark />,
             ],
             [
-              "3",
-              "Download or verify anytime",
-              "Download your documents or share them for verification whenever you need.",
+              "03",
+              "Use it with confidence",
+              "Download a record when required, or use its verification route when someone needs to confirm it.",
+              "DOWNLOAD OR VERIFY",
               <Shield />,
             ],
-          ].map(([number, title, copy, icon]) => (
+          ].map(([number, title, copy, label, icon]) => (
             <motion.div
               key={String(number)}
-              className="landing-step"
+              className="record-flow__item"
               initial={{ opacity: 0, y: 18 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.25 }}
               transition={{ delay: Number(number) * 0.08 }}
             >
-              <span>{number}</span>
-              <div className="landing-step-icon">{icon as ReactNode}</div>
-              <h3>{title}</h3>
-              <p>{copy}</p>
+              <div className="record-flow__marker"><span>{number}</span><i /></div>
+              <div className="record-flow__copy"><p className="landing-eyebrow">{label}</p><h3>{title}</h3><p>{copy}</p></div>
+              <div className="record-flow__icon">{icon as ReactNode}</div>
             </motion.div>
           ))}
         </div>
@@ -503,9 +506,13 @@ export function StudentPortal() {
       </section>
       <section className="landing-closing">
         <div className="landing-shell landing-closing__inner">
-          <p className="landing-eyebrow">EMC Veritas archive</p>
-          <p className="landing-closing__quote">The work you show up for today<br /><em>deserves to be remembered tomorrow.</em></p>
-          <VeritasSeal />
+          <div>
+            <p className="landing-eyebrow">EMC Veritas · NFC-IET Multan</p>
+            <h2 className="landing-closing__quote">Your contribution is part of<br /><em>the club&apos;s record now.</em></h2>
+            <p className="landing-closing__copy">When you need to show what you did, your record is here—not buried in a chat, an old drive, or a forgotten event folder.</p>
+            <button type="button" onClick={scrollToLookup} className="landing-closing__action">Find my records <Arrow /></button>
+          </div>
+          <div className="landing-closing__seal"><VeritasSeal /></div>
         </div>
       </section>
       <footer className="border-t border-white/10">
