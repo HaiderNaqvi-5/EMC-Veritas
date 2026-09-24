@@ -2,12 +2,21 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.admin.students import require_admin
 from app.db.session import get_db
-from app.models.domain import Activity, ActivityParticipant, ActivityStatus, Template
+from app.models.domain import (
+    Activity,
+    ActivityParticipant,
+    ActivityStatus,
+    DocumentStatus,
+    DocumentType,
+    IssuedDocument,
+    Template,
+)
 from app.schemas.operations import (
     ActivityCreate,
     ActivityResponse,
@@ -123,5 +132,24 @@ def set_eligibility(activity_id: UUID, participant_id: UUID, payload: Eligibilit
         raise HTTPException(404, "Participant not found")
     item.eligible = payload.eligible
     record_audit_event(db, event_type="PARTICIPANT_ELIGIBILITY_CHANGED", entity_type="activity_participant", entity_id=item.id, payload={"eligible": item.eligible}, actor_admin_id=admin_id)
+    if not item.eligible:
+        documents = db.scalars(
+            select(IssuedDocument).where(
+                IssuedDocument.activity_id == activity_id,
+                IssuedDocument.student_id == item.student_id,
+                IssuedDocument.document_type == DocumentType.ACTIVITY_CERTIFICATE,
+                IssuedDocument.status == DocumentStatus.VALID,
+            )
+        ).all()
+        for document in documents:
+            document.status = DocumentStatus.REVOKED
+            record_audit_event(
+                db,
+                event_type="DOCUMENT_REVOKED",
+                entity_type="issued_document",
+                entity_id=document.id,
+                payload={"reason": "participant_ineligible", "verification_id": document.verification_id},
+                actor_admin_id=admin_id,
+            )
     db.commit()
     return {"id": str(item.id), "student_id": str(item.student_id), "eligible": item.eligible}
