@@ -1,3 +1,6 @@
 name = "emc-veritas"
 pages_build_output_dir = "dist"
 compatibility_date = "2026-09-24"
+
+[vars]
+VITE_API_BASE_URL = "https://emc-veritas-api.onrender.com/api"
