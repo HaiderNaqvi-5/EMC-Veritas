@@ -7,7 +7,7 @@ Deploy the `frontend` directory as a Cloudflare Pages project.
 - Build output directory: `dist`
 - Production environment variable: `VITE_API_BASE_URL=https://<render-api-host>/api`
 
-The bundled `_redirects` file preserves React Router deep links, and `_headers` keeps versioned static assets cacheable. The UI renders before the API is available; it warms `/api/health/ready` in the background and preserves user input during a Render cold start.
+Cloudflare Pages' built-in SPA fallback preserves React Router deep links, and the bundled `_headers` file keeps versioned static assets cacheable. The UI renders before the API is available; it warms `/api/health/ready` in the background and preserves user input during a Render cold start.
 
 Before production release, set these Render variables using the exact Cloudflare Pages origin (without a trailing slash):
 
