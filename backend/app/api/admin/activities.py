@@ -92,8 +92,6 @@ def delete_activity(activity_id: UUID, admin_id: UUID = Depends(require_admin), 
     item = db.get(Activity, activity_id)
     if item is None:
         raise HTTPException(404, "Activity not found")
-    if item.status != ActivityStatus.DRAFT:
-        raise HTTPException(409, "Only DRAFT activities can be deleted")
     if db.scalar(select(IssuedDocument.id).where(IssuedDocument.activity_id == item.id)) is not None:
         raise HTTPException(409, "An activity with issued certificates cannot be deleted")
     db.query(ActivityParticipant).filter(ActivityParticipant.activity_id == item.id).delete(synchronize_session=False)

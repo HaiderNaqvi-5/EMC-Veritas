@@ -305,7 +305,7 @@ export function ActivitiesPage() {
           <ul className="space-y-3">
             {activities.data?.map((item) => (
               <li key={item.id} className="rounded border p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3"><strong>{item.name}</strong><span>{item.activity_date} — {item.status}</span>{item.status.trim().toUpperCase() === "DRAFT" && <button onClick={() => remove.mutate(item.id)} disabled={remove.isPending} className="rounded border border-red-600 bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">Delete draft activity</button>}</div>
+                <div className="flex flex-wrap items-center justify-between gap-3"><strong>{item.name}</strong><span>{item.activity_date} — {item.status}</span><button onClick={() => remove.mutate(item.id)} disabled={remove.isPending} className="rounded border border-red-600 bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">Delete activity</button></div>
                 <div className="mt-3 flex flex-wrap gap-3">
                   <select
                     aria-label={`Status for ${item.name}`}
