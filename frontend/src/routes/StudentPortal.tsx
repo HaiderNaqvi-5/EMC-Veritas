@@ -73,6 +73,15 @@ function Spark() {
     </svg>
   );
 }
+function VerificationMark() {
+  return (
+    <div className="verification-mark" aria-hidden="true">
+      <div className="verification-mark__halo" />
+      <div className="verification-mark__core"><Shield /></div>
+      <span>EMC<br />VERIFIED</span>
+    </div>
+  );
+}
 
 function VeritasSeal({ small = false }: { small?: boolean }) {
   return (
@@ -527,7 +536,7 @@ export function StudentPortal() {
           eyebrow="Simple steps · lasting recognition"
           title="Find your recognition in seconds."
         />
-        <div className="mt-12 grid gap-8 md:grid-cols-3">
+        <div className="landing-steps-shell mt-12 grid gap-4 md:grid-cols-3">
           {[
             [
               "1",
@@ -548,12 +557,19 @@ export function StudentPortal() {
               <Shield />,
             ],
           ].map(([number, title, copy, icon]) => (
-            <div key={String(number)} className="landing-step">
+            <motion.div
+              key={String(number)}
+              className="landing-step"
+              initial={{ opacity: 0, y: 18 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.25 }}
+              transition={{ delay: Number(number) * 0.08 }}
+            >
               <span>{number}</span>
               <div className="landing-step-icon">{icon as ReactNode}</div>
               <h3>{title}</h3>
               <p>{copy}</p>
-            </div>
+            </motion.div>
           ))}
         </div>
       </section>
@@ -562,19 +578,9 @@ export function StudentPortal() {
           to="/verify"
           className="landing-verify grid items-center gap-8 rounded-3xl border border-[#e7c577]/20 p-7 md:grid-cols-[auto_1fr] md:p-10"
         >
-          <div className="qr-grid">
-            <div />
-            <div />
-            <div />
-            <div />
-            <div />
-            <div />
-            <div />
-            <div />
-            <div />
-          </div>
+          <VerificationMark />
           <div>
-            <p className="landing-eyebrow">Scan to verify a document</p>
+            <p className="landing-eyebrow">Verify a document</p>
             <h2 className="landing-title mt-3 text-4xl">
               Official. Verifiable. Yours.
             </h2>
@@ -588,6 +594,13 @@ export function StudentPortal() {
             </span>
           </div>
         </Link>
+      </section>
+      <section className="landing-closing">
+        <div className="landing-shell landing-closing__inner">
+          <p className="landing-eyebrow">EMC Veritas archive</p>
+          <p className="landing-closing__quote">The work you show up for today<br /><em>deserves to be remembered tomorrow.</em></p>
+          <VeritasSeal />
+        </div>
       </section>
       <footer className="border-t border-white/10">
         <div className="landing-shell flex flex-col gap-8 py-10 md:flex-row md:items-center md:justify-between">
