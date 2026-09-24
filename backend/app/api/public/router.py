@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.settings import settings
@@ -27,6 +27,7 @@ from app.services.documents.lifecycle import DocumentLifecycleError, generate_on
 from app.services.executive.letters import REQUIRED_LEADERSHIP_TEMPLATE_FIELDS
 from app.services.signatures.rendering import signature_field_name
 from app.services.storage.supabase import SupabaseStorage
+from app.services.students import normalize_roll_number
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -48,7 +49,7 @@ def _signature_images_for_document(
 
 @router.get("/students/{roll_number}/documents", response_model=StudentDocumentsResponse)
 def student_documents(roll_number: str, db: Session = Depends(get_db)) -> StudentDocumentsResponse:
-    student = db.scalar(select(Student).where(Student.roll_number == roll_number.strip(), Student.active.is_(True)))
+    student = db.scalar(select(Student).where(func.upper(Student.roll_number) == normalize_roll_number(roll_number), Student.active.is_(True)))
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
 

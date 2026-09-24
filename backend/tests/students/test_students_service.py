@@ -14,10 +14,10 @@ class FakeDatabase:
         self.flush_count += 1
 
 
-def test_create_student_trims_identity_values() -> None:
+def test_create_student_trims_and_canonicalizes_identity_values() -> None:
     db = FakeDatabase()
-    student = create_student(db, StudentCreate(roll_number="  22-CS-1 ", full_name="  Ahmad Arshad  "))
-    assert student.roll_number == "22-CS-1"
+    student = create_student(db, StudentCreate(roll_number="  2k22-bscs-238 ", full_name="  Ahmad Arshad  "))
+    assert student.roll_number == "2K22-BSCS-238"
     assert student.full_name == "Ahmad Arshad"
     assert student.active is True
     assert db.added == [student]

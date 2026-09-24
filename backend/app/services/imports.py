@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.domain import Activity, ActivityParticipant, Student
+from app.services.students import normalize_roll_number
 
 ROLL = {"roll number", "roll no", "registration no", "roll_number"}
 NAME = {"full name", "student name", "name", "full_name"}
@@ -16,7 +17,7 @@ def preview_students(db: Session, content: bytes) -> dict:
     if roll_index is None or name_index is None: raise ValueError("Spreadsheet must include Roll Number and Full Name headings")
     seen=set(); rows=[]; counts={"valid_rows":0,"duplicate_rows":0,"conflicting_rows":0,"invalid_rows":0}
     for number, values in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
-        roll=str(values[roll_index]).strip() if values[roll_index] is not None else ""; name=str(values[name_index]).strip() if values[name_index] is not None else ""
+        roll=normalize_roll_number(str(values[roll_index])) if values[roll_index] is not None else ""; name=str(values[name_index]).strip() if values[name_index] is not None else ""
         outcome="valid"; detail=None
         if not roll or not name: outcome="invalid"; detail="Roll number and full name are required"
         elif roll in seen: outcome="duplicate"; detail="Duplicate roll number in spreadsheet"

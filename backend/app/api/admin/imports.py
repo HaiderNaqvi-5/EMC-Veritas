@@ -10,7 +10,7 @@ from app.models.domain import Student
 from app.schemas.operations import ImportCommit, StudentCreate
 from app.services.audit import record_audit_event
 from app.services.imports import participant_export, preview_students
-from app.services.students import create_student
+from app.services.students import create_student, normalize_roll_number
 
 router=APIRouter(prefix="/imports",tags=["admin-imports"])
 @router.post("/students/preview")
@@ -29,11 +29,12 @@ def export(activity_id: UUID, _: UUID=Depends(require_admin), db: Session=Depend
 def commit(payload: ImportCommit, admin_id: UUID=Depends(require_admin), db: Session=Depends(get_db)):
     created=0; skipped=0
     for row in payload.rows:
-        current=db.query(Student).filter(Student.roll_number == row.roll_number.strip()).one_or_none()
+        canonical_roll_number = normalize_roll_number(row.roll_number)
+        current=db.query(Student).filter(Student.roll_number == canonical_roll_number).one_or_none()
         if current is None:
             create_student(
                 db,
-                StudentCreate(roll_number=row.roll_number.strip(), full_name=row.full_name.strip()),
+                StudentCreate(roll_number=canonical_roll_number, full_name=row.full_name.strip()),
             )
             created += 1
         elif current.full_name != row.full_name.strip():

@@ -19,6 +19,7 @@ import { AdminLoginModal } from "../features/auth/AdminLoginModal";
 import { authApi } from "../features/auth/contracts";
 import { Button } from "../components/ui/Button";
 import { Skeleton } from "../components/ui/Skeleton";
+import { canonicalRollNumber } from "../lib/utils";
 
 const journey = [
   { stage: "Event", value: 28 },
@@ -347,7 +348,7 @@ export function StudentPortal() {
                 id="roll-number"
                 name="roll-number"
                 value={rollNumber}
-                onChange={(event) => setRollNumber(event.target.value)}
+                onChange={(event) => setRollNumber(canonicalRollNumber(event.target.value))}
                 placeholder="e.g. 2k22-BSCS-238"
                 autoComplete="off"
                 required
@@ -538,7 +539,10 @@ export function StudentPortal() {
         </div>
       </section>
       <section id="verify" className="landing-shell pb-24">
-        <Link to="/verify" className="landing-verify grid items-center gap-8 rounded-3xl border border-[#e7c577]/20 p-7 md:grid-cols-[auto_1fr] md:p-10">
+        <Link
+          to="/verify"
+          className="landing-verify grid items-center gap-8 rounded-3xl border border-[#e7c577]/20 p-7 md:grid-cols-[auto_1fr] md:p-10"
+        >
           <div className="qr-grid">
             <div />
             <div />
@@ -560,7 +564,9 @@ export function StudentPortal() {
               Veritas has a unique verification record, making it easy to
               confirm its authenticity.
             </p>
-            <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#e8c172]">Open document verification <Arrow /></span>
+            <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#e8c172]">
+              Open document verification <Arrow />
+            </span>
           </div>
         </Link>
       </section>
