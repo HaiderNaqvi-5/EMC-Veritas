@@ -146,6 +146,17 @@ export function ActivitiesPage() {
       apiRequest(`/admin/documents/activities/${id}/issue`, { method: "POST" }),
     onSuccess: () => void refreshActivities(),
   });
+  const attachCertificate = useMutation({
+    mutationFn: async ({ activity, file }: { activity: Activity; file: File }) => {
+      const template = await uploadTemplate(`${activity.name} certificate`, file);
+      const fields: TemplateField[] = ["student_name", "roll_number", "activity_name", "activity_date"].map((field_name, index) => ({ field_name, page_number: 1, x: 100, y: 160 + index * 55, width: 300, height: 30 }));
+      await configureTemplate(template.id, fields, "retain");
+      await approveTemplate(template.id);
+      return apiRequest<Activity>(`/admin/activities/${activity.id}`, { method: "PUT", body: JSON.stringify({ name: activity.name, description: activity.description, activity_date: activity.activity_date, template_id: template.id }) });
+    },
+    onSuccess: () => void refreshActivities(),
+  });
+  const remove = useMutation({ mutationFn: (id: string) => apiRequest<void>(`/admin/activities/${id}`, { method: "DELETE" }), onSuccess: () => { setViewId(""); void refreshActivities(); } });
   const participantImport = useMutation({ mutationFn: async () => { const data = new FormData(); data.set("file", participantFile as File); return apiRequest<{ added: number; already_present: number; unknown_roll_numbers: string[] }>(`/admin/imports/activities/${activityId}/participants/import`, { method: "POST", body: data }); }, onSuccess: () => { setParticipantFile(null); setViewId(activityId); void refreshParticipants(); } });
   const error =
     create.error?.message ??
@@ -154,6 +165,8 @@ export function ActivitiesPage() {
     add.error?.message ??
     eligibility.error?.message ??
     issue.error?.message ??
+    attachCertificate.error?.message ??
+    remove.error?.message ??
     participantImport.error?.message ??
     participants.error?.message ??
     sessions.error?.message;
@@ -324,7 +337,9 @@ export function ActivitiesPage() {
                   >
                     Issue and publish certificates
                   </button>
+                  {item.status === "DRAFT" && <button onClick={() => remove.mutate(item.id)} disabled={remove.isPending} className="underline text-red-700">Delete activity</button>}
                 </div>
+                {!item.template_id && <label className="mt-3 flex max-w-xl flex-wrap items-center gap-3 rounded border p-3 text-sm">Attach certificate PDF<input required accept="application/pdf" type="file" disabled={attachCertificate.isPending} onChange={(event) => { const file = event.target.files?.[0]; if (file) attachCertificate.mutate({ activity: item, file }); event.currentTarget.value = ""; }} className="rounded border p-2"/><span className="text-slate-500 dark:text-slate-400">Upload and attach this activity’s certificate without creating another activity.</span></label>}
                 <details className="mt-3">
                   <summary className="cursor-pointer text-sm underline">
                     Edit activity

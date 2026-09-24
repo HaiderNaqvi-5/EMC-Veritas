@@ -87,6 +87,21 @@ def update(activity_id: UUID, payload: ActivityUpdate, admin_id: UUID = Depends(
     return item
 
 
+@router.delete("/{activity_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_activity(activity_id: UUID, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)):
+    item = db.get(Activity, activity_id)
+    if item is None:
+        raise HTTPException(404, "Activity not found")
+    if item.status != ActivityStatus.DRAFT:
+        raise HTTPException(409, "Only DRAFT activities can be deleted")
+    if db.scalar(select(IssuedDocument.id).where(IssuedDocument.activity_id == item.id)) is not None:
+        raise HTTPException(409, "An activity with issued certificates cannot be deleted")
+    db.query(ActivityParticipant).filter(ActivityParticipant.activity_id == item.id).delete(synchronize_session=False)
+    record_audit_event(db, event_type="ACTIVITY_DELETED", entity_type="activity", entity_id=item.id, payload={"name": item.name}, actor_admin_id=admin_id)
+    db.delete(item)
+    db.commit()
+
+
 @router.get("/{activity_id}/participants")
 def get_participants(activity_id: UUID, _: UUID = Depends(require_admin), db: Session = Depends(get_db)):
     if db.get(Activity, activity_id) is None:
