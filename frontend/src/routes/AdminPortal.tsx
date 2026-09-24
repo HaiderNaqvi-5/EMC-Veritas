@@ -15,7 +15,6 @@ import { LeadershipTemplatesPage } from "../features/leadership-templates/Leader
 import { TemporaryPasswordChange } from "../features/auth/TemporaryPasswordChange";
 import { authApi } from "../features/auth/contracts";
 import { SESSION_EXPIRED_EVENT } from "../lib/api/client";
-import { TemplateEditorPage } from "../features/templates/TemplateEditorPage";
 import { AdminAccountsPage } from "../features/admin-accounts/AdminAccountsPage";
 
 export function AdminPortal() {
@@ -27,5 +26,5 @@ export function AdminPortal() {
   if (session.isError || !session.data?.authenticated || !session.data.role) return <Navigate to="/" replace />;
   if (sessionExpired) return <Navigate to="/" replace />;
   const superAdminOnly = (element: ReactNode) => session.data.role === "SUPER_ADMIN" ? element : <Navigate to="/admin" replace />;
-  return <>{mustChangePassword && <TemporaryPasswordChange onComplete={() => { setDismissed(true); void client.invalidateQueries({ queryKey: ["admin", "session"] }); }} />}<Routes><Route element={<AdminShell role={session.data.role} />}><Route index element={<AdminDashboard />} /><Route path="students" element={<StudentsPage />} /><Route path="activities" element={<ActivitiesPage />} /><Route path="sessions" element={<SessionsPage />} /><Route path="imports" element={<ImportsPage />} /><Route path="signatories" element={<SignatoriesPage />} /><Route path="executive-memberships" element={<ExecutiveMembershipsPage />} /><Route path="templates" element={superAdminOnly(<TemplateEditorPage />)} /><Route path="leadership-templates" element={superAdminOnly(<LeadershipTemplatesPage />)} /><Route path="admins" element={superAdminOnly(<AdminAccountsPage />)} /><Route path="documents" element={<DocumentsPage />} /><Route path="audit" element={superAdminOnly(<AuditLogPage />)} /><Route path="*" element={<Navigate to="/admin" replace />} /></Route></Routes></>;
+  return <>{mustChangePassword && <TemporaryPasswordChange onComplete={() => { setDismissed(true); void client.invalidateQueries({ queryKey: ["admin", "session"] }); }} />}<Routes><Route element={<AdminShell role={session.data.role} />}><Route index element={<AdminDashboard />} /><Route path="students" element={<StudentsPage />} /><Route path="activities" element={<ActivitiesPage />} /><Route path="sessions" element={<SessionsPage />} /><Route path="imports" element={<ImportsPage />} /><Route path="signatories" element={<SignatoriesPage />} /><Route path="executive-memberships" element={<ExecutiveMembershipsPage />} /><Route path="leadership-templates" element={superAdminOnly(<LeadershipTemplatesPage />)} /><Route path="admins" element={superAdminOnly(<AdminAccountsPage />)} /><Route path="documents" element={<DocumentsPage />} /><Route path="audit" element={superAdminOnly(<AuditLogPage />)} /><Route path="*" element={<Navigate to="/admin" replace />} /></Route></Routes></>;
 }

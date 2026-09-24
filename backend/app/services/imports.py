@@ -38,3 +38,25 @@ def participant_export(db: Session, activity_id) -> bytes:
     sheet.append(["Roll Number","Student Name","Activity Name","Activity Date","Eligibility Status"])
     for participant, student in rows: sheet.append([student.roll_number,student.full_name,activity.name,activity.activity_date.isoformat(),"Eligible" if participant.eligible else "Ineligible"])
     output=BytesIO(); workbook.save(output); return output.getvalue()
+
+def import_activity_participants(db: Session, activity_id, content: bytes) -> dict:
+    """Link existing active students from an Excel attendee list to one activity."""
+    activity = db.get(Activity, activity_id)
+    if activity is None: raise LookupError("Activity not found")
+    sheet = load_workbook(BytesIO(content), read_only=True, data_only=True).active
+    headers = {str(value).strip().lower(): index for index, value in enumerate(next(sheet.iter_rows(values_only=True))) if value}
+    roll_index = next((headers[key] for key in ROLL if key in headers), None)
+    if roll_index is None: raise ValueError("Spreadsheet must include a Roll Number heading")
+    added = existing = 0; unknown_roll_numbers: list[str] = []; seen: set[str] = set()
+    for values in sheet.iter_rows(min_row=2, values_only=True):
+        roll = normalize_roll_number(str(values[roll_index])) if values[roll_index] is not None else ""
+        if not roll or roll in seen: continue
+        seen.add(roll)
+        student = db.scalar(select(Student).where(Student.roll_number == roll, Student.active.is_(True)))
+        if student is None:
+            unknown_roll_numbers.append(roll); continue
+        participant = db.scalar(select(ActivityParticipant).where(ActivityParticipant.activity_id == activity_id, ActivityParticipant.student_id == student.id))
+        if participant is not None:
+            existing += 1; continue
+        db.add(ActivityParticipant(activity_id=activity_id, student_id=student.id, eligible=True)); added += 1
+    return {"added": added, "already_present": existing, "unknown_roll_numbers": unknown_roll_numbers}

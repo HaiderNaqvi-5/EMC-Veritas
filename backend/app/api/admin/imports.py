@@ -9,7 +9,7 @@ from app.db.session import get_db
 from app.models.domain import Student
 from app.schemas.operations import ImportCommit, StudentCreate
 from app.services.audit import record_audit_event
-from app.services.imports import participant_export, preview_students
+from app.services.imports import import_activity_participants, participant_export, preview_students
 from app.services.students import create_student, normalize_roll_number
 
 router=APIRouter(prefix="/imports",tags=["admin-imports"])
@@ -24,6 +24,15 @@ def export(activity_id: UUID, _: UUID=Depends(require_admin), db: Session=Depend
     try: content=participant_export(db,activity_id)
     except LookupError: raise HTTPException(404,"Activity not found")
     return Response(content, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition":"attachment; filename=Export Participants.xlsx"})
+
+@router.post("/activities/{activity_id}/participants/import")
+async def import_participants(activity_id: UUID, file: UploadFile=File(...), admin_id: UUID=Depends(require_admin), db: Session=Depends(get_db)):
+    if not file.filename or not file.filename.lower().endswith(".xlsx"): raise HTTPException(400, "Only .xlsx files are accepted")
+    try: result = import_activity_participants(db, activity_id, await file.read())
+    except LookupError: raise HTTPException(404, "Activity not found")
+    except ValueError as error: raise HTTPException(400, str(error))
+    record_audit_event(db, actor_admin_id=admin_id, event_type="ACTIVITY_PARTICIPANTS_IMPORTED", entity_type="activity", entity_id=activity_id, payload=result)
+    db.commit(); return result
 
 @router.post("/students/commit")
 def commit(payload: ImportCommit, admin_id: UUID=Depends(require_admin), db: Session=Depends(get_db)):

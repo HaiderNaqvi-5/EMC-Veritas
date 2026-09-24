@@ -2,6 +2,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { apiRequest } from "../../lib/api/client";
+import { approveTemplate, configureTemplate, TemplateField, uploadTemplate } from "../../api/templates/admin";
 
 type Activity = {
   id: string;
@@ -33,9 +34,10 @@ export function ActivitiesPage() {
   const [sessionId, setSessionId] = useState("");
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
-  const [templateId, setTemplateId] = useState("");
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
   const [activityId, setActivityId] = useState("");
   const [studentId, setStudentId] = useState("");
+  const [participantFile, setParticipantFile] = useState<File | null>(null);
   const [viewId, setViewId] = useState("");
   const activities = useQuery({
     queryKey: ["admin", "activities"],
@@ -67,20 +69,24 @@ export function ActivitiesPage() {
       queryKey: ["admin", "activity", viewId, "participants"],
     });
   const create = useMutation({
-    mutationFn: () =>
-      apiRequest<Activity>("/admin/activities", {
+    mutationFn: async () => {
+      const activity = await apiRequest<Activity>("/admin/activities", {
         method: "POST",
-        body: JSON.stringify({
-          session_id: sessionId,
-          name,
-          activity_date: date,
-          template_id: templateId || null,
-        }),
-      }),
+        body: JSON.stringify({ session_id: sessionId, name, activity_date: date }),
+      });
+      if (certificateFile) {
+        const template = await uploadTemplate(`${name} certificate`, certificateFile);
+        const fields: TemplateField[] = ["student_name", "roll_number", "activity_name", "activity_date"].map((field_name, index) => ({ field_name, page_number: 1, x: 100, y: 160 + index * 55, width: 300, height: 30 }));
+        await configureTemplate(template.id, fields, "retain");
+        await approveTemplate(template.id);
+        await apiRequest<Activity>(`/admin/activities/${activity.id}`, { method: "PUT", body: JSON.stringify({ name: activity.name, description: activity.description, activity_date: activity.activity_date, template_id: template.id }) });
+      }
+      return activity;
+    },
     onSuccess: () => {
       setName("");
       setDate("");
-      setTemplateId("");
+      setCertificateFile(null);
       void refreshActivities();
     },
   });
@@ -134,6 +140,7 @@ export function ActivitiesPage() {
       apiRequest(`/admin/documents/activities/${id}/issue`, { method: "POST" }),
     onSuccess: () => void refreshActivities(),
   });
+  const participantImport = useMutation({ mutationFn: async () => { const data = new FormData(); data.set("file", participantFile as File); return apiRequest<{ added: number; already_present: number; unknown_roll_numbers: string[] }>(`/admin/imports/activities/${activityId}/participants/import`, { method: "POST", body: data }); }, onSuccess: () => { setParticipantFile(null); setViewId(activityId); void refreshParticipants(); } });
   const error =
     create.error?.message ??
     update.error?.message ??
@@ -141,6 +148,7 @@ export function ActivitiesPage() {
     add.error?.message ??
     eligibility.error?.message ??
     issue.error?.message ??
+    participantImport.error?.message ??
     participants.error?.message ??
     sessions.error?.message;
   // Keep participant name lookup O(n) even for large activity lists.
@@ -212,19 +220,7 @@ export function ActivitiesPage() {
           onChange={(e) => setDate(e.target.value)}
           className="rounded border p-2"
         />
-        <select
-          aria-label="Certificate template"
-          value={templateId}
-          onChange={(e) => setTemplateId(e.target.value)}
-          className="rounded border p-2"
-        >
-          <option value="">Choose approved template later</option>
-          {templates.data?.map((template) => (
-            <option key={template.id} value={template.id}>
-              {template.name}
-            </option>
-          ))}
-        </select>
+        <input required accept="application/pdf" type="file" onChange={(event) => setCertificateFile(event.target.files?.[0] ?? null)} className="rounded border p-2" />
         <button
           disabled={create.isPending || !activeSessions.length}
           className="rounded bg-slate-900 p-2 text-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -232,6 +228,7 @@ export function ActivitiesPage() {
           Create activity
         </button>
       </form>
+      <p className="mt-2 text-sm text-slate-500">A certificate PDF is required here and is automatically attached, configured, and approved for this activity.</p>
       {sessions.isSuccess && !activeSessions.length && (
         <p className="mt-2 text-sm text-slate-500">
           Create or activate an EMC session before adding an activity.
@@ -275,6 +272,8 @@ export function ActivitiesPage() {
           Add eligible participant
         </button>
       </form>
+      <form onSubmit={(event) => { event.preventDefault(); if (participantFile) participantImport.mutate(); }} className="mt-4 grid gap-3 rounded-xl border p-4 md:grid-cols-3"><select required value={activityId} onChange={(e) => setActivityId(e.target.value)} className="rounded border p-2"><option value="">Choose activity for participant Excel</option>{activities.data?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input required accept=".xlsx" type="file" onChange={(event) => setParticipantFile(event.target.files?.[0] ?? null)} className="rounded border p-2"/><button disabled={!participantFile || participantImport.isPending} className="rounded bg-slate-900 p-2 text-white">Import participant Excel</button></form>
+      {participantImport.data && <p role="status" className="mt-2 text-sm text-green-700">Imported {participantImport.data.added} participants; {participantImport.data.already_present} were already linked.{participantImport.data.unknown_roll_numbers.length ? ` Unknown active roll numbers: ${participantImport.data.unknown_roll_numbers.join(", ")}` : ""}</p>}
       {error && (
         <p role="alert" className="mt-3 rounded bg-red-50 p-3 text-red-700">
           {error}
