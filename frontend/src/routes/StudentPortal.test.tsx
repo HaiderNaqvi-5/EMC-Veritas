@@ -19,9 +19,9 @@ test("ordinary student lookup loads documents without showing an admin password 
   mocks.getStudentDocuments.mockResolvedValueOnce({ full_name: "Student", activity_certificates: [], leadership_recognition: [] });
   renderPortal();
   fireEvent.change(screen.getByLabelText("Roll number"), { target: { value: "22-CS-1" } });
-  fireEvent.click(screen.getByRole("button", { name: "Find documents" }));
+  fireEvent.click(screen.getByRole("button", { name: "Find my documents" }));
   await waitFor(() => expect(mocks.getStudentDocuments).toHaveBeenCalledWith("22-CS-1"));
-  expect(screen.queryByText("Admin sign in")).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Admin sign in" })).not.toBeInTheDocument();
   expect(await screen.findByText("Student")).toBeInTheDocument();
 });
 
@@ -29,6 +29,6 @@ test("recognized admin opens the password modal", async () => {
   mocks.lookup.mockResolvedValueOnce({ is_admin: true, active: true });
   renderPortal();
   fireEvent.change(screen.getByLabelText("Roll number"), { target: { value: "22-CS-9" } });
-  fireEvent.click(screen.getByRole("button", { name: "Find documents" }));
+  fireEvent.click(screen.getByRole("button", { name: "Find my documents" }));
   expect(await screen.findByText("Admin sign in")).toBeInTheDocument();
 });
