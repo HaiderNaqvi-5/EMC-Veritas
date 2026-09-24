@@ -12,6 +12,7 @@ const navigation = [
   { label: "Council memberships", path: "/admin/executive-memberships" },
   { label: "Certificate templates", path: "/admin/templates", superAdmin: true },
   { label: "Leadership templates", path: "/admin/leadership-templates", superAdmin: true },
+  { label: "Admin accounts", path: "/admin/admins", superAdmin: true },
   { label: "Documents", path: "/admin/documents" },
   { label: "Audit log", path: "/admin/audit", superAdmin: true },
 ];
