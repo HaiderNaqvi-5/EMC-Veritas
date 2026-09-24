@@ -272,7 +272,7 @@ function RecognitionChart() {
 }
 
 export function StudentPortal() {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">("light");
   const [submittedRollNumber, setSubmittedRollNumber] = useState<string | null>(
     null,
   );
