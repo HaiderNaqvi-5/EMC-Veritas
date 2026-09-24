@@ -1,11 +1,12 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.admin.dependencies import current_active_admin
 from app.db.session import get_db
-from app.models.domain import Student
+from app.models.domain import Admin, Student
 from app.schemas.operations import StudentCreate, StudentResponse
 from app.services.audit import record_audit_event
 from app.services.students import create_student, deactivate_student, list_students
@@ -13,11 +14,8 @@ from app.services.students import create_student, deactivate_student, list_stude
 router = APIRouter(prefix="/students", tags=["admin-students"])
 
 
-def require_admin(request: Request) -> UUID:
-    admin_id = request.session.get("admin_id")
-    if not admin_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin session required")
-    return UUID(admin_id)
+def require_admin(admin: Admin = Depends(current_active_admin)) -> UUID:
+    return admin.id
 
 
 @router.get("", response_model=list[StudentResponse])
