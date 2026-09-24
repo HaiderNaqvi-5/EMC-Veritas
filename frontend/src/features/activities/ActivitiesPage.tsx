@@ -305,8 +305,7 @@ export function ActivitiesPage() {
           <ul className="space-y-3">
             {activities.data?.map((item) => (
               <li key={item.id} className="rounded border p-4">
-                <strong>{item.name}</strong> — {item.activity_date} —{" "}
-                {item.status}
+                <div className="flex flex-wrap items-center justify-between gap-3"><strong>{item.name}</strong><span>{item.activity_date} — {item.status}</span>{item.status.trim().toUpperCase() === "DRAFT" && <button onClick={() => remove.mutate(item.id)} disabled={remove.isPending} className="rounded border border-red-600 bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">Delete draft activity</button>}</div>
                 <div className="mt-3 flex flex-wrap gap-3">
                   <select
                     aria-label={`Status for ${item.name}`}
@@ -337,7 +336,6 @@ export function ActivitiesPage() {
                   >
                     Issue and publish certificates
                   </button>
-                  {item.status === "DRAFT" && <button onClick={() => remove.mutate(item.id)} disabled={remove.isPending} className="underline text-red-700">Delete activity</button>}
                 </div>
                 {!item.template_id && <label className="mt-3 flex max-w-xl flex-wrap items-center gap-3 rounded border p-3 text-sm">Attach certificate PDF<input required accept="application/pdf" type="file" disabled={attachCertificate.isPending} onChange={(event) => { const file = event.target.files?.[0]; if (file) attachCertificate.mutate({ activity: item, file }); event.currentTarget.value = ""; }} className="rounded border p-2"/><span className="text-slate-500 dark:text-slate-400">Upload and attach this activity’s certificate without creating another activity.</span></label>}
                 <details className="mt-3">
