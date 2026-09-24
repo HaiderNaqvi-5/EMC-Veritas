@@ -74,12 +74,18 @@ export function ActivitiesPage() {
         method: "POST",
         body: JSON.stringify({ session_id: sessionId, name, activity_date: date }),
       });
+      void refreshActivities();
       if (certificateFile) {
-        const template = await uploadTemplate(`${name} certificate`, certificateFile);
-        const fields: TemplateField[] = ["student_name", "roll_number", "activity_name", "activity_date"].map((field_name, index) => ({ field_name, page_number: 1, x: 100, y: 160 + index * 55, width: 300, height: 30 }));
-        await configureTemplate(template.id, fields, "retain");
-        await approveTemplate(template.id);
-        await apiRequest<Activity>(`/admin/activities/${activity.id}`, { method: "PUT", body: JSON.stringify({ name: activity.name, description: activity.description, activity_date: activity.activity_date, template_id: template.id }) });
+        try {
+          const template = await uploadTemplate(`${name} certificate`, certificateFile);
+          const fields: TemplateField[] = ["student_name", "roll_number", "activity_name", "activity_date"].map((field_name, index) => ({ field_name, page_number: 1, x: 100, y: 160 + index * 55, width: 300, height: 30 }));
+          await configureTemplate(template.id, fields, "retain");
+          await approveTemplate(template.id);
+          await apiRequest<Activity>(`/admin/activities/${activity.id}`, { method: "PUT", body: JSON.stringify({ name: activity.name, description: activity.description, activity_date: activity.activity_date, template_id: template.id }) });
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : "Certificate setup could not be completed.";
+          throw new Error(`Activity \"${activity.name}\" was created, but its certificate PDF was not attached. ${detail}`);
+        }
       }
       return activity;
     },

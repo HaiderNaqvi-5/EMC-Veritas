@@ -13,11 +13,16 @@ export class ApiError extends Error {
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  const response = await fetch(apiUrl(path), {
-    credentials: "include",
-    headers,
-    ...init,
-  });
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(path), {
+      credentials: "include",
+      headers,
+      ...init,
+    });
+  } catch {
+    throw new Error("Could not reach the EMC API. Check that the deployed Pages URL is included in Render FRONTEND_ORIGINS, then reload this page.");
+  }
   if (!response.ok) {
     if (response.status === 401 && !path.startsWith("/admin/auth/login") && !path.startsWith("/admin/auth/lookup")) {
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
