@@ -184,6 +184,7 @@ export function ActivitiesPage() {
         className="mt-6 grid gap-3 rounded-xl border p-4 md:grid-cols-5"
       >
         <select
+          aria-label="Active session"
           required
           value={sessionId}
           onChange={(e) => setSessionId(e.target.value)}
@@ -197,6 +198,7 @@ export function ActivitiesPage() {
           ))}
         </select>
         <input
+          aria-label="Activity date"
           required
           placeholder="Activity name"
           value={name}
@@ -211,6 +213,7 @@ export function ActivitiesPage() {
           className="rounded border p-2"
         />
         <select
+          aria-label="Certificate template"
           value={templateId}
           onChange={(e) => setTemplateId(e.target.value)}
           className="rounded border p-2"
@@ -239,6 +242,7 @@ export function ActivitiesPage() {
         className="mt-4 grid gap-3 rounded-xl border p-4 md:grid-cols-3"
       >
         <select
+          aria-label="Activity for participant"
           required
           value={activityId}
           onChange={(e) => setActivityId(e.target.value)}
@@ -252,6 +256,7 @@ export function ActivitiesPage() {
           ))}
         </select>
         <select
+          aria-label="Eligible student"
           required
           value={studentId}
           onChange={(e) => setStudentId(e.target.value)}
@@ -286,6 +291,7 @@ export function ActivitiesPage() {
                 {item.status}
                 <div className="mt-3 flex flex-wrap gap-3">
                   <select
+                    aria-label={`Status for ${item.name}`}
                     value={item.status}
                     onChange={(e) =>
                       status.mutate({ id: item.id, value: e.target.value })
@@ -323,12 +329,14 @@ export function ActivitiesPage() {
                     className="mt-3 grid gap-2 md:grid-cols-3"
                   >
                     <input
+                      aria-label={`Name for ${item.name}`}
                       name="name"
                       defaultValue={item.name}
                       required
                       className="rounded border p-2"
                     />
                     <input
+                      aria-label={`Date for ${item.name}`}
                       name="activity_date"
                       defaultValue={item.activity_date}
                       required
@@ -336,6 +344,7 @@ export function ActivitiesPage() {
                       className="rounded border p-2"
                     />
                     <select
+                      aria-label={`Template for ${item.name}`}
                       name="template_id"
                       defaultValue={item.template_id ?? ""}
                       className="rounded border p-2"

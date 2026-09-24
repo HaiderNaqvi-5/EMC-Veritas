@@ -83,6 +83,7 @@ export function SessionsPage() {
         onSubmit={submit}
       >
         <input
+          aria-label="Session start date"
           required
           className="rounded border p-2"
           placeholder="Session name"
@@ -90,6 +91,7 @@ export function SessionsPage() {
           onChange={(e) => setName(e.target.value)}
         />
         <input
+          aria-label="Session end date"
           required
           className="rounded border p-2"
           type="date"
@@ -149,12 +151,14 @@ export function SessionsPage() {
                   className="mt-3 grid gap-2 md:grid-cols-4"
                 >
                   <input
+                    aria-label={`Name for ${item.name}`}
                     name="name"
                     defaultValue={item.name}
                     required
                     className="rounded border p-2"
                   />
                   <input
+                    aria-label={`Start date for ${item.name}`}
                     name="start_date"
                     defaultValue={item.start_date}
                     required
@@ -162,6 +166,7 @@ export function SessionsPage() {
                     className="rounded border p-2"
                   />
                   <input
+                    aria-label={`End date for ${item.name}`}
                     name="end_date"
                     defaultValue={item.end_date}
                     required
