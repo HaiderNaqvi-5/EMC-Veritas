@@ -152,6 +152,24 @@ function CertificatePreview() {
     </motion.div>
   );
 }
+function RecognitionCanvas() {
+  return (
+    <div className="recognition-canvas" aria-label="EMC Veritas recognition experience">
+      <motion.div className="recognition-orbit recognition-orbit--one" animate={{ rotate: 360 }} transition={{ duration: 38, ease: "linear", repeat: Infinity }} />
+      <motion.div className="recognition-orbit recognition-orbit--two" animate={{ rotate: -360 }} transition={{ duration: 29, ease: "linear", repeat: Infinity }} />
+      <motion.div className="recognition-ticket" initial={{ opacity: 0, y: 28, rotate: -7 }} animate={{ opacity: 1, y: 0, rotate: -4 }} transition={{ duration: .8, delay: .15 }}>
+        <p>EMC VERITAS · NFC-IET MULTAN</p><strong>Recognition, made tangible.</strong><span>YOUR CONTRIBUTION DESERVES A LASTING RECORD</span>
+      </motion.div>
+      <motion.div className="recognition-certificate" initial={{ opacity: 0, y: 36, rotate: 5 }} animate={{ opacity: 1, y: 0, rotate: 2 }} transition={{ duration: .9, delay: .25 }}>
+        <div className="recognition-certificate__top"><img src="/assets/logos/emc-logo-dark.png" alt="" /><span>EMC VERITAS</span></div>
+        <p className="recognition-certificate__eyebrow">OFFICIAL RECOGNITION</p>
+        <h2>Certificate of<br />Participation</h2><div className="recognition-line" /><p className="recognition-name">Your story, recognised.</p>
+        <div className="recognition-certificate__footer"><span>Authentic record</span><VeritasSeal small /></div>
+      </motion.div>
+      <motion.div className="recognition-stamp" animate={{ y: [0, -9, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}><Shield /><span>VERIFIED<br />BY EMC</span></motion.div>
+    </div>
+  );
+}
 function DocumentList({ documents }: { documents: PublicDocument[] }) {
   if (documents.length === 0)
     return (
@@ -426,22 +444,10 @@ export function StudentPortal() {
               </section>
             )}
           </motion.div>
-          <div className="relative">
-            <div className="absolute -right-5 top-8 hidden rounded-2xl border border-white/10 bg-[#10243e]/95 p-4 shadow-2xl lg:block">
-              <p className="text-xs font-semibold text-slate-300">
-                QR verified
-              </p>
-              <p className="mt-2 flex items-center gap-2 text-sm text-emerald-300">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-emerald-400 text-[#082036]">
-                  ✓
-                </span>{" "}
-                Authentic document
-              </p>
-            </div>
-            <CertificatePreview />
-          </div>
+          <RecognitionCanvas />
         </div>
       </section>
+      <div className="landing-marquee" aria-hidden="true"><div>EMC VERITAS <i>✦</i> RECOGNITION THAT LASTS <i>✦</i> YOUR WORK HAS A STORY <i>✦</i> EMC VERITAS <i>✦</i> RECOGNITION THAT LASTS</div></div>
       <section id="document-types" className="landing-shell py-20">
         <SectionTitle
           eyebrow="What you can find here"
