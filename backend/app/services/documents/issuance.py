@@ -23,6 +23,7 @@ def reserve_document(
     document_type: DocumentType,
     issue_date: date,
     activity_id: UUID | None = None,
+    template_id: UUID | None = None,
     executive_membership_id: UUID | None = None,
     leadership_template_id: UUID | None = None,
     render_values: Mapping[str, str | date] | None = None,
@@ -34,6 +35,7 @@ def reserve_document(
         id=uuid4(),
         student_id=student_id,
         activity_id=activity_id,
+        template_id=template_id,
         executive_membership_id=executive_membership_id,
         leadership_template_id=leadership_template_id,
         document_type=document_type,
@@ -75,6 +77,7 @@ def reserve_document(
             "signatory_ids": [str(signatory.id) for signatory in signatories],
             "executive_membership_id": str(executive_membership_id) if executive_membership_id else None,
             "leadership_template_id": str(leadership_template_id) if leadership_template_id else None,
+            "template_id": str(template_id) if template_id else None,
         },
     )
     return document

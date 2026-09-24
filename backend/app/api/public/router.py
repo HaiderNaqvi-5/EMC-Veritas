@@ -127,32 +127,37 @@ def download_document(document_id: UUID, db: Session = Depends(get_db)) -> Strea
             )
         ).all()
         try:
-            values = json.loads(document.render_payload_json or "")
+            values = json.loads(getattr(document, "render_payload_json", "") or "")
         except (AttributeError, json.JSONDecodeError) as error:
             raise HTTPException(status_code=409, detail="The reserved leadership document data is unavailable") from error
         values["verification_id"] = document.verification_id
         required_field_names = REQUIRED_LEADERSHIP_TEMPLATE_FIELDS
     else:
-        if activity is None or activity.template_id is None:
-            raise HTTPException(status_code=409, detail="No certificate template is assigned to this document")
-        template = db.scalar(
-            select(Template).where(
-                Template.id == activity.template_id,
-                Template.approved.is_(True),
-                Template.archived.is_(False),
-            )
+        template_id = getattr(document, "template_id", None) or (
+            activity.template_id if activity is not None else None
         )
+        if template_id is None:
+            raise HTTPException(status_code=409, detail="No certificate template is assigned to this document")
+        template = db.scalar(select(Template).where(Template.id == template_id))
         if template is None:
             raise HTTPException(status_code=409, detail="The assigned certificate template is unavailable")
         fields = db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all()
-        values = {
-            "student_name": student.full_name,
-            "roll_number": student.roll_number,
-            "activity_name": activity.name,
-            "activity_date": activity.activity_date,
-            "issue_date": document.issue_date,
-            "verification_id": document.verification_id,
-        }
+        raw_values = getattr(document, "render_payload_json", None)
+        try:
+            values = json.loads(raw_values) if raw_values else {}
+        except json.JSONDecodeError as error:
+            raise HTTPException(status_code=409, detail="The reserved certificate data is unavailable") from error
+        if not values:
+            if activity is None:
+                raise HTTPException(status_code=409, detail="The reserved certificate data is unavailable")
+            values = {
+                "student_name": student.full_name,
+                "roll_number": student.roll_number,
+                "activity_name": activity.name,
+                "activity_date": activity.activity_date,
+                "issue_date": document.issue_date,
+            }
+        values["verification_id"] = document.verification_id
         required_field_names = None
     try:
         storage = SupabaseStorage()

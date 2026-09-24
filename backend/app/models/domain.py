@@ -227,6 +227,8 @@ class IssuedDocument(Timestamped, Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
     activity_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("activities.id"), index=True)
+    # Activity certificates retain the selected template even when the activity changes later.
+    template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("templates.id"), index=True)
     executive_membership_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("executive_memberships.id")
     )

@@ -32,6 +32,7 @@
 - Leadership-template list, upload, placeholder configuration, substituted preview, activation, deactivation, and archival are now consumed by the Super Admin UI.
 - The Admin document-discovery contract is provided and consumed for revoke/reissue selection.
 - The Executive Membership discovery/create/update contract is provided so role-matched memberships can be selected for leadership previews.
+- Activity certificate reservations now snapshot their selected template and rendering values. A later activity edit therefore cannot alter the content of an already-issued certificate; an Admin can reissue a corrected version through the existing document workflow.
 
 The frontend consumes server-side contracts and does not recreate role, signature, template, or issuance policy in the browser.
 
