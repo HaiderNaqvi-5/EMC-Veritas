@@ -3,9 +3,14 @@ from uuid import uuid4
 
 import pytest
 
-from app.models.domain import Student
+from app.models.domain import ActivityStatus, Student
 from app.schemas.operations import ActivityCreate, ActivityUpdate
-from app.services.activities import add_participant, create_activity, update_activity
+from app.services.activities import (
+    add_participant,
+    change_activity_status,
+    create_activity,
+    update_activity,
+)
 
 
 class FakeDatabase:
@@ -33,6 +38,41 @@ def test_create_and_update_activity() -> None:
     assert activity.name == "Updated"
     assert activity.description is None
     assert activity.activity_date == date(2026, 2, 2)
+
+
+def test_activity_update_preserves_template_when_not_provided() -> None:
+    db = FakeDatabase()
+    template_id = uuid4()
+    activity = create_activity(
+        db,
+        ActivityCreate(
+            session_id=uuid4(),
+            name="Welcome",
+            activity_date=date(2026, 2, 1),
+            template_id=template_id,
+        ),
+        uuid4(),
+    )
+
+    update_activity(db, activity, ActivityUpdate(name="Updated", activity_date=date(2026, 2, 2)))
+
+    assert activity.template_id == template_id
+
+
+def test_activity_status_must_follow_the_prd_lifecycle() -> None:
+    activity = create_activity(
+        FakeDatabase(),
+        ActivityCreate(session_id=uuid4(), name="Welcome", activity_date=date(2026, 2, 1)),
+        uuid4(),
+    )
+
+    change_activity_status(activity, ActivityStatus.READY)
+    activity.status = ActivityStatus.PUBLISHED
+    change_activity_status(activity, ActivityStatus.ARCHIVED)
+
+    assert activity.status is ActivityStatus.ARCHIVED
+    with pytest.raises(ValueError, match="only progress"):
+        change_activity_status(activity, ActivityStatus.READY)
 
 
 def test_add_participant_requires_existing_student() -> None:

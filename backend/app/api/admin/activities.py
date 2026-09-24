@@ -7,10 +7,16 @@ from sqlalchemy.orm import Session
 
 from app.api.admin.students import require_admin
 from app.db.session import get_db
-from app.models.domain import Activity, ActivityParticipant, ActivityStatus
-from app.schemas.operations import ActivityCreate, ActivityResponse, ActivityUpdate
+from app.models.domain import Activity, ActivityParticipant, ActivityStatus, Template
+from app.schemas.operations import (
+    ActivityCreate,
+    ActivityResponse,
+    ActivityUpdate,
+    ApprovedTemplateOption,
+)
 from app.services.activities import (
     add_participant,
+    change_activity_status,
     create_activity,
     list_activities,
     participants,
@@ -37,6 +43,18 @@ class ActivityStatusChange(BaseModel):
 @router.get("", response_model=list[ActivityResponse])
 def get_all(_: UUID = Depends(require_admin), db: Session = Depends(get_db)):
     return list_activities(db)
+
+
+@router.get("/templates", response_model=list[ApprovedTemplateOption])
+def list_approved_templates(
+    _: UUID = Depends(require_admin), db: Session = Depends(get_db)
+) -> list[Template]:
+    return list(
+        db.query(Template)
+        .filter(Template.approved.is_(True), Template.archived.is_(False))
+        .order_by(Template.name)
+        .all()
+    )
 
 
 @router.post("", response_model=ActivityResponse, status_code=status.HTTP_201_CREATED)
@@ -75,7 +93,7 @@ def add(activity_id: UUID, payload: ParticipantCreate, admin_id: UUID = Depends(
         item = add_participant(db, activity_id, payload.student_id, payload.eligible)
         record_audit_event(db, event_type="PARTICIPANT_ADDED", entity_type="activity_participant", entity_id=item.id, payload={"eligible": item.eligible}, actor_admin_id=admin_id)
         db.commit()
-        return {"id": str(item.id), "eligible": item.eligible}
+        return {"id": str(item.id), "student_id": str(item.student_id), "eligible": item.eligible}
     except LookupError:
         raise HTTPException(404, "Student not found")
     except IntegrityError:
@@ -88,7 +106,10 @@ def set_status(activity_id: UUID, payload: ActivityStatusChange, admin_id: UUID 
     item = db.get(Activity, activity_id)
     if item is None:
         raise HTTPException(404, "Activity not found")
-    item.status = payload.status
+    try:
+        change_activity_status(item, payload.status)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     record_audit_event(db, event_type="ACTIVITY_STATUS_CHANGED", entity_type="activity", entity_id=item.id, payload={"status": item.status.value}, actor_admin_id=admin_id)
     db.commit()
     db.refresh(item)
@@ -103,4 +124,4 @@ def set_eligibility(activity_id: UUID, participant_id: UUID, payload: Eligibilit
     item.eligible = payload.eligible
     record_audit_event(db, event_type="PARTICIPANT_ELIGIBILITY_CHANGED", entity_type="activity_participant", entity_id=item.id, payload={"eligible": item.eligible}, actor_admin_id=admin_id)
     db.commit()
-    return {"id": str(item.id), "eligible": item.eligible}
+    return {"id": str(item.id), "student_id": str(item.student_id), "eligible": item.eligible}

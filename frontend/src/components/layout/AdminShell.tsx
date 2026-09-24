@@ -3,27 +3,28 @@ import { ThemeToggle } from "./ThemeToggle";
 import { authApi } from "../../features/auth/contracts";
 
 const navigation = [
-  ["Overview", "/admin"],
-  ["Students", "/admin/students"],
-  ["Activities", "/admin/activities"],
-  ["Sessions", "/admin/sessions"],
-  ["Imports", "/admin/imports"],
-  ["Signatories", "/admin/signatories"],
-  ["Certificate templates", "/admin/templates"],
-  ["Leadership templates", "/admin/leadership-templates"],
-  ["Documents", "/admin/documents"],
-  ["Audit log", "/admin/audit"],
+  { label: "Overview", path: "/admin" },
+  { label: "Students", path: "/admin/students" },
+  { label: "Activities", path: "/admin/activities" },
+  { label: "Sessions", path: "/admin/sessions" },
+  { label: "Imports", path: "/admin/imports" },
+  { label: "Signatories", path: "/admin/signatories" },
+  { label: "Certificate templates", path: "/admin/templates", superAdmin: true },
+  { label: "Leadership templates", path: "/admin/leadership-templates", superAdmin: true },
+  { label: "Documents", path: "/admin/documents" },
+  { label: "Audit log", path: "/admin/audit", superAdmin: true },
 ];
 
-export function AdminShell() {
+export function AdminShell({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
   const navigate = useNavigate();
+  const visibleNavigation = navigation.filter((item) => !item.superAdmin || role === "SUPER_ADMIN");
   async function logout() { await authApi.logout(); navigate("/"); }
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-50">
       <aside className="fixed inset-y-0 hidden w-64 border-r border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 lg:block">
         <Brand />
         <nav aria-label="Admin navigation" className="mt-10 space-y-1">
-          {navigation.map(([label, path]) => <NavigationLink key={path} label={label} path={path} />)}
+          {visibleNavigation.map((item) => <NavigationLink key={item.path} label={item.label} path={item.path} />)}
         </nav>
       </aside>
       <div className="lg:pl-64">
@@ -32,7 +33,7 @@ export function AdminShell() {
           <div className="ml-auto flex items-center gap-4"><ThemeToggle /><button onClick={() => void logout()} className="text-sm underline">Sign out</button><div className="text-right"><p className="text-sm font-semibold">Admin portal</p><p className="text-xs text-slate-500">EMC Veritas</p></div></div>
         </header>
         <nav aria-label="Admin navigation" className="flex gap-2 overflow-x-auto border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 lg:hidden">
-          {navigation.map(([label, path]) => <NavigationLink key={path} label={label} path={path} />)}
+          {visibleNavigation.map((item) => <NavigationLink key={item.path} label={item.label} path={item.path} />)}
         </nav>
         <main className="mx-auto max-w-7xl p-4 sm:p-8"><Outlet /></main>
       </div>
@@ -41,7 +42,7 @@ export function AdminShell() {
 }
 
 function Brand({ compact = false }: { compact?: boolean }) {
-  return <div className="flex items-center gap-3"><div aria-label="EMC logo slot" className="grid h-10 w-10 place-items-center rounded-xl border border-dashed border-slate-400 text-xs font-bold text-slate-500">EMC</div>{!compact && <div><p className="font-bold">EMC Veritas</p><p className="text-xs text-slate-500">Admin workspace</p></div>}</div>;
+  return <div className="flex items-center gap-3"><img src="/assets/logos/emc-logo.png" alt="Event Management Club" className="h-10 w-10 rounded-xl object-contain" />{!compact && <div><p className="font-bold">EMC Veritas</p><p className="text-xs text-slate-500">Admin workspace</p></div>}</div>;
 }
 
 function NavigationLink({ label, path }: { label: string; path: string }) {

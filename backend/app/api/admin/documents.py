@@ -111,6 +111,8 @@ def issue_activity_documents(
     activity = db.get(Activity, activity_id)
     if activity is None or activity.status == ActivityStatus.ARCHIVED:
         raise HTTPException(status_code=404, detail="Activity not found")
+    if activity.status != ActivityStatus.READY:
+        raise HTTPException(status_code=409, detail="Only READY activities can be issued and published")
     if activity.template_id is None:
         raise HTTPException(status_code=409, detail="An approved certificate template is required before issue")
     template = db.scalar(

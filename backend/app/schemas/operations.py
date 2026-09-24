@@ -58,6 +58,11 @@ class ActivityResponse(ActivityCreate):
     status: str
 
 
+class ApprovedTemplateOption(APIModel):
+    id: UUID
+    name: str
+
+
 class ImportPreviewRow(APIModel):
     row_number: int
     roll_number: str | None
