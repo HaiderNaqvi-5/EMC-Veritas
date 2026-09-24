@@ -1,5 +1,5 @@
 import { FormEvent, type ReactNode, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   Area,
   AreaChart,
@@ -232,13 +232,17 @@ function SectionTitle({
     </div>
   );
 }
-function RecognitionChart() {
+function RecognitionChart({ theme }: { theme: "dark" | "light" }) {
+  const prefersReducedMotion = useReducedMotion();
+  const labelColor = theme === "dark" ? "#d9ddeb" : "#4b5563";
+  const lineColor = theme === "dark" ? "#e8b96c" : "#8d263b";
   return (
-    <div
-      className="mt-7 h-36 w-full"
+    <figure
+      className="landing-chart mt-7"
+      role="img"
       aria-label="Illustration of a personal recognition journey"
     >
-      <ResponsiveContainer>
+      <ResponsiveContainer height={144}>
         <AreaChart
           data={journey}
           margin={{ top: 8, right: 6, left: -26, bottom: 0 }}
@@ -251,7 +255,7 @@ function RecognitionChart() {
           </defs>
           <XAxis
             dataKey="stage"
-            tick={{ fill: "#d9ddeb", fontSize: 11 }}
+            tick={{ fill: labelColor, fontSize: 11, fontWeight: 600 }}
             axisLine={false}
             tickLine={false}
           />
@@ -260,14 +264,17 @@ function RecognitionChart() {
           <Area
             type="monotone"
             dataKey="value"
-            stroke="#e8b96c"
-            strokeWidth={2}
+            stroke={lineColor}
+            strokeWidth={2.5}
             fill="url(#journeyGradient)"
-            isAnimationActive
+            isAnimationActive={!prefersReducedMotion}
           />
         </AreaChart>
       </ResponsiveContainer>
-    </div>
+      <figcaption>
+        A clear path from event participation to a verified record.
+      </figcaption>
+    </figure>
   );
 }
 
@@ -511,11 +518,11 @@ export function StudentPortal() {
             <h2 className="landing-title mt-3 text-4xl">
               A timeline worth keeping.
             </h2>
-            <p className="mt-4 max-w-lg leading-7 text-slate-300">
+            <p className="landing-journey-copy mt-4 max-w-lg leading-7 text-slate-300">
               From taking part in an event to receiving official recognition,
               Veritas keeps your achievements connected.
             </p>
-            <RecognitionChart />
+            <RecognitionChart theme={theme} />
           </div>
           <div className="relative mt-8 hidden min-h-56 md:mt-0 md:block">
             <div className="absolute inset-8 rotate-6 rounded border border-[#e5bf79]/45 bg-[#ede2c5] shadow-2xl" />
@@ -584,12 +591,12 @@ export function StudentPortal() {
             <h2 className="landing-title mt-3 text-4xl">
               Official. Verifiable. Yours.
             </h2>
-            <p className="mt-4 max-w-2xl leading-7 text-slate-300">
+            <p className="landing-verify-copy mt-4 max-w-2xl leading-7 text-slate-300">
               Every certificate and recognition letter issued through EMC
               Veritas has a unique verification record, making it easy to
               confirm its authenticity.
             </p>
-            <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#e8c172]">
+            <span className="landing-verify-action mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#e8c172]">
               Open document verification <Arrow />
             </span>
           </div>
@@ -617,7 +624,7 @@ export function StudentPortal() {
               </p>
             </div>
           </div>
-          <div className="flex gap-6 text-sm text-slate-300">
+          <div className="landing-footer-links flex gap-6 text-sm text-slate-300">
             <a href="#how-it-works">How it works</a>
             <a href="#document-types">Document types</a>
             <Link to="/verify">Verify</Link>
