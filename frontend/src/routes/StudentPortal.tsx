@@ -1,13 +1,5 @@
 import { FormEvent, type ReactNode, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
-import {
-  Area,
-  AreaChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -21,12 +13,6 @@ import { Button } from "../components/ui/Button";
 import { Skeleton } from "../components/ui/Skeleton";
 import { canonicalRollNumber } from "../lib/utils";
 
-const journey = [
-  { stage: "Event", value: 28 },
-  { stage: "Certificate", value: 52 },
-  { stage: "Recognition", value: 74 },
-  { stage: "Verified", value: 100 },
-];
 function Arrow() {
   return (
     <svg
@@ -163,20 +149,16 @@ function CertificatePreview() {
 }
 function RecognitionCanvas() {
   return (
-    <div className="recognition-canvas" aria-label="EMC Veritas recognition experience">
-      <motion.div className="recognition-orbit recognition-orbit--one" animate={{ rotate: 360 }} transition={{ duration: 38, ease: "linear", repeat: Infinity }} />
-      <motion.div className="recognition-orbit recognition-orbit--two" animate={{ rotate: -360 }} transition={{ duration: 29, ease: "linear", repeat: Infinity }} />
-      <motion.div className="recognition-ticket" initial={{ opacity: 0, y: 28, rotate: -7 }} animate={{ opacity: 1, y: 0, rotate: -4 }} transition={{ duration: .8, delay: .15 }}>
-        <p>EMC VERITAS · NFC-IET MULTAN</p><strong>Recognition, made tangible.</strong><span>YOUR CONTRIBUTION DESERVES A LASTING RECORD</span>
-      </motion.div>
-      <motion.div className="recognition-certificate" initial={{ opacity: 0, y: 36, rotate: 5 }} animate={{ opacity: 1, y: 0, rotate: 2 }} transition={{ duration: .9, delay: .25 }}>
-        <div className="recognition-certificate__top"><img src="/assets/logos/emc-logo-dark.png" alt="" /><span>EMC VERITAS</span></div>
-        <p className="recognition-certificate__eyebrow">OFFICIAL RECOGNITION</p>
-        <h2>Certificate of<br />Participation</h2><div className="recognition-line" /><p className="recognition-name">Your story, recognised.</p>
-        <div className="recognition-certificate__footer"><span>Authentic record</span><VeritasSeal small /></div>
-      </motion.div>
-      <motion.div className="recognition-stamp" animate={{ y: [0, -9, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}><Shield /><span>VERIFIED<br />BY EMC</span></motion.div>
-    </div>
+    <motion.aside className="record-preview" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .55, delay: .12 }} aria-label="Example recognition record">
+      <div className="record-preview__header"><span>EMC VERITAS</span><span>RECORD / 001</span></div>
+      <div className="record-preview__body">
+        <p className="landing-eyebrow">Recognition archive</p>
+        <h2>One place for work that deserves to be remembered.</h2>
+        <p>Search by roll number. Keep your official records close. Verify them when they matter.</p>
+      </div>
+      <div className="record-preview__footer"><span><Shield /> Verified record</span><VeritasSeal small /></div>
+      <div className="record-preview__rule" />
+    </motion.aside>
   );
 }
 function DocumentList({ documents }: { documents: PublicDocument[] }) {
@@ -232,52 +214,6 @@ function SectionTitle({
     </div>
   );
 }
-function RecognitionChart({ theme }: { theme: "dark" | "light" }) {
-  const prefersReducedMotion = useReducedMotion();
-  const labelColor = theme === "dark" ? "#d9ddeb" : "#4b5563";
-  const lineColor = theme === "dark" ? "#e8b96c" : "#8d263b";
-  return (
-    <figure
-      className="landing-chart mt-7"
-      role="img"
-      aria-label="Illustration of a personal recognition journey"
-    >
-      <ResponsiveContainer height={144}>
-        <AreaChart
-          data={journey}
-          margin={{ top: 8, right: 6, left: -26, bottom: 0 }}
-        >
-          <defs>
-            <linearGradient id="journeyGradient" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#c92b45" stopOpacity={0.5} />
-              <stop offset="100%" stopColor="#c92b45" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <XAxis
-            dataKey="stage"
-            tick={{ fill: labelColor, fontSize: 11, fontWeight: 600 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis hide domain={[0, 105]} />
-          <Tooltip cursor={false} contentStyle={{ display: "none" }} />
-          <Area
-            type="monotone"
-            dataKey="value"
-            stroke={lineColor}
-            strokeWidth={2.5}
-            fill="url(#journeyGradient)"
-            isAnimationActive={!prefersReducedMotion}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-      <figcaption>
-        A clear path from event participation to a verified record.
-      </figcaption>
-    </figure>
-  );
-}
-
 export function StudentPortal() {
   const [theme, setTheme] = useState<"dark" | "light">("light");
   const [submittedRollNumber, setSubmittedRollNumber] = useState<string | null>(
@@ -463,79 +399,42 @@ export function StudentPortal() {
           <RecognitionCanvas />
         </div>
       </section>
-      <div className="landing-marquee" aria-hidden="true"><div>EMC VERITAS <i>✦</i> RECOGNITION THAT LASTS <i>✦</i> YOUR WORK HAS A STORY <i>✦</i> EMC VERITAS <i>✦</i> RECOGNITION THAT LASTS</div></div>
-      <section id="document-types" className="landing-shell py-20">
+      <section id="document-types" className="landing-shell py-24">
         <SectionTitle
-          eyebrow="What you can find here"
-          title="Recognition that stays with you."
-          copy="Every record is organised in one official place—ready whenever you need it."
+          eyebrow="The archive"
+          title="Records with a clear purpose."
+          copy="Veritas is not a gallery. Each record exists to help you prove the work you have done."
         />
-        <div className="mt-12 grid gap-5 md:grid-cols-3">
+        <div className="record-index mt-12">
           {[
             [
               "Participation certificates",
-              "Official proof of your valuable participation in EMC events and activities.",
-              "Participation",
+              "Proof that you were part of an EMC activity.",
+              "01",
             ],
             [
               "Appreciation certificates",
-              "Recognition for your dedication and meaningful contribution to EMC.",
-              "Appreciation",
+              "Recognition for dedication beyond attendance.",
+              "02",
             ],
             [
               "Leadership recognition",
-              "Recognition letters for leadership roles and exceptional commitment.",
-              "Leadership",
+              "A formal record of responsibility and service.",
+              "03",
             ],
-          ].map(([title, copy, type], index) => (
-            <motion.article
+          ].map(([title, copy, number], index) => (
+            <motion.div
               key={title}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
-              whileHover={{ y: -8, transition: { duration: 0.22 } }}
               viewport={{ once: true, amount: 0.2 }}
               transition={{ delay: index * 0.1 }}
-              className="landing-document-card"
+              className="record-index__row"
             >
-              <div className="certificate-mini">
-                <p>EMC Veritas</p>
-                <strong>{type}</strong>
-                <VeritasSeal small />
-              </div>
-              <h3>{title}</h3>
-              <p>{copy}</p>
-              <button type="button" onClick={scrollToLookup}>
-                Find yours <Arrow />
-              </button>
-            </motion.article>
+              <span>{number}</span><h3>{title}</h3><p>{copy}</p>
+              <button type="button" onClick={scrollToLookup} aria-label={`Find ${title.toLowerCase()}`}><Arrow /></button>
+            </motion.div>
           ))}
-        </div>
-      </section>
-      <section className="landing-shell py-7">
-        <div className="landing-journey grid overflow-hidden rounded-3xl border border-white/10 p-7 md:grid-cols-[1.1fr_.9fr] md:p-10">
-          <div>
-            <p className="landing-eyebrow">Your recognition journey</p>
-            <h2 className="landing-title mt-3 text-4xl">
-              A timeline worth keeping.
-            </h2>
-            <p className="landing-journey-copy mt-4 max-w-lg leading-7 text-slate-300">
-              From taking part in an event to receiving official recognition,
-              Veritas keeps your achievements connected.
-            </p>
-            <RecognitionChart theme={theme} />
-          </div>
-          <div className="relative mt-8 hidden min-h-56 md:mt-0 md:block">
-            <div className="absolute inset-8 rotate-6 rounded border border-[#e5bf79]/45 bg-[#ede2c5] shadow-2xl" />
-            <div className="absolute inset-x-4 inset-y-4 -rotate-3 rounded border border-[#e5bf79]/60 bg-[#fbf4e5] p-7 text-[#402d2a] shadow-2xl">
-              <p className="text-[10px] tracking-[.17em]">EMC VERITAS</p>
-              <p className="mt-8 font-serif text-3xl leading-tight">
-                Recognition builds brighter futures.
-              </p>
-              <div className="absolute bottom-5 right-6">
-                <VeritasSeal small />
-              </div>
-            </div>
-          </div>
         </div>
       </section>
       <section id="how-it-works" className="landing-shell py-24">
