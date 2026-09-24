@@ -245,6 +245,7 @@ function RecognitionChart() {
 }
 
 export function StudentPortal() {
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [submittedRollNumber, setSubmittedRollNumber] = useState<string | null>(
     null,
   );
@@ -290,11 +291,11 @@ export function StudentPortal() {
       .getElementById("document-lookup")
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
   return (
-    <main className="landing-page overflow-hidden bg-[#071426] text-white">
+    <main className={`landing-page landing-page--${theme} overflow-hidden`}>
       <header className="landing-header">
         <a href="#top" className="flex items-center gap-3">
           <img
-            src="/assets/logos/emc-logo.png"
+            src={theme === "dark" ? "/assets/logos/emc-logo-dark.png" : "/assets/logos/emc-logo.png"}
             alt="Event Management Club"
             className="h-11 w-11 object-contain"
           />
@@ -313,9 +314,20 @@ export function StudentPortal() {
           <a href="#document-types">Document types</a>
           <Link to="/verify">Verify</Link>
         </nav>
-        <a href="#document-lookup" className="landing-login-link">
-          Admin sign in <Arrow />
-        </a>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
+            className="landing-theme-toggle"
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+          >
+            <span aria-hidden="true">{theme === "dark" ? "☼" : "◐"}</span>
+            <span className="hidden sm:inline">{theme === "dark" ? "Light" : "Dark"}</span>
+          </button>
+          <a href="#document-lookup" className="landing-login-link">
+            Admin sign in <Arrow />
+          </a>
+        </div>
       </header>
       <section id="top" className="landing-hero relative">
         <div className="landing-hero-grid" />
@@ -574,7 +586,7 @@ export function StudentPortal() {
         <div className="landing-shell flex flex-col gap-8 py-10 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
             <img
-              src="/assets/logos/emc-logo.png"
+              src={theme === "dark" ? "/assets/logos/emc-logo-dark.png" : "/assets/logos/emc-logo.png"}
               alt="Event Management Club"
               className="h-11 w-11 object-contain"
             />
