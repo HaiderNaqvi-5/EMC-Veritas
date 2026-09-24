@@ -1,6 +1,5 @@
 from datetime import date
 from io import BytesIO
-from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -10,7 +9,7 @@ from reportlab.pdfgen.canvas import Canvas
 
 from app.models.domain import DocumentStatus, DocumentType, IssuedDocument
 from app.services.documents.lifecycle import DocumentLifecycleError, generate_on_first_download
-from app.services.documents.rendering import render_certificate
+from app.services.documents.rendering import _insert_text, render_certificate
 
 
 def _blank_template() -> bytes:
@@ -191,29 +190,35 @@ def test_renderer_honors_configured_bundled_font_and_color() -> None:
     assert "Ayesha Khan" in rendered[0].get_text()
 
 
-def test_renderer_honors_uploaded_ttf_font() -> None:
-    font_path = Path("/usr/share/fonts/Adwaita/AdwaitaSans-Regular.ttf")
-    assert font_path.exists(), "The test environment must provide the bundled Adwaita font"
+def test_renderer_registers_uploaded_ttf_font_without_host_font_dependency(monkeypatch) -> None:
+    class _CustomFont:
+        def __init__(self, *, fontbuffer: bytes) -> None:
+            assert fontbuffer == b"test-font-bytes"
+
+        def text_length(self, text: str, fontsize: float) -> float:
+            return len(text) * fontsize
+
+    class _Page:
+        def __init__(self) -> None:
+            self.registered_fonts: list[dict[str, object]] = []
+            self.inserted_text: list[dict[str, object]] = []
+
+        def insert_font(self, **kwargs: object) -> None:
+            self.registered_fonts.append(kwargs)
+
+        def insert_text(self, point: fitz.Point, value: str, **kwargs: object) -> None:
+            self.inserted_text.append({"point": point, "value": value, **kwargs})
+
+    monkeypatch.setattr("app.services.documents.rendering.fitz.Font", _CustomFont)
     custom_font_key = "templates/example/fonts/adwaita.ttf"
     field = _field("student_name", 150, 160)
     field.font_family = "custom"
     field.custom_font_storage_key = custom_font_key
-    output = render_certificate(
-        _blank_template(),
-        [
-            field,
-            _field("roll_number", 150, 210),
-            _field("activity_name", 150, 260),
-            _field("activity_date", 150, 310),
-        ],
-        {
-            "student_name": "Ayesha Khan",
-            "roll_number": "FA21-BCS-001",
-            "activity_name": "Welcome Week",
-            "activity_date": date(2026, 9, 1),
-        },
-        verification_url="https://portal.example.edu/verify/EMC-TEST123",
-        custom_fonts={custom_font_key: font_path.read_bytes()},
-    )
-    rendered = fitz.open(stream=output, filetype="pdf")
-    assert "Ayesha Khan" in rendered[0].get_text()
+    page = _Page()
+
+    _insert_text(page, field, "Ayesha Khan", {custom_font_key: b"test-font-bytes"})
+
+    assert page.registered_fonts[0]["fontbuffer"] == b"test-font-bytes"
+    assert str(page.registered_fonts[0]["fontname"]).startswith("EMCF")
+    assert page.inserted_text[0]["value"] == "Ayesha Khan"
+    assert page.inserted_text[0]["fontname"] == page.registered_fonts[0]["fontname"]
