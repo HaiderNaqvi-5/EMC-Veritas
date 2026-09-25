@@ -314,7 +314,7 @@ export function StudentPortal() {
           />
           <span>
             <span className="font-serif text-xl">EMC Veritas</span>
-            <span className="mt-0.5 block text-[8px] font-semibold tracking-[.16em] text-slate-300">
+            <span className="mt-0.5 block text-[10px] font-semibold tracking-[.12em] text-slate-300">
               EVENT MANAGEMENT CLUB · NFC-IET MULTAN
             </span>
           </span>
@@ -503,7 +503,7 @@ export function StudentPortal() {
               Use the document’s verification route whenever a faculty member,
               employer, or society needs confirmation of an issued record.
             </p>
-            <span className="verification-section__proof">Enter the verification ID printed beside the document QR code</span>
+            <span className="verification-section__proof">The verification screen confirms holder, record type, issue date, and current status</span>
             <span className="landing-verify-action mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#e8c172]">Open verification <Arrow /></span>
           </div>
         </Link>
@@ -529,7 +529,7 @@ export function StudentPortal() {
             />
             <div>
               <p className="font-serif text-xl">EMC Veritas</p>
-              <p className="text-[8px] font-semibold tracking-[.14em] text-slate-400">
+              <p className="text-[10px] font-semibold tracking-[.12em] text-slate-400">
                 EVENT MANAGEMENT CLUB · NFC-IET MULTAN
               </p>
               <p className="landing-footer-note">Student recognition archive · issued by EMC</p>
