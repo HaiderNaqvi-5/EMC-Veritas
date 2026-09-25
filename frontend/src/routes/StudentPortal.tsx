@@ -194,25 +194,6 @@ function ResultSkeleton() {
     </section>
   );
 }
-function SectionTitle({
-  eyebrow,
-  title,
-  copy,
-}: {
-  eyebrow: string;
-  title: string;
-  copy?: string;
-}) {
-  return (
-    <div className="mx-auto max-w-2xl text-center">
-      <p className="landing-eyebrow">{eyebrow}</p>
-      <h2 className="landing-title mt-3">{title}</h2>
-      {copy && (
-        <p className="mt-4 text-base leading-7 text-slate-300">{copy}</p>
-      )}
-    </div>
-  );
-}
 const archiveChapters = [
   {
     number: "01",
@@ -248,7 +229,7 @@ function ArchiveStory() {
         <div className="archive-story__sticky">
           <p className="landing-eyebrow">The archive, in motion</p>
           <p className="archive-story__count">0{active + 1}<span> / 03</span></p>
-          <h2>{current.title}</h2>
+          <h2 aria-live="polite">{current.title}</h2>
           <p>{current.copy}</p>
           <div className="archive-story__progress" aria-hidden="true">
             {archiveChapters.map((chapter, index) => <i key={chapter.number} className={index <= active ? "is-active" : ""} />)}
@@ -356,9 +337,9 @@ export function StudentPortal() {
             <span aria-hidden="true">{theme === "dark" ? "☼" : "◐"}</span>
             <span className="hidden sm:inline">{theme === "dark" ? "Light" : "Dark"}</span>
           </button>
-          <a href="#document-lookup" className="landing-login-link">
-            Admin sign in <Arrow />
-          </a>
+          <Link to="/verify" className="landing-login-link">
+            Verify a record <Arrow />
+          </Link>
         </div>
       </header>
       <section id="top" className="landing-hero relative">
@@ -460,13 +441,15 @@ export function StudentPortal() {
         </div>
       </section>
       <ArchiveStory />
-      <section id="how-it-works" className="landing-shell py-24">
-        <SectionTitle
-          eyebrow="How the archive works"
-          title="Built for the moment you need proof."
-          copy="A quiet, direct path from an EMC activity to a record you can retrieve and validate."
-        />
-        <div className="record-flow mt-14">
+      <section id="how-it-works" className="landing-shell journey-section py-28">
+        <div className="journey-section__intro">
+          <div>
+            <p className="landing-eyebrow">From activity to proof</p>
+            <h2 className="landing-title mt-3">A record should be easy to use when it matters.</h2>
+          </div>
+          <p>Veritas turns an EMC contribution into something you can retrieve, share, and verify without chasing old messages or folders.</p>
+        </div>
+        <div className="record-flow mt-16">
           {[
             [
               "01",
@@ -505,37 +488,35 @@ export function StudentPortal() {
           ))}
         </div>
       </section>
-      <section id="verify" className="landing-shell pb-24">
+      <section id="verify" className="landing-shell verification-section pb-28">
         <Link
           to="/verify"
           className="landing-verify grid items-center gap-8 rounded-3xl border border-[#e7c577]/20 p-7 md:grid-cols-[auto_1fr] md:p-10"
         >
           <VerificationMark />
           <div>
-            <p className="landing-eyebrow">Verify a document</p>
+            <p className="landing-eyebrow">Document verification</p>
             <h2 className="landing-title mt-3 text-4xl">
-              Official. Verifiable. Yours.
+              Check the record, not just the certificate.
             </h2>
             <p className="landing-verify-copy mt-4 max-w-2xl leading-7 text-slate-300">
-              Every certificate and recognition letter issued through EMC
-              Veritas has a unique verification record, making it easy to
-              confirm its authenticity.
+              Use the document’s verification route whenever a faculty member,
+              employer, or society needs confirmation of an issued record.
             </p>
-            <span className="landing-verify-action mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#e8c172]">
-              Open document verification <Arrow />
-            </span>
+            <span className="verification-section__proof">Issued by EMC · independently checkable</span>
+            <span className="landing-verify-action mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#e8c172]">Open verification <Arrow /></span>
           </div>
         </Link>
       </section>
-      <section className="landing-closing">
+      <section className="landing-closing" aria-labelledby="archive-closing-title">
         <div className="landing-shell landing-closing__inner">
           <div>
-            <p className="landing-eyebrow">EMC Veritas · NFC-IET Multan</p>
-            <h2 className="landing-closing__quote">Your contribution is part of<br /><em>the club&apos;s record now.</em></h2>
-            <p className="landing-closing__copy">When you need to show what you did, your record is here—not buried in a chat, an old drive, or a forgotten event folder.</p>
-            <button type="button" onClick={scrollToLookup} className="landing-closing__action">Find my records <Arrow /></button>
+            <p className="landing-eyebrow">Keep the work within reach</p>
+            <h2 id="archive-closing-title" className="landing-closing__quote">Your contribution deserves <em>a place you can return to.</em></h2>
+            <p className="landing-closing__copy">Search when you need your record. Verify it when someone else needs confidence in it.</p>
+            <button type="button" onClick={scrollToLookup} className="landing-closing__action">Find my record <Arrow /></button>
           </div>
-          <div className="landing-closing__seal"><VeritasSeal /></div>
+          <div className="landing-closing__note"><span>EMC VERITAS</span><strong>Student recognition<br />archive</strong><p>Issued records. Clear proof.</p></div>
         </div>
       </section>
       <footer className="border-t border-white/10">
@@ -551,6 +532,7 @@ export function StudentPortal() {
               <p className="text-[8px] font-semibold tracking-[.14em] text-slate-400">
                 EVENT MANAGEMENT CLUB · NFC-IET MULTAN
               </p>
+              <p className="landing-footer-note">Student recognition archive · issued by EMC</p>
             </div>
           </div>
           <div className="landing-footer-links flex gap-6 text-sm text-slate-300">
@@ -558,11 +540,7 @@ export function StudentPortal() {
             <a href="#document-types">Document types</a>
             <Link to="/verify">Verify</Link>
           </div>
-          <img
-            src="/assets/logos/nfc-iet-logo.png"
-            alt="NFC-IET Multan"
-            className="h-12 w-12 object-contain"
-          />
+          <div className="landing-nfc-mark"><img src="/assets/logos/nfc-iet-logo.png" alt="NFC-IET Multan" className="h-12 w-12 object-contain" /><span>NFC-IET<br />MULTAN</span></div>
         </div>
       </footer>
       {adminRollNumber && (
