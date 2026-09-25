@@ -258,7 +258,7 @@ function ArchiveStory() {
   );
 }
 export function StudentPortal() {
-  const [theme, setTheme] = useState<"dark" | "light">("light");
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [submittedRollNumber, setSubmittedRollNumber] = useState<string | null>(
     null,
   );
