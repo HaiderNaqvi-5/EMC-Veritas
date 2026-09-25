@@ -213,6 +213,69 @@ function SectionTitle({
     </div>
   );
 }
+const archiveChapters = [
+  {
+    number: "01",
+    kicker: "The moment",
+    title: "An EMC activity becomes a record.",
+    copy: "The archive starts with the work itself: an event, a contribution, and the role you played in making it happen.",
+    type: "Participation",
+    detail: "Event involvement",
+  },
+  {
+    number: "02",
+    kicker: "The recognition",
+    title: "Issued when it is official.",
+    copy: "Recognition is recorded by EMC only when it has been issued—not as a claim, a badge, or a social post.",
+    type: "Appreciation",
+    detail: "Recognised contribution",
+  },
+  {
+    number: "03",
+    kicker: "The proof",
+    title: "Useful beyond the event itself.",
+    copy: "A record remains easy to find, download, and verify when someone needs to confirm what you did.",
+    type: "Leadership",
+    detail: "Verifiable role record",
+  },
+];
+function ArchiveStory() {
+  const [active, setActive] = useState(0);
+  const current = archiveChapters[active];
+  return (
+    <section id="document-types" className="archive-story">
+      <div className="landing-shell archive-story__grid">
+        <div className="archive-story__sticky">
+          <p className="landing-eyebrow">The archive, in motion</p>
+          <p className="archive-story__count">0{active + 1}<span> / 03</span></p>
+          <h2>{current.title}</h2>
+          <p>{current.copy}</p>
+          <div className="archive-story__progress" aria-hidden="true">
+            {archiveChapters.map((chapter, index) => <i key={chapter.number} className={index <= active ? "is-active" : ""} />)}
+          </div>
+        </div>
+        <div className="archive-story__chapters">
+          {archiveChapters.map((chapter, index) => (
+            <motion.article
+              key={chapter.number}
+              className={`archive-story__chapter ${index === active ? "is-active" : ""}`}
+              initial={{ opacity: 0, y: 38 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ amount: 0.6 }}
+              onViewportEnter={() => setActive(index)}
+              transition={{ duration: .7, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <span>{chapter.number}</span>
+              <p>{chapter.kicker}</p>
+              <h3>{chapter.title}</h3>
+              <div className="archive-story__record"><div><small>RECORD TYPE</small><strong>{chapter.type}</strong><em>{chapter.detail}</em></div><VerificationMark /></div>
+            </motion.article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
 export function StudentPortal() {
   const [theme, setTheme] = useState<"dark" | "light">("light");
   const [submittedRollNumber, setSubmittedRollNumber] = useState<string | null>(
@@ -396,44 +459,7 @@ export function StudentPortal() {
           <RecognitionCanvas />
         </div>
       </section>
-      <section id="document-types" className="landing-shell py-24">
-        <SectionTitle
-          eyebrow="The archive"
-          title="Records with a clear purpose."
-          copy="Veritas is not a gallery. Each record exists to help you prove the work you have done."
-        />
-        <div className="record-index mt-12">
-          {[
-            [
-              "Participation certificates",
-              "Proof that you were part of an EMC activity.",
-              "01",
-            ],
-            [
-              "Appreciation certificates",
-              "Recognition for dedication beyond attendance.",
-              "02",
-            ],
-            [
-              "Leadership recognition",
-              "A formal record of responsibility and service.",
-              "03",
-            ],
-          ].map(([title, copy, number], index) => (
-            <motion.div
-              key={title}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.2 }}
-              transition={{ delay: index * 0.1 }}
-              className="record-index__row"
-            >
-              <span>{number}</span><h3>{title}</h3><p>{copy}</p>
-              <button type="button" onClick={scrollToLookup} aria-label={`Find ${title.toLowerCase()}`}><Arrow /></button>
-            </motion.div>
-          ))}
-        </div>
-      </section>
+      <ArchiveStory />
       <section id="how-it-works" className="landing-shell py-24">
         <SectionTitle
           eyebrow="How the archive works"
