@@ -24,3 +24,4 @@ frontend/vite.config.d.ts
 !docs/*.pdf
 uploads/
 rendered/
+venv/
