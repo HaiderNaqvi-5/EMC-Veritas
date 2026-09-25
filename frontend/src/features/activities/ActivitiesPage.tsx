@@ -2,7 +2,6 @@ import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { apiRequest } from "../../lib/api/client";
-import { approveTemplate, configureTemplate, TemplateField, uploadTemplate } from "../../api/templates/admin";
 
 type Activity = {
   id: string;
@@ -34,7 +33,7 @@ export function ActivitiesPage() {
   const [sessionId, setSessionId] = useState("");
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
-  const [certificateFile, setCertificateFile] = useState<File | null>(null);
+  const [templateId, setTemplateId] = useState("");
   const [activityId, setActivityId] = useState("");
   const [studentId, setStudentId] = useState("");
   const [participantFile, setParticipantFile] = useState<File | null>(null);
@@ -72,27 +71,20 @@ export function ActivitiesPage() {
     mutationFn: async () => {
       const activity = await apiRequest<Activity>("/admin/activities", {
         method: "POST",
-        body: JSON.stringify({ session_id: sessionId, name, activity_date: date }),
+        body: JSON.stringify({
+          session_id: sessionId,
+          name,
+          activity_date: date,
+          template_id: templateId,
+        }),
       });
       void refreshActivities();
-      if (certificateFile) {
-        try {
-          const template = await uploadTemplate(`${name} certificate`, certificateFile);
-          const fields: TemplateField[] = ["student_name", "roll_number", "activity_name", "activity_date"].map((field_name, index) => ({ field_name, page_number: 1, x: 100, y: 160 + index * 55, width: 300, height: 30 }));
-          await configureTemplate(template.id, fields, "retain");
-          await approveTemplate(template.id);
-          await apiRequest<Activity>(`/admin/activities/${activity.id}`, { method: "PUT", body: JSON.stringify({ name: activity.name, description: activity.description, activity_date: activity.activity_date, template_id: template.id }) });
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : "Certificate setup could not be completed.";
-          throw new Error(`Activity \"${activity.name}\" was created, but its certificate PDF was not attached. ${detail}`);
-        }
-      }
       return activity;
     },
     onSuccess: () => {
       setName("");
       setDate("");
-      setCertificateFile(null);
+      setTemplateId("");
       void refreshActivities();
     },
   });
@@ -146,16 +138,6 @@ export function ActivitiesPage() {
       apiRequest(`/admin/documents/activities/${id}/issue`, { method: "POST" }),
     onSuccess: () => void refreshActivities(),
   });
-  const attachCertificate = useMutation({
-    mutationFn: async ({ activity, file }: { activity: Activity; file: File }) => {
-      const template = await uploadTemplate(`${activity.name} certificate`, file);
-      const fields: TemplateField[] = ["student_name", "roll_number", "activity_name", "activity_date"].map((field_name, index) => ({ field_name, page_number: 1, x: 100, y: 160 + index * 55, width: 300, height: 30 }));
-      await configureTemplate(template.id, fields, "retain");
-      await approveTemplate(template.id);
-      return apiRequest<Activity>(`/admin/activities/${activity.id}`, { method: "PUT", body: JSON.stringify({ name: activity.name, description: activity.description, activity_date: activity.activity_date, template_id: template.id }) });
-    },
-    onSuccess: () => void refreshActivities(),
-  });
   const remove = useMutation({ mutationFn: (id: string) => apiRequest<void>(`/admin/activities/${id}`, { method: "DELETE" }), onSuccess: () => { setViewId(""); void refreshActivities(); } });
   const participantImport = useMutation({ mutationFn: async () => { const data = new FormData(); data.set("file", participantFile as File); return apiRequest<{ added: number; already_present: number; unknown_roll_numbers: string[] }>(`/admin/imports/activities/${activityId}/participants/import`, { method: "POST", body: data }); }, onSuccess: () => { setParticipantFile(null); setViewId(activityId); void refreshParticipants(); } });
   const error =
@@ -165,11 +147,11 @@ export function ActivitiesPage() {
     add.error?.message ??
     eligibility.error?.message ??
     issue.error?.message ??
-    attachCertificate.error?.message ??
     remove.error?.message ??
     participantImport.error?.message ??
     participants.error?.message ??
-    sessions.error?.message;
+    sessions.error?.message ??
+    templates.error?.message;
   // Keep participant name lookup O(n) even for large activity lists.
   const studentMap = useMemo(
     () =>
@@ -239,15 +221,36 @@ export function ActivitiesPage() {
           onChange={(e) => setDate(e.target.value)}
           className="rounded border p-2"
         />
-        <input required accept="application/pdf" type="file" onChange={(event) => setCertificateFile(event.target.files?.[0] ?? null)} className="rounded border p-2" />
+        <select
+          aria-label="Approved certificate template"
+          required
+          value={templateId}
+          onChange={(event) => setTemplateId(event.target.value)}
+          className="rounded border p-2"
+        >
+          <option value="">Choose approved certificate template</option>
+          {templates.data?.map((template) => (
+            <option key={template.id} value={template.id}>
+              {template.name}
+            </option>
+          ))}
+        </select>
         <button
-          disabled={create.isPending || !activeSessions.length}
+          disabled={
+            create.isPending ||
+            !activeSessions.length ||
+            !templateId ||
+            templates.isLoading
+          }
           className="rounded bg-slate-900 p-2 text-white disabled:cursor-not-allowed disabled:opacity-60"
         >
           Create activity
         </button>
       </form>
-      <p className="mt-2 text-sm text-slate-500">A certificate PDF is required here and is automatically attached, configured, and approved for this activity.</p>
+      <p className="mt-2 text-sm text-slate-500">Choose an approved template created in Certificate templates. Templates are immutable once approved, so every issued record uses the deliberate design you selected.</p>
+      {templates.isSuccess && !templates.data?.length && (
+        <p className="mt-2 text-sm text-amber-700">Create, configure, and approve a certificate template before creating an activity.</p>
+      )}
       {sessions.isSuccess && !activeSessions.length && (
         <p className="mt-2 text-sm text-slate-500">
           Create or activate an EMC session before adding an activity.
@@ -337,7 +340,7 @@ export function ActivitiesPage() {
                     Issue and publish certificates
                   </button>
                 </div>
-                {!item.template_id && <label className="mt-3 flex max-w-xl flex-wrap items-center gap-3 rounded border p-3 text-sm">Attach certificate PDF<input required accept="application/pdf" type="file" disabled={attachCertificate.isPending} onChange={(event) => { const file = event.target.files?.[0]; if (file) attachCertificate.mutate({ activity: item, file }); event.currentTarget.value = ""; }} className="rounded border p-2"/><span className="text-slate-500 dark:text-slate-400">Upload and attach this activity’s certificate without creating another activity.</span></label>}
+                {!item.template_id && <p className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">No certificate template is attached. Use Edit activity below to select an approved template before moving this activity to READY.</p>}
                 <details className="mt-3">
                   <summary className="cursor-pointer text-sm underline">
                     Edit activity
