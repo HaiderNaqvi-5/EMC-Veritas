@@ -72,6 +72,7 @@ function VerificationMark() {
 function VeritasSeal({ small = false }: { small?: boolean }) {
   return (
     <div
+      role="img"
       aria-label="EMC Veritas seal"
       className={`grid place-items-center rounded-full border border-[#f1c576]/60 bg-[#a91f35] text-center text-[#ffe6b0] shadow-[0_0_0_5px_rgba(169,31,53,.2)] ${small ? "h-12 w-12" : "h-20 w-20"}`}
     >
@@ -149,7 +150,7 @@ function CertificatePreview() {
 }
 function RecognitionCanvas() {
   return (
-    <motion.aside className="portal-preview" initial={{ opacity: 0, y: 28, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: .8, delay: .12, ease: [0.22, 1, 0.36, 1] }} aria-label="EMC Veritas portal preview">
+    <motion.aside role="img" className="portal-preview" initial={{ opacity: 0, y: 28, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: .8, delay: .12, ease: [0.22, 1, 0.36, 1] }} aria-label="Preview of the EMC Veritas record portal, showing issued records and document verification.">
       <div className="portal-preview__rail"><strong>EMC<br />VERITAS</strong><span className="portal-preview__rail-dot" /><span>ARCHIVE</span><span>VERIFY</span><span>RECORDS</span></div>
       <div className="portal-preview__main">
         <div className="portal-preview__header"><span>RECOGNITION RECORD</span><span className="portal-preview__status"><Shield /> VERIFIED SYSTEM</span></div>
