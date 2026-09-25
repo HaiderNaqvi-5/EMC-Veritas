@@ -13,6 +13,7 @@ from app.db.session import get_db
 from app.models.domain import Activity, Admin, Student, Template, TemplateField, TemplateFont
 from app.schemas.templates import (
     TemplateAnalysisResponse,
+    TemplateFieldResponse,
     TemplateFieldsCreate,
     TemplateFontResponse,
     TemplatePreviewRequest,
@@ -253,6 +254,23 @@ def configure_template_fields(
     db.commit()
     db.refresh(template)
     return template
+
+
+@router.get("/{template_id}/fields", response_model=list[TemplateFieldResponse])
+def list_template_fields(
+    template_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> list[TemplateField]:
+    """Return the saved placement data used by the renderer, not editor defaults."""
+    _template_or_404(db, template_id)
+    return list(
+        db.scalars(
+            select(TemplateField)
+            .where(TemplateField.template_id == template_id)
+            .order_by(TemplateField.created_at, TemplateField.id)
+        ).all()
+    )
 
 
 @router.post("/{template_id}/preview")

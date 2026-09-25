@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TemplateFieldInput(BaseModel):
@@ -21,6 +21,22 @@ class TemplateFieldInput(BaseModel):
 class TemplateFieldsCreate(BaseModel):
     fields: list[TemplateFieldInput] = Field(min_length=1)
     signature_handling: Literal["retain", "replace"]
+
+
+class TemplateFieldResponse(BaseModel):
+    """Persisted placement data for a certificate template field."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    field_name: str
+    page_number: int
+    x: int
+    y: int
+    width: int
+    height: int
+    font_family: Literal["helv", "tiro", "cour", "custom"]
+    font_size: int | None
+    text_color: str
 
 
 class TemplateResponse(BaseModel):

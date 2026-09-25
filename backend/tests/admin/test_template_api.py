@@ -31,6 +31,14 @@ def test_template_page_image_requires_authenticated_super_admin() -> None:
     assert response.json() == {"detail": "Admin session required"}
 
 
+def test_template_fields_listing_requires_authenticated_super_admin() -> None:
+    response = TestClient(app).get(
+        "/api/admin/templates/00000000-0000-0000-0000-000000000000/fields"
+    )
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}
+
+
 def test_template_font_management_requires_authenticated_super_admin() -> None:
     template_id = "00000000-0000-0000-0000-000000000000"
     response = TestClient(app).get(f"/api/admin/templates/{template_id}/fonts")
