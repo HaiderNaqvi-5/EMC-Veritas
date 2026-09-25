@@ -87,6 +87,7 @@
 @media(max-width:767px){.archive-story__sticky{padding:0;border-left:0;background:none}.archive-story__sticky::before{display:none}.archive-story__chapters{padding-bottom:2rem}.journey-section__intro .landing-title{max-width:12ch;font-size:clamp(2.35rem,11vw,3.35rem)}.journey-section .record-flow{margin-top:2.25rem}.landing-closing{padding:4rem 0}.landing-closing__quote{max-width:13ch;font-size:2.35rem}}
 
 /* Final readability pass: editorial hierarchy without microtype or an oversized hero. */
+.landing-page { overflow-x:clip; }
 .landing-eyebrow { font-size:.75rem; letter-spacing:.13em; }.landing-hero-title { max-width:9.5ch; font-size:clamp(3.6rem,5.7vw,5.8rem); }.verification-section__proof { letter-spacing:.045em; text-transform:none; }
 @media(max-width:767px){.landing-eyebrow{font-size:.7rem;letter-spacing:.12em}.landing-hero-title{max-width:10ch;font-size:clamp(3.15rem,13.2vw,4.35rem)}}
 

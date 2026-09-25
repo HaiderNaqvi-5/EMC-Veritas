@@ -304,9 +304,9 @@ export function StudentPortal() {
       .getElementById("document-lookup")
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
   return (
-    <main className={`landing-page landing-page--${theme} overflow-hidden`}>
+    <main className={`landing-page landing-page--${theme}`}>
       <header className="landing-header">
-        <a href="#top" className="flex items-center gap-3">
+        <a href="#top" className="flex min-h-11 items-center gap-3">
           <img
             src={theme === "dark" ? "/assets/logos/emc-logo-dark.png" : "/assets/logos/emc-logo.png"}
             alt="Event Management Club"
