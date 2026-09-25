@@ -242,7 +242,7 @@ function ArchiveStory() {
               className={`archive-story__chapter ${index === active ? "is-active" : ""}`}
               initial={{ opacity: 0, y: 38 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ amount: 0.6 }}
+              viewport={{ once: true, amount: 0.6 }}
               onViewportEnter={() => setActive(index)}
               transition={{ duration: .7, ease: [0.22, 1, 0.36, 1] }}
             >
@@ -445,7 +445,7 @@ export function StudentPortal() {
         <div className="journey-section__intro">
           <div>
             <p className="landing-eyebrow">From activity to proof</p>
-            <h2 className="landing-title mt-3">A record should be easy to use when it matters.</h2>
+            <h2 className="landing-title mt-3">A record, ready when it matters.</h2>
           </div>
           <p>Veritas turns an EMC contribution into something you can retrieve, share, and verify without chasing old messages or folders.</p>
         </div>
@@ -478,8 +478,8 @@ export function StudentPortal() {
               className="record-flow__item"
               initial={{ opacity: 0, y: 18 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.25 }}
-              transition={{ delay: Number(number) * 0.08 }}
+              viewport={{ once: true, amount: 0.05 }}
+              transition={{ duration: 0.42, delay: Number(number) * 0.06 }}
             >
               <div className="record-flow__marker"><span>{number}</span><i /></div>
               <div className="record-flow__copy"><p className="landing-eyebrow">{label}</p><h3>{title}</h3><p>{copy}</p></div>
@@ -503,7 +503,7 @@ export function StudentPortal() {
               Use the document’s verification route whenever a faculty member,
               employer, or society needs confirmation of an issued record.
             </p>
-            <span className="verification-section__proof">Issued by EMC · independently checkable</span>
+            <span className="verification-section__proof">Enter the verification ID printed beside the document QR code</span>
             <span className="landing-verify-action mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#e8c172]">Open verification <Arrow /></span>
           </div>
         </Link>
