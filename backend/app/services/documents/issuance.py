@@ -56,6 +56,10 @@ def reserve_document(
         ),
     )
     db.add(document)
+    # DocumentSignatory has a database foreign key to IssuedDocument, but the
+    # two models intentionally have no ORM relationship.  Flush the parent
+    # record first so SQLAlchemy cannot schedule the child rows before it.
+    db.flush()
     for signatory in signatories:
         db.add(
             DocumentSignatory(
