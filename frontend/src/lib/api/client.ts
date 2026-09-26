@@ -21,7 +21,9 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
       ...init,
     });
   } catch {
-    throw new Error("Could not reach the EMC API. Check that the deployed Pages URL is included in Render FRONTEND_ORIGINS, then reload this page.");
+    throw new Error(
+      "Could not reach the EMC API. The service may be starting, unavailable, or its connection was interrupted. Please reload and try again."
+    );
   }
   if (!response.ok) {
     if (response.status === 401 && !path.startsWith("/admin/auth/login") && !path.startsWith("/admin/auth/lookup")) {

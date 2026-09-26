@@ -1,4 +1,5 @@
-import { QueryClient } from "@tanstack/react-query";
+import { MutationCache, QueryClient } from "@tanstack/react-query";
+import { notifyAction } from "../feedback/actions";
 
 const retrySafeGet = (failureCount: number, error: unknown) => {
   if (error instanceof Error && error.name === "AbortError") return false;
@@ -6,6 +7,13 @@ const retrySafeGet = (failureCount: number, error: unknown) => {
 };
 
 export const queryClient = new QueryClient({
+  mutationCache: new MutationCache({
+    onSuccess: () => notifyAction("success", "Your action was completed successfully."),
+    onError: (error) => notifyAction(
+      "error",
+      error instanceof Error ? error.message : "The action could not be completed. Please try again.",
+    ),
+  }),
   defaultOptions: {
     queries: {
       retry: retrySafeGet,

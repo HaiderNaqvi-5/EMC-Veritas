@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import { notifyAction } from "../../lib/feedback/actions";
 
 type AdminLoginModalProps = {
   rollNumber: string;
@@ -21,12 +22,11 @@ export function AdminLoginModal({
     setSubmitting(true);
     try {
       await onSubmit(password);
+      notifyAction("success", "Signed in successfully.");
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Unable to sign in. Please try again.",
-      );
+      const message = caught instanceof Error ? caught.message : "Unable to sign in. Please try again.";
+      setError(message);
+      notifyAction("error", message);
     } finally {
       setSubmitting(false);
     }

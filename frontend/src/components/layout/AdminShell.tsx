@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
 import { authApi } from "../../features/auth/contracts";
+import { notifyAction } from "../../lib/feedback/actions";
 
 const navigation = [
   { label: "Overview", path: "/admin" },
@@ -20,7 +21,7 @@ const navigation = [
 export function AdminShell({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
   const navigate = useNavigate();
   const visibleNavigation = navigation.filter((item) => !item.superAdmin || role === "SUPER_ADMIN");
-  async function logout() { await authApi.logout(); navigate("/"); }
+  async function logout() { try { await authApi.logout(); notifyAction("success", "Signed out successfully."); navigate("/"); } catch (error) { notifyAction("error", error instanceof Error ? error.message : "Could not sign out. Please try again."); } }
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-50">
       <aside className="fixed inset-y-0 hidden w-64 border-r border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 lg:block">

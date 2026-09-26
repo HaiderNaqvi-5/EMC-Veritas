@@ -9,6 +9,7 @@ import {
 } from "../api/documents/public";
 import { AdminLoginModal } from "../features/auth/AdminLoginModal";
 import { authApi } from "../features/auth/contracts";
+import { notifyAction } from "../lib/feedback/actions";
 import { Button } from "../components/ui/Button";
 import { Skeleton } from "../components/ui/Skeleton";
 import { canonicalRollNumber } from "../lib/utils";
@@ -285,11 +286,9 @@ export function StudentPortal() {
       if (lookup.is_admin && lookup.active) setAdminRollNumber(normalized);
       else setSubmittedRollNumber(normalized);
     } catch (error) {
-      setLookupError(
-        error instanceof Error
-          ? error.message
-          : "Unable to check this roll number.",
-      );
+      const message = error instanceof Error ? error.message : "Unable to check this roll number.";
+      setLookupError(message);
+      notifyAction("error", message);
     } finally {
       setCheckingLookup(false);
     }
