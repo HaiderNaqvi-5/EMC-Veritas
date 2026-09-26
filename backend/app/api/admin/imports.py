@@ -36,15 +36,21 @@ async def import_participants(activity_id: UUID, file: UploadFile=File(...), adm
 
 @router.post("/students/commit")
 def commit(payload: ImportCommit, admin_id: UUID=Depends(require_admin), db: Session=Depends(get_db)):
+    # ⚡ Bolt: Cache existing students to avoid N+1 query problem during bulk imports
+    roll_numbers = [normalize_roll_number(row.roll_number) for row in payload.rows]
+    existing_students = db.query(Student).filter(Student.roll_number.in_(roll_numbers)).all()
+    existing_student_map = {student.roll_number: student for student in existing_students}
+
     created=0; skipped=0
     for row in payload.rows:
         canonical_roll_number = normalize_roll_number(row.roll_number)
-        current=db.query(Student).filter(Student.roll_number == canonical_roll_number).one_or_none()
+        current = existing_student_map.get(canonical_roll_number)
         if current is None:
-            create_student(
+            new_student = create_student(
                 db,
                 StudentCreate(roll_number=canonical_roll_number, full_name=row.full_name.strip()),
             )
+            existing_student_map[canonical_roll_number] = new_student
             created += 1
         elif current.full_name != row.full_name.strip():
             if row.conflict_resolution != "skip": raise HTTPException(409,"Every conflicting name requires explicit skip resolution")

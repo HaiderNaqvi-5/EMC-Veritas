@@ -1,0 +1,3 @@
+## $(date +%Y-%m-%d) - Prevent N+1 queries during bulk import
+**Learning:** Performing a database query inside a loop (N+1 query problem) in the `commit` endpoint for bulk student imports caused significant performance degradation. Caching the existing students using a single `.in_()` query upfront drastically reduces database round-trips.
+**Action:** When handling bulk data creation or updates, always use an upfront bulk fetch (e.g., `IN` query) and build an in-memory dictionary to look up existing entities instead of querying the database per row. Remember to update this map in real-time within the loop for newly created entities to prevent constraint violations from duplicate payload entries.
