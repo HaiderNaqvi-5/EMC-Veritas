@@ -55,12 +55,23 @@ class TemplateFontResponse(BaseModel):
     created_at: datetime
 
 
+class DetectedTemplateFieldResponse(BaseModel):
+    field_name: str
+    page_number: int
+    x: int
+    y: int
+    width: int
+    height: int
+    detected_text: str
+
+
 class TemplateAnalysisResponse(BaseModel):
     page_count: int
     extracted_text: list[str]
     ocr_used: bool
     ocr_required: bool
     signature_content_detected: bool
+    detected_fields: list[DetectedTemplateFieldResponse]
 
 
 class TemplatePreviewRequest(BaseModel):

@@ -14,6 +14,29 @@ class PdfTextAnalysis:
     ocr_required: bool
 
 
+@dataclass(frozen=True)
+class DetectedTemplateField:
+    """A recognised visible placeholder and its PDF-coordinate placement."""
+
+    field_name: str
+    page_number: int
+    x: int
+    y: int
+    width: int
+    height: int
+    detected_text: str
+
+
+_CERTIFICATE_PLACEHOLDERS: dict[str, tuple[str, ...]] = {
+    "student_name": ("{{student_name}}", "student_name", "student name"),
+    "roll_number": ("{{roll_number}}", "roll_number", "student roll number", "roll number"),
+    "activity_name": ("{{activity_name}}", "activity_name", "activity name"),
+    "activity_date": ("{{activity_date}}", "activity_date", "activity date"),
+    "verification_id": ("{{verification_id}}", "verification_id", "verification id", "serial number", "serial no"),
+    "qr_code": ("{{qr_code}}", "qr_code", "qr code"),
+}
+
+
 def has_signature_like_content(pages: list[str]) -> bool:
     """Flag text that merits an explicit retain/replace signature decision.
 
@@ -54,6 +77,55 @@ def analyze_pdf_text(pdf_bytes: bytes) -> PdfTextAnalysis:
                 pages[index] = recognized
                 ocr_used = True
     return PdfTextAnalysis(pages=pages, ocr_used=ocr_used, ocr_required=requires_ocr(pages))
+
+
+def detect_certificate_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateField]:
+    """Find common visible certificate placeholders and return editable field suggestions.
+
+    Text extraction alone is informational.  This separate step supplies the
+    coordinates that the template editor needs in order to create its saved
+    field configuration.  It deliberately does not save or approve anything.
+    """
+    detected: list[DetectedTemplateField] = []
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as document:
+        for field_name, aliases in _CERTIFICATE_PLACEHOLDERS.items():
+            match: tuple[int, fitz.Rect, str] | None = None
+            for page_index, page in enumerate(document):
+                for alias in aliases:
+                    rectangles = page.search_for(alias)
+                    if rectangles:
+                        match = (page_index, rectangles[0], alias)
+                        break
+                if match is not None:
+                    break
+            if match is None:
+                if field_name == "qr_code" and document.page_count:
+                    page = document[0]
+                    detected.append(
+                        DetectedTemplateField(
+                            field_name="qr_code",
+                            page_number=1,
+                            x=max(0, int(page.rect.width) - 170),
+                            y=max(0, int(page.rect.height) - 150),
+                            width=96,
+                            height=96,
+                            detected_text="suggested footer QR area",
+                        )
+                    )
+                continue
+            page_index, rectangle, alias = match
+            detected.append(
+                DetectedTemplateField(
+                    field_name=field_name,
+                    page_number=page_index + 1,
+                    x=max(0, int(rectangle.x0) - 2),
+                    y=max(0, int(rectangle.y0) - 2),
+                    width=max(16, int(rectangle.width) + 4),
+                    height=max(16, int(rectangle.height) + 4),
+                    detected_text=alias,
+                )
+            )
+    return detected
 
 
 def requires_ocr(extracted_pages: list[str]) -> bool:

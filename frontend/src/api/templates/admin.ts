@@ -35,6 +35,7 @@ export type TemplateAnalysis = {
   ocr_used: boolean;
   ocr_required: boolean;
   signature_content_detected: boolean;
+  detected_fields: Array<TemplateField & { detected_text: string }>;
 };
 
 export const listTemplates = () => apiRequest<Template[]>("/admin/templates");

@@ -13,6 +13,7 @@ from app.db.session import get_db
 from app.models.domain import Activity, Admin, Student, Template, TemplateField, TemplateFont
 from app.schemas.templates import (
     TemplateAnalysisResponse,
+    DetectedTemplateFieldResponse,
     TemplateFieldResponse,
     TemplateFieldsCreate,
     TemplateFontResponse,
@@ -23,7 +24,7 @@ from app.services.audit import record_audit_event
 from app.services.documents.qr import verification_url
 from app.services.documents.rendering import CertificateRenderingError, render_certificate
 from app.services.storage.supabase import SupabaseStorage
-from app.services.templates.analysis import analyze_pdf_text, has_signature_like_content
+from app.services.templates.analysis import analyze_pdf_text, detect_certificate_placeholders, has_signature_like_content
 from app.services.templates.fields import missing_required_fields
 from app.services.templates.signature_choice import require_signature_choice
 from app.services.templates.validation import ensure_font, ensure_pdf
@@ -158,6 +159,7 @@ def analyze_template(
         page_count = document.page_count
         document.close()
         analysis = analyze_pdf_text(pdf_bytes)
+        detected_fields = detect_certificate_placeholders(pdf_bytes)
     except (RuntimeError, fitz.FileDataError) as error:
         raise HTTPException(status_code=503, detail="Template analysis is temporarily unavailable") from error
     return TemplateAnalysisResponse(
@@ -166,6 +168,7 @@ def analyze_template(
         ocr_used=analysis.ocr_used,
         ocr_required=analysis.ocr_required,
         signature_content_detected=has_signature_like_content(analysis.pages),
+        detected_fields=[DetectedTemplateFieldResponse(**field.__dict__) for field in detected_fields],
     )
 
 
@@ -304,6 +307,7 @@ def preview_template(
                 "roll_number": student.roll_number,
                 "activity_name": activity.name,
                 "activity_date": activity.activity_date,
+                "verification_id": "PREVIEW-ONLY",
             },
             verification_url=verification_url(settings.public_app_url, "PREVIEW"),
             watermark="PREVIEW",

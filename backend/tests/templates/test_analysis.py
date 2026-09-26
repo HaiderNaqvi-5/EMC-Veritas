@@ -39,3 +39,18 @@ def test_analysis_uses_ocr_for_a_scanned_page(monkeypatch) -> None:
 def test_analysis_flags_signature_or_date_labels_for_editor_warning() -> None:
     assert analysis.has_signature_like_content(["President Signature\nDate: 2026-01-01"])
     assert not analysis.has_signature_like_content(["Certificate of participation"])
+
+
+def test_analysis_detects_common_certificate_placeholders_with_positions() -> None:
+    result = analysis.detect_certificate_placeholders(
+        _pdf_with_page_text("Student Name\nStudent Roll Number\nActivity Name\nActivity Date")
+    )
+
+    assert [field.field_name for field in result] == [
+        "student_name",
+        "roll_number",
+        "activity_name",
+        "activity_date", "qr_code",
+    ]
+    assert all(field.page_number == 1 and field.width > 0 and field.height > 0 for field in result)
+    assert result[-1].detected_text == "suggested footer QR area"
