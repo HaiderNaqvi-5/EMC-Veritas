@@ -1,4 +1,4 @@
-import { apiBase, apiRequest } from "../../lib/api/client";
+import { apiBlobRequest, apiRequest, retryConnection } from "../../lib/api/client";
 
 export type Template = {
   id: string;
@@ -69,25 +69,11 @@ export async function uploadTemplateFont(templateId: string, file: File): Promis
 }
 
 export async function templateSource(templateId: string): Promise<Blob> {
-  const response = await fetch(`${apiBase}/admin/templates/${templateId}/source`, {
-    credentials: "include",
-  });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(body?.detail ?? "The template source could not be loaded.");
-  }
-  return response.blob();
+  return retryConnection(() => apiBlobRequest(`/admin/templates/${templateId}/source`));
 }
 
 export async function templatePageImage(templateId: string, pageNumber: number): Promise<Blob> {
-  const response = await fetch(`${apiBase}/admin/templates/${templateId}/pages/${pageNumber}`, {
-    credentials: "include",
-  });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(body?.detail ?? "The template page could not be rendered.");
-  }
-  return response.blob();
+  return retryConnection(() => apiBlobRequest(`/admin/templates/${templateId}/pages/${pageNumber}`));
 }
 
 export async function uploadTemplate(name: string, file: File): Promise<Template> {
@@ -102,15 +88,10 @@ export async function previewTemplate(
   studentId: string,
   activityId: string,
 ): Promise<Blob> {
-  const response = await fetch(`${apiBase}/admin/templates/${templateId}/preview`, {
+  // Preview is explicitly non-issuing and has no database side effect, so a
+  // retry during a transient hosted-service wake-up is safe.
+  return retryConnection(() => apiBlobRequest(`/admin/templates/${templateId}/preview`, {
     method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ student_id: studentId, activity_id: activityId }),
-  });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(body?.detail ?? "The preview could not be generated.");
-  }
-  return response.blob();
+  }));
 }

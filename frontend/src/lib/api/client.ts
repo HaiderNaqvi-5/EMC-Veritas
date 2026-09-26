@@ -69,6 +69,34 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   return response.json() as Promise<T>;
 }
 
+/**
+ * The same guarded request path for PDF and image responses. Keeping this
+ * here prevents template rendering from bypassing the connection handling used
+ * by the rest of the application.
+ */
+export async function apiBlobRequest(path: string, init: RequestInit = {}): Promise<Blob> {
+  const headers = new Headers(init.headers);
+  if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(path), {
+      credentials: "include",
+      headers,
+      ...init,
+    });
+  } catch {
+    throw new ApiConnectionError();
+  }
+  if (!response.ok) {
+    if (response.status === 401 && !path.startsWith("/admin/auth/login") && !path.startsWith("/admin/auth/lookup")) {
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    }
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new ApiError(response.status, body?.detail ?? "The request could not be completed.");
+  }
+  return response.blob();
+}
+
 export function warmReadiness(): void {
   const controller = new AbortController();
   window.setTimeout(() => controller.abort(), 8_000);
