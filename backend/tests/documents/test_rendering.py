@@ -25,4 +25,5 @@ def test_rendering_replaces_an_inline_pdf_token_without_leaving_it_visible() -> 
     text = rendered[0].get_text()
     rendered.close()
     assert "{{student_name}}" not in text
-    assert "Awais Khan" in text
+    # Amsterdam Four encodes spaces as non-breaking spaces in extracted text.
+    assert "Awais Khan" in text.replace("\u00a0", " ")

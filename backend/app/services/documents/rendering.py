@@ -1,6 +1,7 @@
 from collections.abc import Iterable, Mapping
 from datetime import date
 from io import BytesIO
+from pathlib import Path
 
 import fitz
 
@@ -39,7 +40,14 @@ def _insert_text(
         raise CertificateRenderingError(f"Template field '{field.field_name}' has an invalid box")
     font_family = getattr(field, "font_family", "helv")
     custom_font_key = getattr(field, "custom_font_storage_key", None)
-    if font_family == "custom":
+    if field.field_name == "student_name" and font_family != "custom" and custom_font_key is None:
+        font_bytes = (Path(__file__).resolve().parents[2] / "assets" / "Amsterdam.ttf").read_bytes()
+        font_name = "EMCAmsterdam"
+        try:
+            page.insert_font(fontname=font_name, fontbuffer=font_bytes)
+        except (RuntimeError, ValueError) as error:
+            raise CertificateRenderingError("Amsterdam font for the student name is unreadable") from error
+    elif font_family == "custom":
         if not custom_font_key or custom_font_key not in custom_fonts:
             raise CertificateRenderingError(
                 f"Template field '{field.field_name}' references an unavailable custom font"
@@ -108,14 +116,66 @@ def _remove_inline_placeholder(page: fitz.Page, field_name: str) -> None:
     This makes templates authored as a single flowing paragraph work without
     requiring a user to manually drag a field into a separate blank space.
     """
-    token = "{{" + field_name + "}}"
-    rectangles = page.search_for(token)
+    tokens = ["{{" + field_name + "}}"]
+    # Older, human-authored templates sometimes reserve the serial reference
+    # with this label instead of the machine field name.
+    if field_name == "verification_id":
+        tokens.extend(("{{Serial No.}}", "{{Serial No}}", "{{Serial Number}}"))
+    rectangles: list[fitz.Rect] = []
+    for token in tokens:
+        rectangles = page.search_for(token)
+        if rectangles:
+            break
     if not rectangles:
         return
     combined = fitz.Rect(rectangles[0])
     for rectangle in rectangles[1:]:
         combined.include_rect(rectangle)
     page.add_redact_annot(combined, fill=(1, 1, 1))
+
+
+def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tuple[fitz.Rect, str] | None:
+    """Replace a flowing certificate sentence as one typographic block.
+
+    A PDF stores the words of a paragraph as independent drawing operations.
+    Removing only placeholder words therefore leaves unnatural gaps.  For the
+    standard EMC recognition sentence, replace the complete paragraph with one
+    centred line-wrapped block instead.
+    """
+    start = page.search_for("In recognition")
+    end = page.search_for("successful execution of the activity.")
+    needed = {"roll_number", "activity_name", "activity_date"}
+    if not start or not end or not needed.issubset(values):
+        return None
+    first, last = start[0], end[-1]
+    rectangle = fitz.Rect(
+        min(first.x0, last.x0) - 3,
+        min(first.y0, last.y0) - 3,
+        max(first.x1, last.x1) + 3,
+        max(first.y1, last.y1) + 4,
+    )
+    text = (
+        f"In recognition of {values['roll_number']}, for outstanding efforts in organizing "
+        f"and managing {values['activity_name']} on {values['activity_date']} under the EMC. "
+        "Their leadership, coordination, and commitment significantly contributed to the "
+        "successful execution of the activity."
+    )
+    page.add_redact_annot(rectangle, fill=(1, 1, 1))
+    return rectangle, text
+
+
+def _render_activity_paragraph(page: fitz.Page, rectangle: fitz.Rect, text: str) -> None:
+    result = page.insert_textbox(
+        rectangle,
+        text,
+        fontname="helv",
+        fontsize=10,
+        color=_color("#0e87cc"),
+        align=fitz.TEXT_ALIGN_CENTER,
+        lineheight=1.15,
+    )
+    if result < 0:
+        raise CertificateRenderingError("Activity paragraph does not fit its detected template area")
 
 
 def render_certificate(
@@ -166,20 +226,36 @@ def render_certificate(
         raise CertificateRenderingError("Template is not a readable PDF") from error
 
     try:
+        paragraph_jobs: dict[int, tuple[fitz.Rect, str]] = {}
+        paragraph_fields: set[tuple[int, str]] = set()
+        configured_by_page: dict[int, set[str]] = {}
+        for field in field_list:
+            configured_by_page.setdefault(field.page_number, set()).add(field.field_name)
+        for page_number, names in configured_by_page.items():
+            if {"roll_number", "activity_name", "activity_date"}.issubset(names):
+                job = _inline_activity_paragraph(document[page_number - 1], normalized_values)
+                if job:
+                    paragraph_jobs[page_number] = job
+                    paragraph_fields.update((page_number, name) for name in ("roll_number", "activity_name", "activity_date"))
         for field in field_list:
             if field.page_number < 1 or field.page_number > document.page_count:
                 raise CertificateRenderingError(
                     f"Template field '{field.field_name}' references an invalid page"
                 )
-            _remove_inline_placeholder(document[field.page_number - 1], field.field_name)
+            if (field.page_number, field.field_name) not in paragraph_fields:
+                _remove_inline_placeholder(document[field.page_number - 1], field.field_name)
         for page in document:
             page.apply_redactions()
+        for page_number, (rectangle, text) in paragraph_jobs.items():
+            _render_activity_paragraph(document[page_number - 1], rectangle, text)
         for field in field_list:
             page = document[field.page_number - 1]
             if field.field_name == "qr_code":
                 _insert_qr(page, field, verification_url)
             elif field.field_name in images:
                 _insert_image(page, field, images[field.field_name])
+            elif (field.page_number, field.field_name) in paragraph_fields:
+                continue
             else:
                 _insert_text(page, field, normalized_values[field.field_name], fonts)
         if watermark:

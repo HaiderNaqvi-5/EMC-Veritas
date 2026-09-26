@@ -102,7 +102,7 @@ def test_first_download_generates_caches_and_audits_document() -> None:
     assert storage.uploads == 1
     assert [event.event_type for event in db.events] == ["DOCUMENT_GENERATED"]
     rendered = fitz.open(stream=first, filetype="pdf")
-    assert "Ayesha Khan" in rendered[0].get_text()
+    assert "Ayesha Khan" in rendered[0].get_text().replace("\u00a0", " ")
 
 
 def test_invalid_document_is_never_generated() -> None:
@@ -187,7 +187,7 @@ def test_renderer_honors_configured_bundled_font_and_color() -> None:
         verification_url="https://portal.example.edu/verify/EMC-TEST123",
     )
     rendered = fitz.open(stream=output, filetype="pdf")
-    assert "Ayesha Khan" in rendered[0].get_text()
+    assert "Ayesha Khan" in rendered[0].get_text().replace("\u00a0", " ")
 
 
 def test_renderer_registers_uploaded_ttf_font_without_host_font_dependency(monkeypatch) -> None:
