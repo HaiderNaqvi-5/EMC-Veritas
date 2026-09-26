@@ -35,7 +35,7 @@ export function TemplateEditorPage() {
   const activities = useQuery({ queryKey: ["admin", "activities"], queryFn: () => apiRequest<Activity[]>("/admin/activities") });
   const refreshFields = () => { void refresh(); void queryClient.invalidateQueries({ queryKey: ["template-fields", selectedId] }); };
   const configure = useMutation({ mutationFn: () => configureTemplate(selectedId, fields, handling), onSuccess: refreshFields });
-  const autoConfigure = useMutation({ mutationFn: (configuration: TemplateField[]) => configureTemplate(selectedId, configuration, handling), onSuccess: refreshFields });
+  const autoConfigure = useMutation({ mutationFn: ({ configuration, signatureHandling }: { configuration: TemplateField[]; signatureHandling: "retain" | "replace" }) => configureTemplate(selectedId, configuration, signatureHandling), onSuccess: refreshFields });
   const approve = useMutation({ mutationFn: () => approveTemplate(selectedId), onSuccess: () => void refresh() });
   const remove = useMutation({ mutationFn: () => deleteTemplate(selectedId), onSuccess: () => { setSelectedId(""); setFields(requiredFields); void refresh(); } });
   const uploadFont = useMutation({ mutationFn: (font: File) => uploadTemplateFont(selectedId, font), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["template-fonts", selectedId] }) });
@@ -44,6 +44,13 @@ export function TemplateEditorPage() {
 
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   useEffect(() => { if (savedFields.data) setFields(savedFields.data); else if (selectedId) setFields(requiredFields); }, [selectedId, savedFields.data]);
+  useEffect(() => {
+    if (!selectedId) return;
+    // A real signature field always means the uploaded signatory image should
+    // be placed there.  This also makes the default safe for a newly detected
+    // certificate template.
+    setHandling(selected?.signature_handling ?? (savedFields.data?.some((field) => field.field_name.startsWith("signature_")) ? "replace" : "retain"));
+  }, [selected?.signature_handling, selectedId, savedFields.data]);
   useEffect(() => { if (!studentId && students.data?.some((student) => student.active)) setStudentId(students.data.find((student) => student.active)?.id ?? ""); }, [studentId, students.data]);
   useEffect(() => { if (!activityId && activities.data?.length) setActivityId(activities.data[0].id); }, [activityId, activities.data]);
   useEffect(() => {
@@ -51,8 +58,10 @@ export function TemplateEditorPage() {
     if (!selectedId || selected?.approved || !savedFields.isSuccess || savedFields.data.length || !detected || detected.length < 6 || autoConfiguredTemplateId.current === selectedId || autoConfigure.isPending) return;
     autoConfiguredTemplateId.current = selectedId;
     const configuration = detected.map(({ detected_text: _detectedText, ...field }) => field);
+    const signatureHandling = configuration.some((field) => field.field_name.startsWith("signature_")) ? "replace" : handling;
     setFields(configuration);
-    autoConfigure.mutate(configuration);
+    setHandling(signatureHandling);
+    autoConfigure.mutate({ configuration, signatureHandling });
   }, [analysis.data?.detected_fields, autoConfigure, savedFields.data?.length, selected?.approved, selectedId]);
   useEffect(() => { let alive = true; setPageUrl(null); setPageError(null); if (!selectedId) return undefined; void templatePageImage(selectedId, pageNumber).then((blob) => { if (alive) setPageUrl(URL.createObjectURL(blob)); }).catch((caught: unknown) => { if (alive) setPageError(caught instanceof Error ? caught.message : "The template page could not be rendered."); }); return () => { alive = false; setPageUrl((url) => { if (url) URL.revokeObjectURL(url); return null; }); }; }, [selectedId, pageNumber, pageAttempt]);
 
@@ -68,8 +77,10 @@ export function TemplateEditorPage() {
     const detected = analysis.data?.detected_fields ?? [];
     if (detected.length) {
       const configuration = detected.map(({ detected_text: _detectedText, ...field }) => field);
+      const signatureHandling = configuration.some((field) => field.field_name.startsWith("signature_")) ? "replace" : handling;
       setFields(configuration);
-      autoConfigure.mutate(configuration);
+      setHandling(signatureHandling);
+      autoConfigure.mutate({ configuration, signatureHandling });
     }
   };
   return <section className="space-y-6"><div><h1 className="text-3xl font-bold">Certificate templates</h1><p className="mt-2 text-slate-600 dark:text-slate-400">Upload a PDF, place dynamic fields directly on its rendered page, choose how signatures are handled, and approve only after review.</p></div>

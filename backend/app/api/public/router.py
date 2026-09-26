@@ -25,7 +25,7 @@ from app.models.domain import (
 from app.schemas.public import PublicDocument, StudentDocumentsResponse, VerificationResponse
 from app.services.documents.lifecycle import DocumentLifecycleError, generate_on_first_download
 from app.services.executive.letters import REQUIRED_LEADERSHIP_TEMPLATE_FIELDS
-from app.services.signatures.rendering import signature_field_name
+from app.services.signatures.rendering import signature_field_name, should_replace_signatures
 from app.services.storage.supabase import SupabaseStorage
 from app.services.students import normalize_roll_number
 
@@ -165,7 +165,7 @@ def download_document(document_id: UUID, db: Session = Depends(get_db)) -> Strea
         template_pdf = storage.download(template.storage_key)
         image_values = (
             _signature_images_for_document(db, document, storage)
-            if getattr(template, "signature_handling", "retain") == "replace"
+            if should_replace_signatures(getattr(template, "signature_handling", "retain"), fields)
             else None
         )
         output = generate_on_first_download(

@@ -32,7 +32,10 @@ from app.services.audit import record_audit_event
 from app.services.documents.qr import verification_url
 from app.services.documents.rendering import CertificateRenderingError, render_certificate
 from app.services.signatures.availability import select_effective_signatories_for_fields
-from app.services.signatures.rendering import configured_signature_field_names
+from app.services.signatures.rendering import (
+    configured_signature_field_names,
+    should_replace_signatures,
+)
 from app.services.storage.supabase import SupabaseStorage
 from app.services.templates.analysis import (
     analyze_pdf_text,
@@ -335,7 +338,7 @@ def preview_template(
             if field.custom_font_storage_key
         }
         signature_images: dict[str, bytes] = {}
-        if template.signature_handling == "replace":
+        if should_replace_signatures(template.signature_handling, fields):
             signature_fields = configured_signature_field_names(fields)
             active_signatories = list(
                 db.scalars(select(Signatory).where(Signatory.active.is_(True))).all()

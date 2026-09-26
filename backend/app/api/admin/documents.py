@@ -32,7 +32,10 @@ from app.schemas.documents import (
 from app.services.audit import record_audit_event
 from app.services.documents.issuance import reserve_document
 from app.services.signatures.availability import select_effective_signatories_for_fields
-from app.services.signatures.rendering import configured_signature_field_names
+from app.services.signatures.rendering import (
+    configured_signature_field_names,
+    should_replace_signatures,
+)
 from app.services.templates.fields import missing_required_fields
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -139,7 +142,7 @@ def issue_activity_documents(
         )
 
     selected_signatories = {}
-    if template.signature_handling == "replace":
+    if should_replace_signatures(template.signature_handling, template_fields):
         signature_fields = configured_signature_field_names(template_fields)
         if not signature_fields:
             raise HTTPException(
@@ -297,7 +300,7 @@ def reissue_document(
             detail="Template is missing required fields: " + ", ".join(sorted(missing_fields)),
         )
     selected_signatories = {}
-    if template.signature_handling == "replace":
+    if should_replace_signatures(template.signature_handling, template_fields):
         signature_fields = configured_signature_field_names(template_fields)
         if not signature_fields:
             raise HTTPException(

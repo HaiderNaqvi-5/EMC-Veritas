@@ -6,7 +6,11 @@ from app.services.signatures.availability import (
     select_effective_signatories,
     select_effective_signatories_for_fields,
 )
-from app.services.signatures.rendering import missing_signature_fields, signature_field_name
+from app.services.signatures.rendering import (
+    missing_signature_fields,
+    should_replace_signatures,
+    signature_field_name,
+)
 
 
 def _signatory(identifier: int, title: str, start: date, end: date | None = None) -> SimpleNamespace:
@@ -48,3 +52,11 @@ def test_selecting_signatories_uses_the_template_field_names_not_fixed_roles() -
     )
 
     assert selected == {"signature_hod": hod, "signature_dsa": dsa}
+
+
+def test_explicit_signature_fields_replace_images_for_legacy_retain_templates() -> None:
+    fields = [SimpleNamespace(field_name="signature_hod")]
+
+    assert should_replace_signatures("retain", fields)
+    assert should_replace_signatures("replace", [])
+    assert not should_replace_signatures("retain", [])
