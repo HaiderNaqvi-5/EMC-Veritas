@@ -33,7 +33,7 @@ def test_build_revision_endpoint_reports_the_render_revision() -> None:
 
         response = asyncio.run(request_build_revision())
         assert response.status_code == 200
-        assert response.json() == {"revision": "74d1071-test"}
+        assert response.json() == {"revision": "74d1071-test", "paragraph_mode": "independent"}
     finally:
         if previous_revision is None:
             os.environ.pop("RENDER_GIT_COMMIT", None)

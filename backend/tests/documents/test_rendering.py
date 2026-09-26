@@ -113,3 +113,35 @@ def test_rendering_replaces_legacy_paragraph_even_when_its_saved_field_boxes_are
     rendered.close()
     assert "His leadership" not in text
     assert "Their leadership, coordination, and commitment" in text
+
+
+def test_rendering_replaces_recognition_paragraph_when_the_final_sentence_is_unsearchable() -> None:
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_textbox(
+        fitz.Rect(80, 120, 500, 180),
+        "In recognition of STUDENT NAME, for outstanding efforts in organizing and managing "
+        "ACTIVITY NAME on ACTIVITY DATE under the EMC. His leadership, coordination, and "
+        "commitment significantly contributed to the successful execution of this event.",
+        fontsize=10,
+    )
+    template = document.tobytes()
+    document.close()
+    fields = [
+        SimpleNamespace(field_name=name, page_number=1, x=80, y=120, width=80, height=16,
+                        font_family="helv", custom_font_storage_key=None, font_size=10, text_color="#000000")
+        for name in ("student_name", "roll_number", "activity_name", "activity_date")
+    ]
+
+    output = render_certificate(
+        template,
+        fields,
+        {"student_name": "Awais Khan", "roll_number": "2K22-340", "activity_name": "Plantation Drive", "activity_date": "2026-09-25"},
+        verification_url="https://example.test/verify/x",
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    text = rendered[0].get_text()
+    rendered.close()
+    assert "successful execution of this event" not in text
+    assert "Their leadership, coordination, and commitment" in text

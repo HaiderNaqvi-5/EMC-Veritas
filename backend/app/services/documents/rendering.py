@@ -211,24 +211,37 @@ def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tu
     start = page.search_for("In recognition")
     end = page.search_for("successful execution of the activity.")
     needed = {"roll_number", "activity_name", "activity_date"}
-    if not start or not end or not needed.issubset(values):
+    if not start or not needed.issubset(values):
         return None
-    first, last = start[0], end[-1]
-    source_blocks = [
-        fitz.Rect(block["bbox"])
-        for block in page.get_text("dict").get("blocks", [])
-        if "lines" in block
-        # Include only paragraph blocks fully between its first and final
-        # lines. A tall decorative student-name span can overlap this range
-        # at the edge and must never enlarge the paragraph wipe area.
-        and fitz.Rect(block["bbox"]).y0 >= first.y0 - 2
-        and fitz.Rect(block["bbox"]).y1 <= last.y1 + 2
-    ]
-    combined = fitz.Rect(first)
-    for block in source_blocks:
-        combined.include_rect(block)
-    combined.include_rect(last)
-    rectangle = _paragraph_rectangle(page, combined)
+    first = start[0]
+    if end:
+        last = end[-1]
+        source_blocks = [
+            fitz.Rect(block["bbox"])
+            for block in page.get_text("dict").get("blocks", [])
+            if "lines" in block
+            # Include only paragraph blocks fully between its first and final
+            # lines. A tall decorative student-name span can overlap this range
+            # at the edge and must never enlarge the paragraph wipe area.
+            and fitz.Rect(block["bbox"]).y0 >= first.y0 - 2
+            and fitz.Rect(block["bbox"]).y1 <= last.y1 + 2
+        ]
+        combined = fitz.Rect(first)
+        for block in source_blocks:
+            combined.include_rect(block)
+        combined.include_rect(last)
+        rectangle = _paragraph_rectangle(page, combined)
+    else:
+        # Uploaded PDFs often alter the final sentence through line wrapping,
+        # punctuation or PDF text extraction. The opening phrase is enough to
+        # locate the standard recognition block; reserve a bounded region
+        # beneath it rather than falling back to individual box overlays.
+        rectangle = fitz.Rect(
+            72,
+            max(36, first.y0 - 2),
+            page.rect.width - 72,
+            min(page.rect.height - 72, first.y0 + 86),
+        )
     text = (
         f"In recognition of {values['roll_number']}, for outstanding efforts in organizing "
         f"and managing {values['activity_name']} on {values['activity_date']} under the EMC. "

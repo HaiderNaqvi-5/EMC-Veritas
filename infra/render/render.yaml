@@ -10,7 +10,8 @@ services:
     buildCommand: pip install --no-cache-dir --force-reinstall .
     # Render Free does not support preDeployCommand. Apply reviewed Alembic
     # migrations before a release, then deploy the already-migrated service.
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # Prefer the checked-out application source over any old installed wheel.
+    startCommand: PYTHONPATH=. uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health/ready
     envVars:
       - key: DATABASE_URL
