@@ -1,9 +1,14 @@
 import { MutationCache, QueryClient } from "@tanstack/react-query";
 import { notifyAction } from "../feedback/actions";
+import { ApiError, isApiConnectionError } from "../api/client";
 
 const retrySafeGet = (failureCount: number, error: unknown) => {
   if (error instanceof Error && error.name === "AbortError") return false;
-  return failureCount < 2;
+  // A connection error has no HTTP response and is safe to retry. Give the
+  // Render free service enough time to wake before the app gives up or logs a
+  // user out. Do not retry validation, permission, or other normal API errors.
+  if (isApiConnectionError(error)) return failureCount < 8;
+  return error instanceof ApiError && error.status >= 500 && failureCount < 2;
 };
 
 export const queryClient = new QueryClient({
@@ -17,7 +22,7 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: retrySafeGet,
-      retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 4_000),
+      retryDelay: (attempt) => Math.min(750 * 2 ** attempt, 10_000),
       refetchOnWindowFocus: false,
     },
     mutations: { retry: false },
