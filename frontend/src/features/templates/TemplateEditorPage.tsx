@@ -20,6 +20,7 @@ type Activity = { id: string; name: string; activity_date: string; status: strin
 export function TemplateEditorPage() {
   const queryClient = useQueryClient();
   const imageRef = useRef<HTMLImageElement>(null);
+  const autoConfiguredTemplateId = useRef<string | null>(null);
   const templates = useQuery({ queryKey: ["admin", "templates"], queryFn: listTemplates });
   const [name, setName] = useState(""); const [file, setFile] = useState<File | null>(null); const [selectedId, setSelectedId] = useState("");
   const [handling, setHandling] = useState<"retain" | "replace">("retain"); const [fields, setFields] = useState<TemplateField[]>(requiredFields);
@@ -32,14 +33,26 @@ export function TemplateEditorPage() {
   const fonts = useQuery({ queryKey: ["template-fonts", selectedId], queryFn: () => listTemplateFonts(selectedId), enabled: Boolean(selectedId) });
   const students = useQuery({ queryKey: ["admin", "students"], queryFn: () => apiRequest<Student[]>("/admin/students") });
   const activities = useQuery({ queryKey: ["admin", "activities"], queryFn: () => apiRequest<Activity[]>("/admin/activities") });
-  const configure = useMutation({ mutationFn: () => configureTemplate(selectedId, fields, handling), onSuccess: () => void refresh() });
+  const refreshFields = () => { void refresh(); void queryClient.invalidateQueries({ queryKey: ["template-fields", selectedId] }); };
+  const configure = useMutation({ mutationFn: () => configureTemplate(selectedId, fields, handling), onSuccess: refreshFields });
+  const autoConfigure = useMutation({ mutationFn: (configuration: TemplateField[]) => configureTemplate(selectedId, configuration, handling), onSuccess: refreshFields });
   const approve = useMutation({ mutationFn: () => approveTemplate(selectedId), onSuccess: () => void refresh() });
   const uploadFont = useMutation({ mutationFn: (font: File) => uploadTemplateFont(selectedId, font), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["template-fonts", selectedId] }) });
   const preview = useMutation({ mutationFn: () => previewTemplate(selectedId, studentId, activityId), onSuccess: (blob) => { if (previewUrl) URL.revokeObjectURL(previewUrl); setPreviewUrl(URL.createObjectURL(blob)); } });
-  const selected = templates.data?.find((template) => template.id === selectedId); const error = [upload.error, analysis.error, configure.error, approve.error, uploadFont.error, preview.error].find(Boolean);
+  const selected = templates.data?.find((template) => template.id === selectedId); const error = [upload.error, analysis.error, configure.error, autoConfigure.error, approve.error, uploadFont.error, preview.error].find(Boolean);
 
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   useEffect(() => { if (savedFields.data) setFields(savedFields.data); else if (selectedId) setFields(requiredFields); }, [selectedId, savedFields.data]);
+  useEffect(() => { if (!studentId && students.data?.some((student) => student.active)) setStudentId(students.data.find((student) => student.active)?.id ?? ""); }, [studentId, students.data]);
+  useEffect(() => { if (!activityId && activities.data?.length) setActivityId(activities.data[0].id); }, [activityId, activities.data]);
+  useEffect(() => {
+    const detected = analysis.data?.detected_fields;
+    if (!selectedId || selected?.approved || !savedFields.isSuccess || savedFields.data.length || !detected || detected.length < 6 || autoConfiguredTemplateId.current === selectedId || autoConfigure.isPending) return;
+    autoConfiguredTemplateId.current = selectedId;
+    const configuration = detected.map(({ detected_text: _detectedText, ...field }) => field);
+    setFields(configuration);
+    autoConfigure.mutate(configuration);
+  }, [analysis.data?.detected_fields, autoConfigure, savedFields.data?.length, selected?.approved, selectedId]);
   useEffect(() => { let alive = true; setPageUrl(null); setPageError(null); if (!selectedId) return undefined; void templatePageImage(selectedId, pageNumber).then((blob) => { if (alive) setPageUrl(URL.createObjectURL(blob)); }).catch((caught: unknown) => { if (alive) setPageError(caught instanceof Error ? caught.message : "The template page could not be rendered."); }); return () => { alive = false; setPageUrl((url) => { if (url) URL.revokeObjectURL(url); return null; }); }; }, [selectedId, pageNumber, pageAttempt]);
 
   function updateField(index: number, key: keyof TemplateField, value: string | number) { setFields((current) => current.map((field, position) => position === index ? { ...field, [key]: key === "field_name" || key === "font_family" || key === "text_color" || key === "custom_font_id" ? String(value) : key === "font_size" && Number(value) === 0 ? null : Number(value) } : field)); }
@@ -52,7 +65,11 @@ export function TemplateEditorPage() {
   const placementProblems = [...placementWarnings, ...outOfBounds];
   const useDetectedFields = () => {
     const detected = analysis.data?.detected_fields ?? [];
-    if (detected.length) setFields(detected.map(({ detected_text: _detectedText, ...field }) => field));
+    if (detected.length) {
+      const configuration = detected.map(({ detected_text: _detectedText, ...field }) => field);
+      setFields(configuration);
+      autoConfigure.mutate(configuration);
+    }
   };
   return <section className="space-y-6"><div><h1 className="text-3xl font-bold">Certificate templates</h1><p className="mt-2 text-slate-600 dark:text-slate-400">Upload a PDF, place dynamic fields directly on its rendered page, choose how signatures are handled, and approve only after review.</p></div>
     <form onSubmit={(event: FormEvent) => { event.preventDefault(); if (file) upload.mutate(); }} className="grid gap-3 rounded-xl border p-4 md:grid-cols-3"><input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Template name" className="rounded border p-2"/><input required accept="application/pdf" type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} className="rounded border p-2"/><button disabled={!file || upload.isPending} className="rounded bg-slate-900 p-2 text-white">Upload PDF</button></form>

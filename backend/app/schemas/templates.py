@@ -63,6 +63,9 @@ class DetectedTemplateFieldResponse(BaseModel):
     width: int
     height: int
     detected_text: str
+    font_family: Literal["helv", "tiro", "cour"]
+    font_size: int = Field(ge=5, le=72)
+    text_color: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
 
 
 class TemplateAnalysisResponse(BaseModel):

@@ -25,6 +25,9 @@ class DetectedTemplateField:
     width: int
     height: int
     detected_text: str
+    font_family: str
+    font_size: int
+    text_color: str
 
 
 _CERTIFICATE_PLACEHOLDERS: dict[str, tuple[str, ...]] = {
@@ -110,10 +113,14 @@ def detect_certificate_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateFi
                             width=96,
                             height=96,
                             detected_text="suggested footer QR area",
+                            font_family="helv",
+                            font_size=12,
+                            text_color="#000000",
                         )
                     )
                 continue
             page_index, rectangle, alias = match
+            font_family, font_size, text_color = _style_at(document[page_index], rectangle)
             detected.append(
                 DetectedTemplateField(
                     field_name=field_name,
@@ -123,9 +130,33 @@ def detect_certificate_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateFi
                     width=max(16, int(rectangle.width) + 4),
                     height=max(16, int(rectangle.height) + 4),
                     detected_text=alias,
+                    font_family=font_family,
+                    font_size=font_size,
+                    text_color=text_color,
                 )
             )
     return detected
+
+
+def _style_at(page: fitz.Page, rectangle: fitz.Rect) -> tuple[str, int, str]:
+    """Infer a safe rendering style from the text span overlapping a placeholder."""
+    best_span: dict[str, object] | None = None
+    best_area = 0.0
+    for block in page.get_text("dict").get("blocks", []):
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                span_rect = fitz.Rect(span["bbox"])
+                overlap = span_rect & rectangle
+                area = max(0.0, overlap.width) * max(0.0, overlap.height)
+                if area > best_area:
+                    best_area = area
+                    best_span = span
+    if best_span is None:
+        return "helv", 12, "#000000"
+    source_font = str(best_span.get("font", "")).lower()
+    font_family = "cour" if "cour" in source_font else "tiro" if "times" in source_font else "helv"
+    color = int(best_span.get("color", 0))
+    return font_family, min(72, max(5, round(float(best_span.get("size", 12))))), f"#{color:06x}"
 
 
 def requires_ocr(extracted_pages: list[str]) -> bool:
