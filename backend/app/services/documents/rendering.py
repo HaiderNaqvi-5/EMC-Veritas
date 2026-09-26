@@ -252,6 +252,45 @@ def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tu
     return rectangle, text, needed, "helv", 10, (14, 135, 204)
 
 
+def _activity_paragraph_from_field_cluster(
+    page: fitz.Page,
+    page_number: int,
+    fields: Iterable[TemplateField],
+    values: Mapping[str, str],
+) -> tuple[fitz.Rect, str, set[str], str, float, tuple[int, int, int]] | None:
+    """Replace a recognition paragraph from its saved activity-field cluster.
+
+    This is deliberately independent of PDF text extraction. A valid template
+    already stores the three activity fields at the paragraph location, so the
+    cluster is a reliable final fallback when Canva exports unsearchable text.
+    """
+    needed = {"roll_number", "activity_name", "activity_date"}
+    if not needed.issubset(values):
+        return None
+    cluster = [
+        field for field in fields
+        if field.page_number == page_number and field.field_name in needed
+    ]
+    if {field.field_name for field in cluster} != needed:
+        return None
+    top = min(field.y for field in cluster)
+    bottom = max(field.y + field.height for field in cluster)
+    rectangle = fitz.Rect(
+        72,
+        max(36, top - 1),
+        page.rect.width - 72,
+        min(page.rect.height - 72, bottom + 76),
+    )
+    text = (
+        f"In recognition of {values['roll_number']}, for outstanding efforts in organizing "
+        f"and managing {values['activity_name']} on {values['activity_date']} under the EMC. "
+        "Their leadership, coordination, and commitment significantly contributed to the "
+        "successful execution of the activity."
+    )
+    page.add_redact_annot(rectangle, fill=(1, 1, 1))
+    return rectangle, text, needed, "helv", 10, (14, 135, 204)
+
+
 def _render_activity_paragraph(
     page: fitz.Page,
     rectangle: fitz.Rect,
@@ -336,6 +375,10 @@ def render_certificate(
             job = _paragraph_from_tagged_block(page, normalized_values)
             if job is None:
                 job = _inline_activity_paragraph(page, normalized_values)
+            if job is None:
+                job = _activity_paragraph_from_field_cluster(
+                    page, page_number, field_list, normalized_values
+                )
             if job:
                 rectangle, text, replaced_names, font, size, rgb = job
                 paragraph_jobs[page_number] = rectangle, text, font, size, rgb

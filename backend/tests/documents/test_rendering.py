@@ -145,3 +145,36 @@ def test_rendering_replaces_recognition_paragraph_when_the_final_sentence_is_uns
     rendered.close()
     assert "successful execution of this event" not in text
     assert "Their leadership, coordination, and commitment" in text
+
+
+def test_rendering_uses_saved_activity_fields_when_pdf_recognition_text_is_unsearchable() -> None:
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_textbox(
+        fitz.Rect(80, 160, 500, 220),
+        "Legacy certificate prose that cannot be identified by the standard text detector.",
+        fontsize=10,
+    )
+    template = document.tobytes()
+    document.close()
+    fields = [
+        SimpleNamespace(field_name="student_name", page_number=1, x=120, y=100, width=220, height=24,
+                        font_family="helv", custom_font_storage_key=None, font_size=12, text_color="#000000"),
+    ] + [
+        SimpleNamespace(field_name=name, page_number=1, x=140 + index * 90, y=160, width=80, height=18,
+                        font_family="helv", custom_font_storage_key=None, font_size=10, text_color="#000000")
+        for index, name in enumerate(("roll_number", "activity_name", "activity_date"))
+    ]
+
+    output = render_certificate(
+        template,
+        fields,
+        {"student_name": "Awais Khan", "roll_number": "2K22-340", "activity_name": "Plantation Drive", "activity_date": "2026-09-25"},
+        verification_url="https://example.test/verify/x",
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    text = rendered[0].get_text()
+    rendered.close()
+    assert "Legacy certificate prose" not in text
+    assert "Their leadership, coordination, and commitment" in text
