@@ -164,6 +164,7 @@ def detect_certificate_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateFi
                     continue
                 rectangle = _combined_placeholder_rect(rectangles)
                 font_family, font_size, text_color = _style_at(page, rectangle)
+                rectangle = _signature_field_rectangle(page, rectangle)
                 x, y, width, height = _safe_field_geometry(page, rectangle)
                 detected.append(
                     DetectedTemplateField(
@@ -180,6 +181,17 @@ def detect_certificate_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateFi
                     )
                 )
     return detected
+
+
+def _signature_field_rectangle(page: fitz.Page, placeholder: fitz.Rect) -> fitz.Rect:
+    """Give a signature token a practical, visible image area around its marker."""
+    target_width = min(180, page.rect.width - 16)
+    target_height = min(72, page.rect.height - 16)
+    center_x = (placeholder.x0 + placeholder.x1) / 2
+    center_y = (placeholder.y0 + placeholder.y1) / 2
+    x0 = min(max(8, center_x - target_width / 2), page.rect.width - target_width - 8)
+    y0 = min(max(8, center_y - target_height / 2), page.rect.height - target_height - 8)
+    return fitz.Rect(x0, y0, x0 + target_width, y0 + target_height)
 
 
 def _safe_field_geometry(page: fitz.Page, rectangle: fitz.Rect) -> tuple[int, int, int, int]:

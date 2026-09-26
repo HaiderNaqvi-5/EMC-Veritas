@@ -90,3 +90,5 @@ def test_analysis_detects_dynamic_signature_placeholders() -> None:
     by_name = {field.field_name: field for field in result}
     assert by_name["signature_dsa"].detected_text == "{{signature_dsa}}"
     assert by_name["signature_hod"].detected_text == "{{signature_hod}}"
+    assert by_name["signature_dsa"].width >= 160
+    assert by_name["signature_dsa"].height >= 60
