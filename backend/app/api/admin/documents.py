@@ -167,10 +167,10 @@ def issue_activity_documents(
             )
 
     issue_date = activity.issue_date or datetime.now(EMC_TIMEZONE).date()
-    eligible_student_ids = list(
+    eligible_students = list(
         db.scalars(
-            select(ActivityParticipant.student_id)
-            .join(Student, ActivityParticipant.student_id == Student.id)
+            select(Student)
+            .join(ActivityParticipant, ActivityParticipant.student_id == Student.id)
             .where(
                 ActivityParticipant.activity_id == activity.id,
                 ActivityParticipant.eligible.is_(True),
@@ -178,7 +178,7 @@ def issue_activity_documents(
             )
         ).all()
     )
-    if not eligible_student_ids:
+    if not eligible_students:
         raise HTTPException(status_code=409, detail="No eligible participants are available for issue")
 
     existing_student_ids = set(
@@ -192,20 +192,20 @@ def issue_activity_documents(
     )
     issued_document_ids: list[UUID] = []
     skipped_student_ids: list[UUID] = []
-    for student_id in eligible_student_ids:
-        if student_id in existing_student_ids:
-            skipped_student_ids.append(student_id)
+    for student in eligible_students:
+        if student.id in existing_student_ids:
+            skipped_student_ids.append(student.id)
             continue
         document = reserve_document(
             db,
-            student_id=student_id,
+            student_id=student.id,
             activity_id=activity.id,
             template_id=template.id,
             document_type=DocumentType.ACTIVITY_CERTIFICATE,
             issue_date=issue_date,
             render_values={
-                "student_name": db.get(Student, student_id).full_name,
-                "roll_number": db.get(Student, student_id).roll_number,
+                "student_name": student.full_name,
+                "roll_number": student.roll_number,
                 "activity_name": activity.name,
                 "activity_date": activity.activity_date,
                 "issue_date": issue_date,

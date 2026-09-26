@@ -1,0 +1,3 @@
+## 2024-05-19 - Avoid N+1 in bulk document issuance
+**Learning:** In Fastapi API endpoints, fetching only IDs and resolving them in a `for` loop with `db.get` causes N+1 queries. When doing bulk processing like activity certificate issuance, `db.get(Student, id)` in a loop creates significant overhead.
+**Action:** When working on lists that require additional data (like fetching full names and roll numbers for students in a document issuance loop), always rewrite the primary query to fetch the required object explicitly instead of only the ID. In this case, use an upfront explicitly joined `select(Student).join(ActivityParticipant)` to resolve necessary objects in a single database query.
