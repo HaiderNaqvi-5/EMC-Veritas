@@ -39,6 +39,8 @@ export type TemplateAnalysis = {
 };
 
 export const listTemplates = () => apiRequest<Template[]>("/admin/templates");
+export const deleteTemplate = (templateId: string) =>
+  apiRequest<void>(`/admin/templates/${templateId}`, { method: "DELETE" });
 export const listTemplateFields = (templateId: string) =>
   apiRequest<TemplateField[]>(`/admin/templates/${templateId}/fields`);
 export const analyzeTemplate = (templateId: string) =>

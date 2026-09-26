@@ -101,6 +101,26 @@ async def upload_template(
     return template
 
 
+@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_template(
+    template_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> None:
+    """Hide a template from the editor without breaking issued records."""
+    template = _template_or_404(db, template_id)
+    template.archived = True
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="TEMPLATE_ARCHIVED",
+        entity_type="template",
+        entity_id=template.id,
+        payload={"name": template.name},
+    )
+    db.commit()
+
+
 @router.get("/{template_id}/fonts", response_model=list[TemplateFontResponse])
 def list_template_fonts(
     template_id: UUID,
