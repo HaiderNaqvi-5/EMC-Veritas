@@ -54,3 +54,30 @@ def test_rendering_replaces_a_complete_tagged_paragraph_without_old_text() -> No
     rendered.close()
     assert "{{student_name}}" not in text
     assert "Awais Khan (2K22-340) for Plantation Drive on 2026-09-25." in text
+
+
+def test_rendering_preserves_word_boundaries_when_pdf_splits_a_tagged_paragraph() -> None:
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text((80, 120), "His")
+    page.insert_text((101, 120), "leadership for {{student_name}} in {{activity_name}}")
+    template = document.tobytes()
+    document.close()
+    fields = [
+        SimpleNamespace(field_name=name, page_number=1, x=80, y=105, width=80, height=16,
+                        font_family="helv", custom_font_storage_key=None, font_size=10, text_color="#000000")
+        for name in ("student_name", "activity_name")
+    ]
+
+    output = render_certificate(
+        template,
+        fields,
+        {"student_name": "Awais Khan", "activity_name": "Plantation Drive"},
+        verification_url="https://example.test/verify/x",
+        required_field_names=frozenset({"student_name", "activity_name"}),
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    text = rendered[0].get_text().replace("\u00a0", " ")
+    rendered.close()
+    assert "His leadership for Awais Khan in Plantation Drive" in text

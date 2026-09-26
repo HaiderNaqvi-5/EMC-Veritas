@@ -148,6 +148,35 @@ def _source_text_style(page: fitz.Page, rectangle: fitz.Rect) -> tuple[str, floa
     return "helv", 10, (14, 135, 204)
 
 
+def _paragraph_rectangle(page: fitz.Page, rectangle: fitz.Rect) -> fitz.Rect:
+    """Provide enough room to redraw a paragraph, without touching nearby content."""
+    return fitz.Rect(
+        max(36, rectangle.x0 - 28),
+        max(36, rectangle.y0 - 10),
+        min(page.rect.width - 36, rectangle.x1 + 28),
+        min(page.rect.height - 36, rectangle.y1 + 20),
+    )
+
+
+def _block_text_from_words(page: fitz.Page, rectangle: fitz.Rect) -> str:
+    """Reconstruct PDF prose from positioned words, preserving word boundaries.
+
+    Canva and similar tools often split a phrase into several drawing spans.
+    Raw span concatenation can turn ``His leadership`` into
+    ``Hisleadership``.  The word list carries the true word boundaries.
+    """
+    lines: dict[tuple[int, int], list[tuple[float, str]]] = {}
+    for x0, y0, x1, y1, word, block_number, line_number, _word_number in page.get_text("words"):
+        word_rect = fitz.Rect(x0, y0, x1, y1)
+        if not word_rect.intersects(rectangle):
+            continue
+        lines.setdefault((block_number, line_number), []).append((x0, word))
+    return " ".join(
+        " ".join(word for _x, word in sorted(words))
+        for _line, words in sorted(lines.items())
+    )
+
+
 def _paragraph_from_tagged_block(page: fitz.Page, values: Mapping[str, str]) -> tuple[fitz.Rect, str, set[str], str, float, tuple[float, float, float]] | None:
     """Find a paragraph authored with field tags and make it one clean block.
 
@@ -159,15 +188,11 @@ def _paragraph_from_tagged_block(page: fitz.Page, values: Mapping[str, str]) -> 
     for block in page.get_text("dict").get("blocks", []):
         if "lines" not in block:
             continue
-        text = "".join(span.get("text", "") for line in block["lines"] for span in line["spans"])
+        text = _block_text_from_words(page, fitz.Rect(block["bbox"]))
         names = set(token_pattern.findall(text))
         if len(names) < 2 or not names.issubset(values):
             continue
-        rectangle = fitz.Rect(block["bbox"])
-        rectangle.x0 -= 3
-        rectangle.y0 -= 3
-        rectangle.x1 += 3
-        rectangle.y1 += 4
+        rectangle = _paragraph_rectangle(page, fitz.Rect(block["bbox"]))
         content = token_pattern.sub(lambda match: values[match.group(1)], text).strip()
         font, size, rgb = _source_text_style(page, rectangle)
         page.add_redact_annot(rectangle, fill=(1, 1, 1))
@@ -189,12 +214,18 @@ def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tu
     if not start or not end or not needed.issubset(values):
         return None
     first, last = start[0], end[-1]
-    rectangle = fitz.Rect(
-        min(first.x0, last.x0) - 3,
-        min(first.y0, last.y0) - 3,
-        max(first.x1, last.x1) + 3,
-        max(first.y1, last.y1) + 4,
-    )
+    source_blocks = [
+        fitz.Rect(block["bbox"])
+        for block in page.get_text("dict").get("blocks", [])
+        if "lines" in block
+        and fitz.Rect(block["bbox"]).y1 >= first.y0 - 2
+        and fitz.Rect(block["bbox"]).y0 <= last.y1 + 2
+    ]
+    combined = fitz.Rect(first)
+    for block in source_blocks:
+        combined.include_rect(block)
+    combined.include_rect(last)
+    rectangle = _paragraph_rectangle(page, combined)
     text = (
         f"In recognition of {values['roll_number']}, for outstanding efforts in organizing "
         f"and managing {values['activity_name']} on {values['activity_date']} under the EMC. "
@@ -213,17 +244,21 @@ def _render_activity_paragraph(
     font_size: float,
     rgb: tuple[int, int, int],
 ) -> None:
-    result = page.insert_textbox(
-        rectangle,
-        text,
-        fontname=font,
-        fontsize=min(max(font_size, 5), 16),
-        color=tuple(channel / 255 for channel in rgb),
-        align=fitz.TEXT_ALIGN_CENTER,
-        lineheight=1.15,
-    )
-    if result < 0:
-        raise CertificateRenderingError("Activity paragraph does not fit its detected template area")
+    size = min(max(font_size, 5), 16)
+    while size >= 5:
+        result = page.insert_textbox(
+            rectangle,
+            text,
+            fontname=font,
+            fontsize=size,
+            color=tuple(channel / 255 for channel in rgb),
+            align=fitz.TEXT_ALIGN_CENTER,
+            lineheight=1.15,
+        )
+        if result >= 0:
+            return
+        size -= 0.5
+    raise CertificateRenderingError("Activity paragraph does not fit its detected template area")
 
 
 def render_certificate(
