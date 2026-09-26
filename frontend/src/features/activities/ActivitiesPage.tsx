@@ -179,8 +179,8 @@ export function ActivitiesPage() {
       },
     });
   }
-  const activeSessions =
-    sessions.data?.filter((item) => item.status === "ACTIVE") ?? [];
+  const activeSessions = useMemo(() => sessions.data?.filter((item) => item.status === "ACTIVE") ?? [], [sessions.data]);
+  const activeStudents = useMemo(() => students.data?.filter((item) => item.active) ?? [], [students.data]);
   return (
     <section>
       <h1 className="text-3xl font-bold">Activities</h1>
@@ -282,9 +282,7 @@ export function ActivitiesPage() {
           className="rounded border p-2"
         >
           <option value="">Choose active student</option>
-          {students.data
-            ?.filter((item) => item.active)
-            .map((item) => (
+          {activeStudents.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.roll_number} — {item.full_name}
               </option>
