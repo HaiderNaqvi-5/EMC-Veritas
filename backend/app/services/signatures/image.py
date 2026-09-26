@@ -30,6 +30,15 @@ def _soft_threshold(image: Image.Image, start: int, range_size: int) -> Image.Im
     )
 
 
+def _has_visible_ink(mask: Image.Image) -> bool:
+    """Reject tiny colour noise before treating it as a handwritten stroke."""
+    _minimum, maximum = mask.getextrema()
+    if maximum < 32:
+        return False
+    visible_pixels = sum(count for value, count in enumerate(mask.histogram()) if value >= 32)
+    return visible_pixels >= max(16, mask.width * mask.height // 10_000)
+
+
 def _crop_to_ink(image: Image.Image, alpha: Image.Image) -> Image.Image:
     # Median filtering removes isolated camera noise without erasing strokes.
     cleaned = alpha.filter(ImageFilter.MedianFilter(5))
@@ -64,7 +73,10 @@ def prepare_signature_image(content: bytes) -> bytes:
     colour_mask = _soft_threshold(colour_difference, start=50, range_size=65)
     # Orange/blue pen strokes are best isolated by colour. Black pen strokes
     # are isolated by darkness relative to the measured paper background.
-    if colour_mask.getbbox() is not None:
+    # A photographed page can have weak colour noise at the edges.  That used
+    # to select a mask with alpha 1-2/255 and turn a black signature invisible.
+    # Only use the colour path when it contains genuinely visible ink.
+    if _has_visible_ink(colour_mask):
         alpha = colour_mask
     else:
         background = max(0, round(_background_luminance(image)) - 12)

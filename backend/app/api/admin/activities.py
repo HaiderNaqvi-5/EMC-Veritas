@@ -93,7 +93,20 @@ def delete_activity(activity_id: UUID, admin_id: UUID = Depends(require_admin), 
     if item is None:
         raise HTTPException(404, "Activity not found")
     if db.scalar(select(IssuedDocument.id).where(IssuedDocument.activity_id == item.id)) is not None:
-        raise HTTPException(409, "An activity with issued certificates cannot be deleted")
+        # Issued certificates are immutable and retain their activity link.
+        # Archive the activity instead: it disappears from administration while
+        # public certificates and verification history remain valid.
+        item.status = ActivityStatus.ARCHIVED
+        record_audit_event(
+            db,
+            event_type="ACTIVITY_ARCHIVED",
+            entity_type="activity",
+            entity_id=item.id,
+            payload={"name": item.name, "reason": "deleted_from_admin"},
+            actor_admin_id=admin_id,
+        )
+        db.commit()
+        return
     db.query(ActivityParticipant).filter(ActivityParticipant.activity_id == item.id).delete(synchronize_session=False)
     record_audit_event(db, event_type="ACTIVITY_DELETED", entity_type="activity", entity_id=item.id, payload={"name": item.name}, actor_admin_id=admin_id)
     db.delete(item)

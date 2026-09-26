@@ -3,12 +3,16 @@ from app.services.students import create_student, deactivate_student
 
 
 class FakeDatabase:
-    def __init__(self) -> None:
+    def __init__(self, existing=None) -> None:
         self.added = []
         self.flush_count = 0
+        self.existing = existing
 
     def add(self, item) -> None:
         self.added.append(item)
+
+    def scalar(self, _query):
+        return self.existing
 
     def flush(self) -> None:
         self.flush_count += 1
@@ -31,3 +35,21 @@ def test_deactivate_student_preserves_record() -> None:
     assert result is student
     assert student.active is False
     assert db.flush_count == 2
+
+
+def test_create_student_reactivates_an_inactive_matching_roll_number() -> None:
+    original = create_student(
+        FakeDatabase(), StudentCreate(roll_number="2K22-BSCS-404", full_name="Old Name")
+    )
+    original.active = False
+    db = FakeDatabase(existing=original)
+
+    student = create_student(
+        db, StudentCreate(roll_number="2k22-bscs-404", full_name="Updated Name")
+    )
+
+    assert student is original
+    assert student.active is True
+    assert student.full_name == "Updated Name"
+    assert db.added == []
+    assert db.flush_count == 1

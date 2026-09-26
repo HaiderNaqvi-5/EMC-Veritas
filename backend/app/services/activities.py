@@ -5,7 +5,7 @@ from app.models.domain import Activity, ActivityParticipant, ActivityStatus, Stu
 from app.schemas.operations import ActivityCreate, ActivityUpdate
 
 
-def list_activities(db: Session) -> list[Activity]: return list(db.scalars(select(Activity).order_by(Activity.activity_date.desc())))
+def list_activities(db: Session) -> list[Activity]: return list(db.scalars(select(Activity).where(Activity.status != ActivityStatus.ARCHIVED).order_by(Activity.activity_date.desc())))
 def create_activity(db: Session, payload: ActivityCreate, admin_id) -> Activity:
     item = Activity(**payload.model_dump(), created_by_admin_id=admin_id, status=ActivityStatus.DRAFT); db.add(item); db.flush(); return item
 def update_activity(db: Session, item: Activity, payload: ActivityUpdate) -> Activity:

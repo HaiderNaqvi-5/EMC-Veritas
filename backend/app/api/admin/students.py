@@ -35,6 +35,8 @@ def add_student(payload: StudentCreate, admin_id: UUID = Depends(require_admin),
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A student with this roll number already exists")
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
 
 
 @router.post("/{student_id}/deactivate", response_model=StudentResponse)
