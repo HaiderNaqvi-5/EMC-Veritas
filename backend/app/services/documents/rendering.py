@@ -218,8 +218,11 @@ def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tu
         fitz.Rect(block["bbox"])
         for block in page.get_text("dict").get("blocks", [])
         if "lines" in block
-        and fitz.Rect(block["bbox"]).y1 >= first.y0 - 2
-        and fitz.Rect(block["bbox"]).y0 <= last.y1 + 2
+        # Include only paragraph blocks fully between its first and final
+        # lines. A tall decorative student-name span can overlap this range
+        # at the edge and must never enlarge the paragraph wipe area.
+        and fitz.Rect(block["bbox"]).y0 >= first.y0 - 2
+        and fitz.Rect(block["bbox"]).y1 <= last.y1 + 2
     ]
     combined = fitz.Rect(first)
     for block in source_blocks:
@@ -311,13 +314,14 @@ def render_certificate(
     try:
         paragraph_jobs: dict[int, tuple[fitz.Rect, str, str, float, tuple[int, int, int]]] = {}
         paragraph_fields: set[tuple[int, str]] = set()
-        configured_by_page: dict[int, set[str]] = {}
-        for field in field_list:
-            configured_by_page.setdefault(field.page_number, set()).add(field.field_name)
-        for page_number, names in configured_by_page.items():
+        # Paragraph replacement is derived from the PDF itself, not from the
+        # saved box configuration. Older templates can carry imperfect field
+        # records, but their visible certificate paragraph must still be
+        # removed completely before the fresh paragraph is drawn.
+        for page_number in range(1, document.page_count + 1):
             page = document[page_number - 1]
             job = _paragraph_from_tagged_block(page, normalized_values)
-            if job is None and {"roll_number", "activity_name", "activity_date"}.issubset(names):
+            if job is None:
                 job = _inline_activity_paragraph(page, normalized_values)
             if job:
                 rectangle, text, replaced_names, font, size, rgb = job
