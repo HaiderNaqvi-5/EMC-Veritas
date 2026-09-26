@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass
 from io import BytesIO
+from math import ceil
 
 import fitz
 import pytesseract
@@ -124,15 +125,27 @@ def detect_certificate_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateFi
                 rectangle = fitz.Rect(center_x - 140, center_y - 18, center_x + 140, center_y + 18)
                 font_family, font_size = "tiro", 28
             if field_name == "verification_id":
-                rectangle = fitz.Rect(rectangle.x1 + 8, rectangle.y0, rectangle.x1 + 138, rectangle.y1 + 4)
+                # The serial placeholder is normally printed at the right edge.
+                # Expanding it to the right can put it past the page boundary,
+                # which then prevents the admin editor from approving the draft.
+                # Keep the field over the visible serial token and expand only
+                # into available page space.
+                available_width = document[page_index].rect.width - rectangle.x0 - 8
+                rectangle = fitz.Rect(
+                    rectangle.x0,
+                    rectangle.y0,
+                    rectangle.x0 + min(128, max(16, available_width)),
+                    rectangle.y1,
+                )
+            x, y, width, height = _safe_field_geometry(document[page_index], rectangle)
             detected.append(
                 DetectedTemplateField(
                     field_name=field_name,
                     page_number=page_index + 1,
-                    x=max(0, int(rectangle.x0) - 2),
-                    y=max(0, int(rectangle.y0) - 2),
-                    width=max(16, int(rectangle.width) + 4),
-                    height=max(16, int(rectangle.height) + 4),
+                    x=x,
+                    y=y,
+                    width=width,
+                    height=height,
                     detected_text=alias,
                     font_family=font_family,
                     font_size=font_size,
@@ -140,6 +153,23 @@ def detect_certificate_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateFi
                 )
             )
     return detected
+
+
+def _safe_field_geometry(page: fitz.Page, rectangle: fitz.Rect) -> tuple[int, int, int, int]:
+    """Convert a detected PDF rectangle into an in-bounds editor box.
+
+    Do not add arbitrary padding here: adjacent lines in certificate prose are
+    often only a few points apart, and padding turns valid neighbouring fields
+    into overlapping boxes that the approval guard correctly rejects.
+    """
+    minimum_size = 16
+    page_width = int(page.rect.width)
+    page_height = int(page.rect.height)
+    x = min(max(0, int(rectangle.x0)), max(0, page_width - minimum_size))
+    y = min(max(0, int(rectangle.y0)), max(0, page_height - minimum_size))
+    width = min(max(minimum_size, ceil(rectangle.width)), page_width - x)
+    height = min(max(minimum_size, ceil(rectangle.height)), page_height - y)
+    return x, y, width, height
 
 
 def _combined_placeholder_rect(rectangles: list[fitz.Rect]) -> fitz.Rect:

@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 import fitz
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.admin.dependencies import current_active_admin, super_admin_required
@@ -228,8 +228,6 @@ def configure_template_fields(
     template = _template_or_404(db, template_id)
     if template.approved:
         raise HTTPException(status_code=409, detail="Approved templates are immutable; upload a new version")
-    if db.scalar(select(TemplateField.id).where(TemplateField.template_id == template.id)) is not None:
-        raise HTTPException(status_code=409, detail="Template fields are already configured")
     try:
         signature_handling = require_signature_choice(payload.signature_handling)
     except ValueError as error:
@@ -237,6 +235,9 @@ def configure_template_fields(
     names = [field.field_name for field in payload.fields]
     if len(names) != len(set(names)):
         raise HTTPException(status_code=422, detail="Template field names must be unique")
+    # An unapproved template is a draft.  Its automatically detected positions
+    # may need correction, so replace the prior draft configuration atomically.
+    db.execute(delete(TemplateField).where(TemplateField.template_id == template.id))
     for field in payload.fields:
         field_data = field.model_dump(exclude={"custom_font_id"})
         if field.font_family == "custom":

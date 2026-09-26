@@ -64,3 +64,19 @@ def test_analysis_combines_split_placeholder_fragments() -> None:
     second = fitz.Rect(40, 20, 90, 35)
 
     assert analysis._combined_placeholder_rect([first, second]) == fitz.Rect(10, 20, 90, 35)
+
+
+def test_detected_fields_stay_in_bounds_without_adjacent_line_overlap() -> None:
+    document = fitz.open()
+    page = document.new_page(width=842, height=595)
+    page.insert_text((250, 300), "Student Roll Number")
+    page.insert_text((250, 322), "Activity Name")
+    page.insert_text((700, 500), "Serial No")
+    pdf_bytes = document.tobytes()
+    document.close()
+
+    fields = analysis.detect_certificate_placeholders(pdf_bytes)
+    by_name = {field.field_name: field for field in fields}
+
+    assert by_name["verification_id"].x + by_name["verification_id"].width <= 842
+    assert by_name["roll_number"].y + by_name["roll_number"].height <= by_name["activity_name"].y
