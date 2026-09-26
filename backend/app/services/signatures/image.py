@@ -1,10 +1,9 @@
-"""Normalise uploaded handwritten signatures for clean certificate placement."""
+"""Fast normalisation of uploaded handwritten signatures for certificates."""
 
-from collections import deque
 from io import BytesIO
 from statistics import median
 
-from PIL import Image, ImageFilter, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageFilter, ImageOps, UnidentifiedImageError
 
 
 def _luminance(red: int, green: int, blue: int) -> float:
@@ -24,88 +23,59 @@ def _background_luminance(image: Image.Image) -> float:
     return float(median(samples)) if samples else 255.0
 
 
-def _largest_ink_bounds(alpha: Image.Image) -> tuple[int, int, int, int] | None:
-    """Locate the handwriting cluster while ignoring isolated camera/paper noise."""
-    scale = 4
-    small = alpha.resize(
-        (max(1, alpha.width // scale), max(1, alpha.height // scale)), Image.Resampling.LANCZOS
+def _soft_threshold(image: Image.Image, start: int, range_size: int) -> Image.Image:
+    """Build a soft alpha mask using Pillow's C-backed point operation."""
+    return image.point(
+        [max(0, min(255, round((value - start) * 255 / range_size))) for value in range(256)]
     )
-    # Expand strokes slightly so the individual pen strokes form one cluster.
-    mask = small.point(lambda value: 255 if value >= 96 else 0).filter(ImageFilter.MaxFilter(5))
-    width, height = mask.size
-    pixels = mask.load()
-    visited = bytearray(width * height)
-    largest: tuple[int, int, int, int, int] | None = None
-    for start_y in range(height):
-        for start_x in range(width):
-            index = start_y * width + start_x
-            if visited[index] or pixels[start_x, start_y] == 0:
-                continue
-            queue = deque([(start_x, start_y)])
-            visited[index] = 1
-            count = 0
-            left = right = start_x
-            top = bottom = start_y
-            while queue:
-                x, y = queue.popleft()
-                count += 1
-                left, right = min(left, x), max(right, x)
-                top, bottom = min(top, y), max(bottom, y)
-                for next_x, next_y in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
-                    next_index = next_y * width + next_x
-                    if (
-                        0 <= next_x < width
-                        and 0 <= next_y < height
-                        and not visited[next_index]
-                        and pixels[next_x, next_y] != 0
-                    ):
-                        visited[next_index] = 1
-                        queue.append((next_x, next_y))
-            if largest is None or count > largest[0]:
-                largest = count, left, top, right, bottom
-    if largest is None:
-        return None
-    _count, left, top, right, bottom = largest
-    padding = max(8, min(alpha.size) // 80)
-    return (
-        max(0, left * scale - padding),
-        max(0, top * scale - padding),
-        min(alpha.width, (right + 1) * scale + padding),
-        min(alpha.height, (bottom + 1) * scale + padding),
+
+
+def _crop_to_ink(image: Image.Image, alpha: Image.Image) -> Image.Image:
+    # Median filtering removes isolated camera noise without erasing strokes.
+    cleaned = alpha.filter(ImageFilter.MedianFilter(5))
+    visible = cleaned.getbbox() or alpha.getbbox()
+    if visible is None:
+        raise ValueError("No visible signature ink was found in the uploaded image")
+    left, top, right, bottom = visible
+    padding = max(8, min(image.size) // 80)
+    return image.crop(
+        (
+            max(0, left - padding),
+            max(0, top - padding),
+            min(image.width, right + padding),
+            min(image.height, bottom + padding),
+        )
     )
 
 
 def prepare_signature_image(content: bytes) -> bytes:
-    """Crop handwriting, remove paper, and store the ink as transparent black PNG."""
+    """Crop handwriting, remove paper, and store ink as a transparent black PNG."""
     try:
         with Image.open(BytesIO(content)) as source:
             image = source.convert("RGBA")
     except (OSError, UnidentifiedImageError) as error:
         raise ValueError("Signature image is unreadable") from error
 
-    background = _background_luminance(image)
-    source_pixels = list(image.getdata())
-    has_coloured_ink = any(
-        max(red, green, blue) > 0
-        and (max(red, green, blue) - min(red, green, blue)) / max(red, green, blue) >= 0.28
-        for red, green, blue, _alpha in source_pixels
+    red, green, blue, source_alpha = image.split()
+    colour_difference = ImageChops.lighter(
+        ImageChops.difference(red, green),
+        ImageChops.lighter(ImageChops.difference(red, blue), ImageChops.difference(green, blue)),
     )
-    pixels = []
-    for red, green, blue, alpha in source_pixels:
-        maximum = max(red, green, blue)
-        saturation = 0 if maximum == 0 else (maximum - min(red, green, blue)) / maximum
-        luminance = _luminance(red, green, blue)
-        # Coloured pens (like the supplied orange signatures) are separated by
-        # saturation, while black ink is separated from the page by darkness.
-        coloured_ink = max(0.0, min(1.0, (saturation - 0.16) / 0.30))
-        dark_ink = max(0.0, min(1.0, (background - luminance - 12) / 72))
-        ink_opacity = coloured_ink if has_coloured_ink else max(coloured_ink, dark_ink)
-        pixels.append((0, 0, 0, round(alpha * ink_opacity)))
-    image.putdata(pixels)
-    visible = _largest_ink_bounds(image.getchannel("A"))
-    if visible is None:
-        raise ValueError("No visible signature ink was found in the uploaded image")
-    image = image.crop(visible)
+    colour_mask = _soft_threshold(colour_difference, start=50, range_size=65)
+    # Orange/blue pen strokes are best isolated by colour. Black pen strokes
+    # are isolated by darkness relative to the measured paper background.
+    if colour_mask.getbbox() is not None:
+        alpha = colour_mask
+    else:
+        background = max(0, round(_background_luminance(image)) - 12)
+        dark_difference = ImageChops.subtract(
+            Image.new("L", image.size, color=background), ImageOps.grayscale(image)
+        )
+        alpha = _soft_threshold(dark_difference, start=16, range_size=72)
+    alpha = ImageChops.multiply(alpha, source_alpha)
+    output_image = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    output_image.putalpha(alpha)
+    output_image = _crop_to_ink(output_image, alpha)
     output = BytesIO()
-    image.save(output, format="PNG", optimize=True)
+    output_image.save(output, format="PNG", optimize=True)
     return output.getvalue()

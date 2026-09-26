@@ -17,15 +17,21 @@ class SupabaseStorage:
         }
 
     def upload(self, key: str, content: bytes, content_type: str) -> None:
-        response = httpx.post(
-            f"{self.base_url}/{quote(key, safe='/')}",
-            headers={**self.headers, "Content-Type": content_type, "x-upsert": "false"},
-            content=content,
-            timeout=30,
-        )
-        response.raise_for_status()
+        try:
+            response = httpx.post(
+                f"{self.base_url}/{quote(key, safe='/')}",
+                headers={**self.headers, "Content-Type": content_type, "x-upsert": "false"},
+                content=content,
+                timeout=30,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise RuntimeError("Supabase Storage upload failed") from error
 
     def download(self, key: str) -> bytes:
-        response = httpx.get(f"{self.base_url}/{quote(key, safe='/')}", headers=self.headers, timeout=30)
-        response.raise_for_status()
-        return response.content
+        try:
+            response = httpx.get(f"{self.base_url}/{quote(key, safe='/')}", headers=self.headers, timeout=30)
+            response.raise_for_status()
+            return response.content
+        except httpx.HTTPError as error:
+            raise RuntimeError("Supabase Storage download failed") from error
