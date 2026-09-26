@@ -1,10 +1,12 @@
 import json
+import logging
 from datetime import datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.admin.dependencies import current_active_admin
@@ -40,6 +42,7 @@ from app.services.templates.fields import missing_required_fields
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 EMC_TIMEZONE = ZoneInfo("Asia/Karachi")
+logger = logging.getLogger(__name__)
 
 
 def _admin_document_response(
@@ -184,45 +187,63 @@ def issue_activity_documents(
             )
         ).all()
     )
+    students = {
+        student.id: student
+        for student in db.scalars(select(Student).where(Student.id.in_(eligible_student_ids))).all()
+    }
     issued_document_ids: list[UUID] = []
     skipped_student_ids: list[UUID] = []
-    for student_id in eligible_student_ids:
-        if student_id in existing_student_ids:
-            skipped_student_ids.append(student_id)
-            continue
-        document = reserve_document(
+    try:
+        for student_id in eligible_student_ids:
+            if student_id in existing_student_ids:
+                skipped_student_ids.append(student_id)
+                continue
+            student = students.get(student_id)
+            if student is None:
+                raise HTTPException(status_code=409, detail="An eligible student could not be found")
+            document = reserve_document(
+                db,
+                student_id=student_id,
+                activity_id=activity.id,
+                template_id=template.id,
+                document_type=DocumentType.ACTIVITY_CERTIFICATE,
+                issue_date=issue_date,
+                render_values={
+                    "student_name": student.full_name,
+                    "roll_number": student.roll_number,
+                    "activity_name": activity.name,
+                    "activity_date": activity.activity_date,
+                    "issue_date": issue_date,
+                },
+                actor_admin_id=admin.id,
+                signatories=tuple(selected_signatories.values()),
+            )
+            issued_document_ids.append(document.id)
+        activity.issue_date = issue_date
+        activity.status = ActivityStatus.PUBLISHED
+        record_audit_event(
             db,
-            student_id=student_id,
-            activity_id=activity.id,
-            template_id=template.id,
-            document_type=DocumentType.ACTIVITY_CERTIFICATE,
-            issue_date=issue_date,
-            render_values={
-                "student_name": db.get(Student, student_id).full_name,
-                "roll_number": db.get(Student, student_id).roll_number,
-                "activity_name": activity.name,
-                "activity_date": activity.activity_date,
-                "issue_date": issue_date,
-            },
             actor_admin_id=admin.id,
-            signatories=tuple(selected_signatories.values()),
+            event_type="ACTIVITY_DOCUMENTS_ISSUED",
+            entity_type="activity",
+            entity_id=activity.id,
+            payload={
+                "issue_date": issue_date.isoformat(),
+                "issued_count": len(issued_document_ids),
+                "skipped_count": len(skipped_student_ids),
+            },
         )
-        issued_document_ids.append(document.id)
-    activity.issue_date = issue_date
-    activity.status = ActivityStatus.PUBLISHED
-    record_audit_event(
-        db,
-        actor_admin_id=admin.id,
-        event_type="ACTIVITY_DOCUMENTS_ISSUED",
-        entity_type="activity",
-        entity_id=activity.id,
-        payload={
-            "issue_date": issue_date.isoformat(),
-            "issued_count": len(issued_document_ids),
-            "skipped_count": len(skipped_student_ids),
-        },
-    )
-    db.commit()
+        # Flush before committing so every database constraint is checked while
+        # this request can still return a useful error and roll back cleanly.
+        db.flush()
+        db.commit()
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.exception("Certificate publication failed for activity %s", activity.id)
+        raise HTTPException(
+            status_code=500,
+            detail="Certificate publication failed and was rolled back. No certificate was issued.",
+        ) from error
     return ActivityIssueResponse(
         activity_id=activity.id,
         issue_date=issue_date,
