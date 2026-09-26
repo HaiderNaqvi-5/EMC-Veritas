@@ -3,7 +3,11 @@ services:
     name: emc-veritas-api
     runtime: python
     rootDir: backend
-    buildCommand: pip install .
+    # Reinstall the local application package on every release. The package
+    # version is intentionally stable during development, so a normal install
+    # can otherwise make it difficult to prove that the newly checked-out
+    # renderer source is the code actually running in production.
+    buildCommand: pip install --no-cache-dir --force-reinstall .
     # Render Free does not support preDeployCommand. Apply reviewed Alembic
     # migrations before a release, then deploy the already-migrated service.
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT

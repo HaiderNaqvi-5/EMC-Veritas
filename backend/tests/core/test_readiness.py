@@ -20,3 +20,22 @@ def test_readiness_endpoint() -> None:
     response = asyncio.run(request_readiness())
     assert response.status_code == 200
     assert response.json() == {"ready": True}
+
+
+def test_build_revision_endpoint_reports_the_render_revision() -> None:
+    previous_revision = os.environ.get("RENDER_GIT_COMMIT")
+    os.environ["RENDER_GIT_COMMIT"] = "74d1071-test"
+    try:
+        async def request_build_revision() -> httpx.Response:
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.get("/api/health/build")
+
+        response = asyncio.run(request_build_revision())
+        assert response.status_code == 200
+        assert response.json() == {"revision": "74d1071-test"}
+    finally:
+        if previous_revision is None:
+            os.environ.pop("RENDER_GIT_COMMIT", None)
+        else:
+            os.environ["RENDER_GIT_COMMIT"] = previous_revision
