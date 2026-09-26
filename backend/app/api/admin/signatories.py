@@ -52,10 +52,33 @@ async def create_signatory(
         SupabaseStorage().upload(storage_key, content, "image/png")
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail="Signature storage is temporarily unavailable") from error
+    # Re-uploading the same authority for the same effective date is an image
+    # replacement, not a second competing active record.  Issued documents
+    # keep their own snapshots, so this cannot alter historical certificates.
+    replacement_title = official_title.strip()
+    replaced = list(
+        db.scalars(
+            select(Signatory).where(
+                Signatory.active.is_(True),
+                Signatory.official_title == replacement_title,
+                Signatory.effective_start_date == effective_start_date,
+            )
+        ).all()
+    )
+    for previous in replaced:
+        previous.active = False
+        record_audit_event(
+            db,
+            actor_admin_id=admin.id,
+            event_type="SIGNATORY_REPLACED",
+            entity_type="signatory",
+            entity_id=previous.id,
+            payload={"replacement_title": replacement_title},
+        )
     signatory = Signatory(
         id=identifier,
         name=name.strip(),
-        official_title=official_title.strip(),
+        official_title=replacement_title,
         signature_storage_key=storage_key,
         effective_start_date=effective_start_date,
         effective_end_date=effective_end_date,
