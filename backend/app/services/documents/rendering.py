@@ -102,6 +102,22 @@ def _insert_image(page: fitz.Page, field: TemplateField, image_bytes: bytes) -> 
         ) from error
 
 
+def _remove_inline_placeholder(page: fitz.Page, field_name: str) -> None:
+    """Erase a literal {{field_name}} token before rendering its real value.
+
+    This makes templates authored as a single flowing paragraph work without
+    requiring a user to manually drag a field into a separate blank space.
+    """
+    token = "{{" + field_name + "}}"
+    rectangles = page.search_for(token)
+    if not rectangles:
+        return
+    combined = fitz.Rect(rectangles[0])
+    for rectangle in rectangles[1:]:
+        combined.include_rect(rectangle)
+    page.add_redact_annot(combined, fill=(1, 1, 1))
+
+
 def render_certificate(
     template_pdf: bytes,
     fields: Iterable[TemplateField],
@@ -155,6 +171,10 @@ def render_certificate(
                 raise CertificateRenderingError(
                     f"Template field '{field.field_name}' references an invalid page"
                 )
+            _remove_inline_placeholder(document[field.page_number - 1], field.field_name)
+        for page in document:
+            page.apply_redactions()
+        for field in field_list:
             page = document[field.page_number - 1]
             if field.field_name == "qr_code":
                 _insert_qr(page, field, verification_url)

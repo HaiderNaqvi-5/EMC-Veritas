@@ -53,7 +53,14 @@ def test_analysis_detects_common_certificate_placeholders_with_positions() -> No
         "activity_date", "qr_code",
     ]
     assert all(field.page_number == 1 and field.width > 0 and field.height > 0 for field in result)
-    assert result[0].font_family == "helv"
-    assert result[0].font_size >= 5
+    assert result[0].font_family == "tiro"
+    assert result[0].font_size == 28
     assert result[0].text_color == "#000000"
-    assert result[-1].detected_text == "suggested footer QR area"
+    assert result[-1].detected_text == "dedicated QR square"
+
+
+def test_analysis_combines_split_placeholder_fragments() -> None:
+    first = fitz.Rect(10, 20, 40, 35)
+    second = fitz.Rect(40, 20, 90, 35)
+
+    assert analysis._combined_placeholder_rect([first, second]) == fitz.Rect(10, 20, 90, 35)

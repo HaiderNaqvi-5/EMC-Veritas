@@ -61,7 +61,7 @@ export function TemplateEditorPage() {
   function move(event: PointerEvent<HTMLDivElement>) { if (!drag || !imageRef.current) return; const rect = imageRef.current.getBoundingClientRect(); const dx = Math.round((event.clientX - drag.startX) * pageSize.width / rect.width); const dy = Math.round((event.clientY - drag.startY) * pageSize.height / rect.height); setFields((current) => current.map((field, index) => index !== drag.index ? field : drag.resize ? { ...field, width: Math.max(16, drag.initial.width + dx), height: Math.max(16, drag.initial.height + dy) } : { ...field, x: Math.max(0, drag.initial.x + dx), y: Math.max(0, drag.initial.y + dy) })); }
 
   const placementWarnings = fields.flatMap((field, index) => fields.slice(index + 1).filter((other) => field.page_number === other.page_number && field.x < other.x + other.width && field.x + field.width > other.x && field.y < other.y + other.height && field.y + field.height > other.y).map((other) => `${field.field_name} overlaps ${other.field_name}`));
-  const outOfBounds = fields.filter((field) => field.x + field.width > pageSize.width || field.y + field.height > pageSize.height).map((field) => `${field.field_name} extends beyond the page`);
+  const outOfBounds = pageUrl ? fields.filter((field) => field.x + field.width > pageSize.width || field.y + field.height > pageSize.height).map((field) => `${field.field_name} extends beyond the page`) : [];
   const placementProblems = [...placementWarnings, ...outOfBounds];
   const useDetectedFields = () => {
     const detected = analysis.data?.detected_fields ?? [];

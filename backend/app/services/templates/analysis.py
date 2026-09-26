@@ -92,35 +92,39 @@ def detect_certificate_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateFi
     detected: list[DetectedTemplateField] = []
     with fitz.open(stream=pdf_bytes, filetype="pdf") as document:
         for field_name, aliases in _CERTIFICATE_PLACEHOLDERS.items():
+            if field_name == "qr_code" and document.page_count:
+                page = document[0]
+                qr_rectangle = _dedicated_qr_rectangle(page)
+                detected.append(
+                    DetectedTemplateField(
+                        field_name="qr_code", page_number=1,
+                        x=int(qr_rectangle.x0), y=int(qr_rectangle.y0),
+                        width=int(qr_rectangle.width), height=int(qr_rectangle.height),
+                        detected_text="dedicated QR square",
+                        font_family="helv", font_size=12, text_color="#000000",
+                    )
+                )
+                continue
             match: tuple[int, fitz.Rect, str] | None = None
             for page_index, page in enumerate(document):
                 for alias in aliases:
                     rectangles = page.search_for(alias)
                     if rectangles:
-                        match = (page_index, rectangles[0], alias)
+                        match = (page_index, _combined_placeholder_rect(rectangles), alias)
                         break
                 if match is not None:
                     break
             if match is None:
-                if field_name == "qr_code" and document.page_count:
-                    page = document[0]
-                    detected.append(
-                        DetectedTemplateField(
-                            field_name="qr_code",
-                            page_number=1,
-                            x=max(0, int(page.rect.width) - 170),
-                            y=max(0, int(page.rect.height) - 150),
-                            width=96,
-                            height=96,
-                            detected_text="suggested footer QR area",
-                            font_family="helv",
-                            font_size=12,
-                            text_color="#000000",
-                        )
-                    )
                 continue
             page_index, rectangle, alias = match
             font_family, font_size, text_color = _style_at(document[page_index], rectangle)
+            if field_name == "student_name":
+                center_x = (rectangle.x0 + rectangle.x1) / 2
+                center_y = (rectangle.y0 + rectangle.y1) / 2
+                rectangle = fitz.Rect(center_x - 140, center_y - 18, center_x + 140, center_y + 18)
+                font_family, font_size = "tiro", 28
+            if field_name == "verification_id":
+                rectangle = fitz.Rect(rectangle.x1 + 8, rectangle.y0, rectangle.x1 + 138, rectangle.y1 + 4)
             detected.append(
                 DetectedTemplateField(
                     field_name=field_name,
@@ -136,6 +140,36 @@ def detect_certificate_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateFi
                 )
             )
     return detected
+
+
+def _combined_placeholder_rect(rectangles: list[fitz.Rect]) -> fitz.Rect:
+    """Return one box for a token split into multiple PDF text fragments."""
+    combined = fitz.Rect(rectangles[0])
+    for rectangle in rectangles[1:]:
+        combined.include_rect(rectangle)
+    return combined
+
+
+def _dedicated_qr_rectangle(page: fitz.Page) -> fitz.Rect:
+    """Find a footer QR frame drawn in the PDF and inset the generated code."""
+    frames = [
+        drawing["rect"]
+        for drawing in page.get_drawings()
+        if drawing["rect"].x0 > page.rect.width / 2
+        and 64 <= drawing["rect"].width <= 160
+        and drawing["rect"].height >= drawing["rect"].width
+    ]
+    if frames:
+        frame = min(frames, key=lambda rectangle: rectangle.y0)
+        size = min(frame.width, frame.height) - 16
+        return fitz.Rect(
+            frame.x0 + (frame.width - size) / 2,
+            frame.y0 + 8,
+            frame.x0 + (frame.width + size) / 2,
+            frame.y0 + 8 + size,
+        )
+    size = 80
+    return fitz.Rect(page.rect.width - size - 74, page.rect.height - size - 74, page.rect.width - 74, page.rect.height - 74)
 
 
 def _style_at(page: fitz.Page, rectangle: fitz.Rect) -> tuple[str, int, str]:
