@@ -10,6 +10,7 @@ import fitz
 from app.models.domain import TemplateField
 from app.services.documents.qr_image import qr_png
 from app.services.documents.text_fit import fit_font_size
+from app.services.signatures.image import prepare_signature_image
 from app.services.templates.fields import REQUIRED_CERTIFICATE_FIELDS
 
 
@@ -132,7 +133,14 @@ def _insert_image(page: fitz.Page, field: TemplateField, image_bytes: bytes) -> 
         raise CertificateRenderingError(f"Template field '{field.field_name}' has an invalid box")
     rectangle = fitz.Rect(field.x, field.y, field.x + field.width, field.y + field.height)
     try:
-        page.insert_image(rectangle, stream=image_bytes, keep_proportion=True)
+        # Normalize again at render time. This makes issuance resilient to
+        # signatures uploaded before the alpha-mask bug was fixed, without
+        # changing the immutable stored source or requiring re-upload.
+        page.insert_image(
+            rectangle,
+            stream=prepare_signature_image(image_bytes),
+            keep_proportion=True,
+        )
     except (ValueError, RuntimeError) as error:
         raise CertificateRenderingError(
             f"Signature image for template field '{field.field_name}' is unreadable"

@@ -84,7 +84,17 @@ def prepare_signature_image(content: bytes) -> bytes:
             Image.new("L", image.size, color=background), ImageOps.grayscale(image)
         )
         alpha = _soft_threshold(dark_difference, start=16, range_size=72)
-    alpha = ImageChops.multiply(alpha, source_alpha)
+    # Older deployments accidentally saved some already-processed signature
+    # PNGs with useful RGB ink but alpha values of only 1–2.  Treat such an
+    # image as an opaque source while rebuilding its mask; otherwise a later
+    # certificate render can never make the handwriting visible again.
+    _minimum, source_alpha_maximum = source_alpha.getextrema()
+    effective_source_alpha = (
+        source_alpha
+        if source_alpha_maximum >= 32
+        else Image.new("L", image.size, color=255)
+    )
+    alpha = ImageChops.multiply(alpha, effective_source_alpha)
     output_image = Image.new("RGBA", image.size, (0, 0, 0, 0))
     output_image.putalpha(alpha)
     output_image = _crop_to_ink(output_image, alpha)

@@ -34,3 +34,15 @@ def test_prepare_signature_image_ignores_one_coloured_noise_pixel_for_black_ink(
         assert result.size[0] < 100
         assert result.size[1] < 60
         assert max(result.getchannel("A").getextrema()) >= 100
+
+
+def test_prepare_signature_image_recovers_ink_from_a_nearly_transparent_legacy_png() -> None:
+    image = Image.new("RGBA", (160, 100), (160, 160, 160, 2))
+    drawing = ImageDraw.Draw(image)
+    drawing.line((45, 55, 115, 40), fill=(20, 20, 20, 2), width=5)
+    source = BytesIO()
+    image.save(source, format="PNG")
+
+    output = prepare_signature_image(source.getvalue())
+    with Image.open(BytesIO(output)).convert("RGBA") as result:
+        assert max(result.getchannel("A").getextrema()) >= 100
