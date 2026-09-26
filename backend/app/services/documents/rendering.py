@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterable, Mapping
 from datetime import date
 from io import BytesIO
@@ -134,7 +135,47 @@ def _remove_inline_placeholder(page: fitz.Page, field_name: str) -> None:
     page.add_redact_annot(combined, fill=(1, 1, 1))
 
 
-def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tuple[fitz.Rect, str] | None:
+def _source_text_style(page: fitz.Page, rectangle: fitz.Rect) -> tuple[str, float, tuple[float, float, float]]:
+    """Return a safe approximation of the style visibly used in a text block."""
+    for block in page.get_text("dict").get("blocks", []):
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                if fitz.Rect(span["bbox"]).intersects(rectangle):
+                    source_font = str(span.get("font", "")).lower()
+                    font = "cour" if "cour" in source_font else "tiro" if "times" in source_font else "helv"
+                    color = int(span.get("color", 0))
+                    return font, float(span.get("size", 10)), tuple(color >> shift & 255 for shift in (16, 8, 0))
+    return "helv", 10, (14, 135, 204)
+
+
+def _paragraph_from_tagged_block(page: fitz.Page, values: Mapping[str, str]) -> tuple[fitz.Rect, str, set[str], str, float, tuple[float, float, float]] | None:
+    """Find a paragraph authored with field tags and make it one clean block.
+
+    The author writes normal prose such as ``... {{roll_number}} ...`` in the
+    PDF.  This replaces the *whole* text block, not just the tags, so the old
+    paragraph cannot remain visible beneath replacement values.
+    """
+    token_pattern = re.compile(r"\{\{(student_name|roll_number|activity_name|activity_date)\}\}")
+    for block in page.get_text("dict").get("blocks", []):
+        if "lines" not in block:
+            continue
+        text = "".join(span.get("text", "") for line in block["lines"] for span in line["spans"])
+        names = set(token_pattern.findall(text))
+        if len(names) < 2 or not names.issubset(values):
+            continue
+        rectangle = fitz.Rect(block["bbox"])
+        rectangle.x0 -= 3
+        rectangle.y0 -= 3
+        rectangle.x1 += 3
+        rectangle.y1 += 4
+        content = token_pattern.sub(lambda match: values[match.group(1)], text).strip()
+        font, size, rgb = _source_text_style(page, rectangle)
+        page.add_redact_annot(rectangle, fill=(1, 1, 1))
+        return rectangle, content, names, font, size, rgb
+    return None
+
+
+def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tuple[fitz.Rect, str, set[str], str, float, tuple[int, int, int]] | None:
     """Replace a flowing certificate sentence as one typographic block.
 
     A PDF stores the words of a paragraph as independent drawing operations.
@@ -161,16 +202,23 @@ def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tu
         "successful execution of the activity."
     )
     page.add_redact_annot(rectangle, fill=(1, 1, 1))
-    return rectangle, text
+    return rectangle, text, needed, "helv", 10, (14, 135, 204)
 
 
-def _render_activity_paragraph(page: fitz.Page, rectangle: fitz.Rect, text: str) -> None:
+def _render_activity_paragraph(
+    page: fitz.Page,
+    rectangle: fitz.Rect,
+    text: str,
+    font: str,
+    font_size: float,
+    rgb: tuple[int, int, int],
+) -> None:
     result = page.insert_textbox(
         rectangle,
         text,
-        fontname="helv",
-        fontsize=10,
-        color=_color("#0e87cc"),
+        fontname=font,
+        fontsize=min(max(font_size, 5), 16),
+        color=tuple(channel / 255 for channel in rgb),
         align=fitz.TEXT_ALIGN_CENTER,
         lineheight=1.15,
     )
@@ -226,17 +274,20 @@ def render_certificate(
         raise CertificateRenderingError("Template is not a readable PDF") from error
 
     try:
-        paragraph_jobs: dict[int, tuple[fitz.Rect, str]] = {}
+        paragraph_jobs: dict[int, tuple[fitz.Rect, str, str, float, tuple[int, int, int]]] = {}
         paragraph_fields: set[tuple[int, str]] = set()
         configured_by_page: dict[int, set[str]] = {}
         for field in field_list:
             configured_by_page.setdefault(field.page_number, set()).add(field.field_name)
         for page_number, names in configured_by_page.items():
-            if {"roll_number", "activity_name", "activity_date"}.issubset(names):
-                job = _inline_activity_paragraph(document[page_number - 1], normalized_values)
-                if job:
-                    paragraph_jobs[page_number] = job
-                    paragraph_fields.update((page_number, name) for name in ("roll_number", "activity_name", "activity_date"))
+            page = document[page_number - 1]
+            job = _paragraph_from_tagged_block(page, normalized_values)
+            if job is None and {"roll_number", "activity_name", "activity_date"}.issubset(names):
+                job = _inline_activity_paragraph(page, normalized_values)
+            if job:
+                rectangle, text, replaced_names, font, size, rgb = job
+                paragraph_jobs[page_number] = rectangle, text, font, size, rgb
+                paragraph_fields.update((page_number, name) for name in replaced_names)
         for field in field_list:
             if field.page_number < 1 or field.page_number > document.page_count:
                 raise CertificateRenderingError(
@@ -246,8 +297,8 @@ def render_certificate(
                 _remove_inline_placeholder(document[field.page_number - 1], field.field_name)
         for page in document:
             page.apply_redactions()
-        for page_number, (rectangle, text) in paragraph_jobs.items():
-            _render_activity_paragraph(document[page_number - 1], rectangle, text)
+        for page_number, (rectangle, text, font, size, rgb) in paragraph_jobs.items():
+            _render_activity_paragraph(document[page_number - 1], rectangle, text, font, size, rgb)
         for field in field_list:
             page = document[field.page_number - 1]
             if field.field_name == "qr_code":
