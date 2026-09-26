@@ -1,6 +1,5 @@
 import json
-from collections import defaultdict
-from datetime import date, datetime
+from datetime import datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -32,9 +31,8 @@ from app.schemas.documents import (
 )
 from app.services.audit import record_audit_event
 from app.services.documents.issuance import reserve_document
-from app.services.signatures.availability import missing_titles, select_effective_signatories
-from app.services.signatures.policy import required_titles
-from app.services.signatures.rendering import missing_signature_fields
+from app.services.signatures.availability import select_effective_signatories_for_fields
+from app.services.signatures.rendering import configured_signature_field_names
 from app.services.templates.fields import missing_required_fields
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -140,30 +138,23 @@ def issue_activity_documents(
             detail="Template is missing required fields: " + ", ".join(sorted(missing_fields)),
         )
 
-    active_signatories = list(
-        db.scalars(select(Signatory).where(Signatory.active.is_(True))).all()
-    )
-    available_signatories: dict[str, list[tuple[date, date | None]]] = defaultdict(list)
-    for signatory in active_signatories:
-        available_signatories[signatory.official_title].append(
-            (signatory.effective_start_date, signatory.effective_end_date)
-        )
-    required_signatory_titles = required_titles()
-    missing_signatories = missing_titles(required_signatory_titles, available_signatories, activity.activity_date)
-    if missing_signatories:
-        raise HTTPException(
-            status_code=409,
-            detail="Required signatories are unavailable: " + ", ".join(missing_signatories),
-        )
-    selected_signatories = select_effective_signatories(
-        active_signatories, required_signatory_titles, activity.activity_date
-    )
+    selected_signatories = {}
     if template.signature_handling == "replace":
-        missing_signature_boxes = missing_signature_fields(template_fields, selected_signatories)
-        if missing_signature_boxes:
+        signature_fields = configured_signature_field_names(template_fields)
+        if not signature_fields:
             raise HTTPException(
                 status_code=409,
-                detail="Template is missing signature fields: " + ", ".join(missing_signature_boxes),
+                detail="A replace-signature template needs at least one signature_<title> field",
+            )
+        active_signatories = list(db.scalars(select(Signatory).where(Signatory.active.is_(True))).all())
+        selected_signatories = select_effective_signatories_for_fields(
+            active_signatories, signature_fields, activity.activity_date
+        )
+        unavailable_fields = sorted(set(signature_fields) - set(selected_signatories))
+        if unavailable_fields:
+            raise HTTPException(
+                status_code=409,
+                detail="Configured signatories are unavailable for: " + ", ".join(unavailable_fields),
             )
 
     issue_date = activity.issue_date or datetime.now(EMC_TIMEZONE).date()
@@ -305,30 +296,23 @@ def reissue_document(
             status_code=409,
             detail="Template is missing required fields: " + ", ".join(sorted(missing_fields)),
         )
-    active_signatories = list(
-        db.scalars(select(Signatory).where(Signatory.active.is_(True))).all()
-    )
-    available_signatories: dict[str, list[tuple[date, date | None]]] = defaultdict(list)
-    for signatory in active_signatories:
-        available_signatories[signatory.official_title].append(
-            (signatory.effective_start_date, signatory.effective_end_date)
-        )
-    required_signatory_titles = required_titles()
-    missing_signatories = missing_titles(required_signatory_titles, available_signatories, activity.activity_date)
-    if missing_signatories:
-        raise HTTPException(
-            status_code=409,
-            detail="Required signatories are unavailable: " + ", ".join(missing_signatories),
-        )
-    selected_signatories = select_effective_signatories(
-        active_signatories, required_signatory_titles, activity.activity_date
-    )
+    selected_signatories = {}
     if template.signature_handling == "replace":
-        missing_signature_boxes = missing_signature_fields(template_fields, selected_signatories)
-        if missing_signature_boxes:
+        signature_fields = configured_signature_field_names(template_fields)
+        if not signature_fields:
             raise HTTPException(
                 status_code=409,
-                detail="Template is missing signature fields: " + ", ".join(missing_signature_boxes),
+                detail="A replace-signature template needs at least one signature_<title> field",
+            )
+        active_signatories = list(db.scalars(select(Signatory).where(Signatory.active.is_(True))).all())
+        selected_signatories = select_effective_signatories_for_fields(
+            active_signatories, signature_fields, activity.activity_date
+        )
+        unavailable_fields = sorted(set(signature_fields) - set(selected_signatories))
+        if unavailable_fields:
+            raise HTTPException(
+                status_code=409,
+                detail="Configured signatories are unavailable for: " + ", ".join(unavailable_fields),
             )
 
     issue_date = datetime.now(EMC_TIMEZONE).date()

@@ -80,3 +80,13 @@ def test_detected_fields_stay_in_bounds_without_adjacent_line_overlap() -> None:
 
     assert by_name["verification_id"].x + by_name["verification_id"].width <= 842
     assert by_name["roll_number"].y + by_name["roll_number"].height <= by_name["activity_name"].y
+
+
+def test_analysis_detects_dynamic_signature_placeholders() -> None:
+    result = analysis.detect_certificate_placeholders(
+        _pdf_with_page_text("{{signature_dsa}}\n{{signature_hod}}")
+    )
+
+    by_name = {field.field_name: field for field in result}
+    assert by_name["signature_dsa"].detected_text == "{{signature_dsa}}"
+    assert by_name["signature_hod"].detected_text == "{{signature_hod}}"

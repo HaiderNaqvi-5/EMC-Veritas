@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.models.domain import Admin, Signatory
 from app.schemas.signatories import SignatoryResponse
 from app.services.audit import record_audit_event
+from app.services.signatures.image import prepare_signature_image
 from app.services.storage.supabase import SupabaseStorage
 
 router = APIRouter(prefix="/signatories", tags=["signatories"])
@@ -36,16 +37,19 @@ async def create_signatory(
 ) -> Signatory:
     if effective_end_date is not None and effective_end_date < effective_start_date:
         raise HTTPException(status_code=422, detail="Effective end date cannot precede start date")
-    suffix = IMAGE_CONTENT_TYPES.get(signature.content_type or "")
-    if suffix is None:
+    if signature.content_type not in IMAGE_CONTENT_TYPES:
         raise HTTPException(status_code=422, detail="Signature image must be PNG or JPEG")
     content = await signature.read()
     if not content:
         raise HTTPException(status_code=422, detail="Signature image cannot be empty")
-    identifier = uuid4()
-    storage_key = str(Path("signatures") / f"{identifier}{suffix}")
     try:
-        SupabaseStorage().upload(storage_key, content, signature.content_type or "image/png")
+        content = prepare_signature_image(content)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    identifier = uuid4()
+    storage_key = str(Path("signatures") / f"{identifier}.png")
+    try:
+        SupabaseStorage().upload(storage_key, content, "image/png")
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail="Signature storage is temporarily unavailable") from error
     signatory = Signatory(

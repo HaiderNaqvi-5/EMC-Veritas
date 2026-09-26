@@ -10,7 +10,15 @@ from sqlalchemy.orm import Session
 from app.api.admin.dependencies import current_active_admin, super_admin_required
 from app.core.settings import settings
 from app.db.session import get_db
-from app.models.domain import Activity, Admin, Student, Template, TemplateField, TemplateFont
+from app.models.domain import (
+    Activity,
+    Admin,
+    Signatory,
+    Student,
+    Template,
+    TemplateField,
+    TemplateFont,
+)
 from app.schemas.templates import (
     DetectedTemplateFieldResponse,
     TemplateAnalysisResponse,
@@ -23,6 +31,8 @@ from app.schemas.templates import (
 from app.services.audit import record_audit_event
 from app.services.documents.qr import verification_url
 from app.services.documents.rendering import CertificateRenderingError, render_certificate
+from app.services.signatures.availability import select_effective_signatories_for_fields
+from app.services.signatures.rendering import configured_signature_field_names
 from app.services.storage.supabase import SupabaseStorage
 from app.services.templates.analysis import (
     analyze_pdf_text,
@@ -304,6 +314,24 @@ def preview_template(
             for field in fields
             if field.custom_font_storage_key
         }
+        signature_images: dict[str, bytes] = {}
+        if template.signature_handling == "replace":
+            signature_fields = configured_signature_field_names(fields)
+            active_signatories = list(
+                db.scalars(select(Signatory).where(Signatory.active.is_(True))).all()
+            )
+            selected_signatories = select_effective_signatories_for_fields(
+                active_signatories, signature_fields, activity.activity_date
+            )
+            unavailable_fields = sorted(set(signature_fields) - set(selected_signatories))
+            if unavailable_fields:
+                raise CertificateRenderingError(
+                    "Configured signatories are unavailable for: " + ", ".join(unavailable_fields)
+                )
+            signature_images = {
+                field_name: storage.download(signatory.signature_storage_key)
+                for field_name, signatory in selected_signatories.items()
+            }
         output = render_certificate(
             template_pdf,
             fields,
@@ -316,6 +344,7 @@ def preview_template(
             },
             verification_url=verification_url(settings.public_app_url, "PREVIEW"),
             watermark="PREVIEW",
+            image_values=signature_images,
             custom_fonts=custom_fonts,
         )
     except RuntimeError as error:
@@ -347,6 +376,13 @@ def approve_template(
         raise HTTPException(
             status_code=422,
             detail="Choose whether to retain or replace sample signatures before approval",
+        )
+    if template.signature_handling == "replace" and not any(
+        name.startswith("signature_") for name in names
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="A replace-signature template needs at least one signature_<title> field",
         )
     template.approved = True
     record_audit_event(

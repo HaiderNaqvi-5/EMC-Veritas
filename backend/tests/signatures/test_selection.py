@@ -2,7 +2,10 @@ from datetime import date
 from types import SimpleNamespace
 from uuid import UUID
 
-from app.services.signatures.availability import select_effective_signatories
+from app.services.signatures.availability import (
+    select_effective_signatories,
+    select_effective_signatories_for_fields,
+)
 from app.services.signatures.rendering import missing_signature_fields, signature_field_name
 
 
@@ -33,3 +36,15 @@ def test_signature_field_names_require_positions_for_every_selected_title() -> N
 
     assert signature_field_name("DSA") == "signature_dsa"
     assert missing_signature_fields(fields, ["President", "DSA"]) == ["signature_dsa"]
+
+
+def test_selecting_signatories_uses_the_template_field_names_not_fixed_roles() -> None:
+    dsa = _signatory(1, "DSA", date(2026, 1, 1))
+    hod = _signatory(2, "HOD", date(2026, 1, 1))
+    president = _signatory(3, "President", date(2026, 1, 1))
+
+    selected = select_effective_signatories_for_fields(
+        [dsa, hod, president], ["signature_hod", "signature_dsa"], date(2026, 9, 1)
+    )
+
+    assert selected == {"signature_hod": hod, "signature_dsa": dsa}

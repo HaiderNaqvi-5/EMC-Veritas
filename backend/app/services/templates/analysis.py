@@ -39,6 +39,7 @@ _CERTIFICATE_PLACEHOLDERS: dict[str, tuple[str, ...]] = {
     "verification_id": ("{{verification_id}}", "verification_id", "verification id", "serial number", "serial no"),
     "qr_code": ("{{qr_code}}", "qr_code", "qr code"),
 }
+_SIGNATURE_PLACEHOLDER = re.compile(r"\{\{(signature_[a-z][a-z0-9_]*)\}\}", re.IGNORECASE)
 
 
 def has_signature_like_content(pages: list[str]) -> bool:
@@ -152,6 +153,32 @@ def detect_certificate_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateFi
                     text_color=text_color,
                 )
             )
+        # Signature fields are intentionally dynamic: an activity can use any
+        # uploaded signatory, not a hard-coded President/DSA pair.  Detect
+        # every explicit {{signature_title}} placeholder as an image box.
+        for page_index, page in enumerate(document):
+            names = sorted({name.lower() for name in _SIGNATURE_PLACEHOLDER.findall(page.get_text("text"))})
+            for field_name in names:
+                rectangles = page.search_for("{{" + field_name + "}}")
+                if not rectangles:
+                    continue
+                rectangle = _combined_placeholder_rect(rectangles)
+                font_family, font_size, text_color = _style_at(page, rectangle)
+                x, y, width, height = _safe_field_geometry(page, rectangle)
+                detected.append(
+                    DetectedTemplateField(
+                        field_name=field_name,
+                        page_number=page_index + 1,
+                        x=x,
+                        y=y,
+                        width=width,
+                        height=height,
+                        detected_text="{{" + field_name + "}}",
+                        font_family=font_family,
+                        font_size=font_size,
+                        text_color=text_color,
+                    )
+                )
     return detected
 
 
