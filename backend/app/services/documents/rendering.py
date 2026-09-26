@@ -132,7 +132,30 @@ def _remove_inline_placeholder(page: fitz.Page, field_name: str) -> None:
     combined = fitz.Rect(rectangles[0])
     for rectangle in rectangles[1:]:
         combined.include_rect(rectangle)
-    page.add_redact_annot(combined, fill=(1, 1, 1))
+    _remove_text_in_rectangle(page, combined)
+
+
+def _remove_text_in_rectangle(page: fitz.Page, rectangle: fitz.Rect) -> None:
+    """Remove only source text spans while retaining the artwork below them.
+
+    Canva frequently stores a single visible sentence as several partly
+    overlapping spans. Redacting one large area can leave edge glyphs behind,
+    whereas small padded span redactions remove each glyph cleanly without
+    painting a white background over watermark artwork.
+    """
+    spans = [
+        fitz.Rect(span["bbox"])
+        for block in page.get_text("dict").get("blocks", [])
+        for line in block.get("lines", [])
+        for span in line.get("spans", [])
+        if str(span.get("text", "")).strip() and fitz.Rect(span["bbox"]).intersects(rectangle)
+    ]
+    if not spans:
+        page.add_redact_annot(rectangle, fill=None)
+        return
+    for span in spans:
+        padded = fitz.Rect(span.x0 - 1, span.y0 - 1, span.x1 + 1, span.y1 + 1)
+        page.add_redact_annot(padded, fill=None)
 
 
 def _source_text_style(page: fitz.Page, rectangle: fitz.Rect) -> tuple[str, float, tuple[float, float, float]]:
@@ -142,7 +165,11 @@ def _source_text_style(page: fitz.Page, rectangle: fitz.Rect) -> tuple[str, floa
             for span in line.get("spans", []):
                 if fitz.Rect(span["bbox"]).intersects(rectangle):
                     source_font = str(span.get("font", "")).lower()
-                    font = "cour" if "cour" in source_font else "tiro" if "times" in source_font else "helv"
+                    font = (
+                        "cour" if "cour" in source_font
+                        else "tiro" if "times" in source_font or "boston" in source_font
+                        else "helv"
+                    )
                     color = int(span.get("color", 0))
                     return font, float(span.get("size", 10)), tuple(color >> shift & 255 for shift in (16, 8, 0))
     return "helv", 10, (14, 135, 204)
@@ -152,7 +179,8 @@ def _paragraph_rectangle(page: fitz.Page, rectangle: fitz.Rect) -> fitz.Rect:
     """Provide enough room to redraw a paragraph, without touching nearby content."""
     return fitz.Rect(
         max(36, rectangle.x0 - 28),
-        max(36, rectangle.y0 - 10),
+        # Never creep into the name underline immediately above a paragraph.
+        max(36, rectangle.y0),
         min(page.rect.width - 36, rectangle.x1 + 28),
         min(page.rect.height - 36, rectangle.y1 + 20),
     )
@@ -195,7 +223,7 @@ def _paragraph_from_tagged_block(page: fitz.Page, values: Mapping[str, str]) -> 
         rectangle = _paragraph_rectangle(page, fitz.Rect(block["bbox"]))
         content = token_pattern.sub(lambda match: values[match.group(1)], text).strip()
         font, size, rgb = _source_text_style(page, rectangle)
-        page.add_redact_annot(rectangle, fill=(1, 1, 1))
+        _remove_text_in_rectangle(page, rectangle)
         return rectangle, content, names, font, size, rgb
     return None
 
@@ -248,8 +276,9 @@ def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tu
         "Their leadership, coordination, and commitment significantly contributed to the "
         "successful execution of the activity."
     )
-    page.add_redact_annot(rectangle, fill=(1, 1, 1))
-    return rectangle, text, needed, "helv", 10, (14, 135, 204)
+    font, size, rgb = _source_text_style(page, first)
+    _remove_text_in_rectangle(page, rectangle)
+    return rectangle, text, needed, font, size, rgb
 
 
 def _activity_paragraph_from_field_cluster(
@@ -287,7 +316,7 @@ def _activity_paragraph_from_field_cluster(
         "Their leadership, coordination, and commitment significantly contributed to the "
         "successful execution of the activity."
     )
-    page.add_redact_annot(rectangle, fill=(1, 1, 1))
+    _remove_text_in_rectangle(page, rectangle)
     return rectangle, text, needed, "helv", 10, (14, 135, 204)
 
 
@@ -372,9 +401,16 @@ def render_certificate(
         # removed completely before the fresh paragraph is drawn.
         for page_number in range(1, document.page_count + 1):
             page = document[page_number - 1]
-            job = _paragraph_from_tagged_block(page, normalized_values)
-            if job is None:
-                job = _inline_activity_paragraph(page, normalized_values)
+            # Prefer the standard recognition renderer only for the standard
+            # EMC wording. Generic tagged prose must retain its own wording.
+            is_standard_recognition = bool(
+                page.search_for("In recognition") and page.search_for("under the EMC")
+            )
+            job = (
+                _inline_activity_paragraph(page, normalized_values)
+                if is_standard_recognition
+                else _paragraph_from_tagged_block(page, normalized_values)
+            )
             if job is None:
                 job = _activity_paragraph_from_field_cluster(
                     page, page_number, field_list, normalized_values
@@ -391,7 +427,9 @@ def render_certificate(
             if (field.page_number, field.field_name) not in paragraph_fields:
                 _remove_inline_placeholder(document[field.page_number - 1], field.field_name)
         for page in document:
-            page.apply_redactions()
+            # Remove text only. The template's underline, watermark, and
+            # decorative vector/image background must survive unchanged.
+            page.apply_redactions(images=0, graphics=0, text=0)
         for page_number, (rectangle, text, font, size, rgb) in paragraph_jobs.items():
             _render_activity_paragraph(document[page_number - 1], rectangle, text, font, size, rgb)
         for field in field_list:

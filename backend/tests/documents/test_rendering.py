@@ -178,3 +178,42 @@ def test_rendering_uses_saved_activity_fields_when_pdf_recognition_text_is_unsea
     rendered.close()
     assert "Legacy certificate prose" not in text
     assert "Their leadership, coordination, and commitment" in text
+
+
+def test_rendering_keeps_template_artwork_when_replacing_a_paragraph() -> None:
+    document = fitz.open()
+    page = document.new_page()
+    page.draw_rect(fitz.Rect(70, 130, 530, 220), color=None, fill=(0.2, 0.8, 0.4))
+    page.draw_line((80, 118), (520, 118), color=(0.1, 0.1, 0.4), width=2)
+    page.insert_textbox(
+        fitz.Rect(80, 140, 520, 200),
+        "In recognition of STUDENT NAME, for outstanding efforts in organizing and managing "
+        "ACTIVITY NAME on ACTIVITY DATE under the EMC. His leadership, coordination, and "
+        "commitment significantly contributed to the successful execution of the activity.",
+        fontsize=10,
+    )
+    template = document.tobytes()
+    document.close()
+    fields = [
+        SimpleNamespace(field_name=name, page_number=1, x=100 + index * 90, y=140, width=80, height=18,
+                        font_family="helv", custom_font_storage_key=None, font_size=10, text_color="#000000")
+        for index, name in enumerate(("roll_number", "activity_name", "activity_date"))
+    ]
+
+    output = render_certificate(
+        template,
+        fields,
+        {"roll_number": "2K22-340", "activity_name": "Plantation Drive", "activity_date": "2026-09-25"},
+        verification_url="https://example.test/verify/x",
+        required_field_names=frozenset({"roll_number", "activity_name", "activity_date"}),
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    page = rendered[0]
+    pixmap = page.get_pixmap(matrix=fitz.Matrix(1, 1), alpha=False)
+    # The green background (x=90,y=210) and blue underline (x=100,y=118)
+    # must still be visible after text-only redaction.
+    assert pixmap.pixel(90, 210)[1] > 150
+    assert pixmap.pixel(100, 118)[2] > 70
+    assert "His leadership" not in page.get_text()
+    rendered.close()
