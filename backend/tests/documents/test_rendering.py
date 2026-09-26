@@ -217,3 +217,36 @@ def test_rendering_keeps_template_artwork_when_replacing_a_paragraph() -> None:
     assert pixmap.pixel(100, 118)[2] > 70
     assert "His leadership" not in page.get_text()
     rendered.close()
+
+
+def test_rendering_centres_verification_id_below_its_qr_code() -> None:
+    document = fitz.open()
+    document.new_page(width=600, height=600)
+    template = document.tobytes()
+    document.close()
+    fields = [
+        SimpleNamespace(
+            field_name="qr_code", page_number=1, x=460, y=420, width=56, height=56,
+            font_family="helv", custom_font_storage_key=None, font_size=10, text_color="#000000",
+        ),
+        # Simulate a detection box that was too wide and too close to the edge.
+        SimpleNamespace(
+            field_name="verification_id", page_number=1, x=520, y=510, width=120, height=16,
+            font_family="helv", custom_font_storage_key=None, font_size=11, text_color="#000000",
+        ),
+    ]
+
+    output = render_certificate(
+        template,
+        fields,
+        {"verification_id": "EMC-ABCD1234"},
+        verification_url="https://example.test/verify/EMC-ABCD1234",
+        required_field_names=frozenset(),
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    serial = next(span for block in rendered[0].get_text("dict")["blocks"] for line in block.get("lines", []) for span in line["spans"] if "EMC-ABCD1234" in span["text"])
+    rendered.close()
+    serial_center = (serial["bbox"][0] + serial["bbox"][2]) / 2
+    assert abs(serial_center - 488) < 3
+    assert serial["bbox"][1] >= 480

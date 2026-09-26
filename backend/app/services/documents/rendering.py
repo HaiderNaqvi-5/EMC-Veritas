@@ -1,5 +1,6 @@
 import re
 from collections.abc import Iterable, Mapping
+from copy import copy
 from datetime import date
 from io import BytesIO
 from pathlib import Path
@@ -97,6 +98,33 @@ def _insert_qr(page: fitz.Page, field: TemplateField, verification_url: str) -> 
         raise CertificateRenderingError("Template QR field has an invalid box")
     rectangle = fitz.Rect(field.x, field.y, field.x + field.width, field.y + field.height)
     page.insert_image(rectangle, stream=qr_png(verification_url), keep_proportion=True)
+
+
+def _verification_field_below_qr(
+    page: fitz.Page, field: TemplateField, qr_field: TemplateField | None
+) -> TemplateField:
+    """Keep a certificate serial centred directly beneath its QR code.
+
+    Template analysis can detect a wide footer text area that extends past a
+    decorative QR border.  A serial is part of the QR verification block, so
+    derive its safe position from the QR field whenever both fields are on the
+    same page.
+    """
+    if qr_field is None:
+        return field
+    aligned = copy(field)
+    aligned.width = min(84, max(qr_field.width + 22, 68))
+    aligned.height = max(12, min(field.height, 16))
+    aligned.x = max(
+        24,
+        min(
+            qr_field.x + (qr_field.width - aligned.width) / 2,
+            page.rect.width - aligned.width - 24,
+        ),
+    )
+    aligned.y = min(qr_field.y + qr_field.height + 8, page.rect.height - aligned.height - 24)
+    aligned.font_size = min(getattr(field, "font_size", None) or 10, 8)
+    return aligned
 
 
 def _insert_image(page: fitz.Page, field: TemplateField, image_bytes: bytes) -> None:
@@ -432,6 +460,9 @@ def render_certificate(
             page.apply_redactions(images=0, graphics=0, text=0)
         for page_number, (rectangle, text, font, size, rgb) in paragraph_jobs.items():
             _render_activity_paragraph(document[page_number - 1], rectangle, text, font, size, rgb)
+        qr_fields = {
+            field.page_number: field for field in field_list if field.field_name == "qr_code"
+        }
         for field in field_list:
             page = document[field.page_number - 1]
             if field.field_name == "qr_code":
@@ -441,7 +472,12 @@ def render_certificate(
             elif (field.page_number, field.field_name) in paragraph_fields:
                 continue
             else:
-                _insert_text(page, field, normalized_values[field.field_name], fonts)
+                text_field = (
+                    _verification_field_below_qr(page, field, qr_fields.get(field.page_number))
+                    if field.field_name == "verification_id"
+                    else field
+                )
+                _insert_text(page, text_field, normalized_values[field.field_name], fonts)
         if watermark:
             for page in document:
                 center = fitz.Point(page.rect.width / 2 - 110, page.rect.height / 2)
