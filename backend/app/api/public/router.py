@@ -25,7 +25,7 @@ from app.models.domain import (
 from app.schemas.public import PublicDocument, StudentDocumentsResponse, VerificationResponse
 from app.services.documents.lifecycle import DocumentLifecycleError, generate_on_first_download
 from app.services.executive.letters import REQUIRED_LEADERSHIP_TEMPLATE_FIELDS
-from app.services.signatures.rendering import signature_field_name, should_replace_signatures
+from app.services.signatures.rendering import should_replace_signatures, signature_field_name
 from app.services.storage.supabase import SupabaseStorage
 from app.services.students import normalize_roll_number
 
