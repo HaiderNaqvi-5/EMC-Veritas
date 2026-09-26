@@ -12,8 +12,8 @@ from app.core.settings import settings
 from app.db.session import get_db
 from app.models.domain import Activity, Admin, Student, Template, TemplateField, TemplateFont
 from app.schemas.templates import (
-    TemplateAnalysisResponse,
     DetectedTemplateFieldResponse,
+    TemplateAnalysisResponse,
     TemplateFieldResponse,
     TemplateFieldsCreate,
     TemplateFontResponse,
@@ -24,7 +24,11 @@ from app.services.audit import record_audit_event
 from app.services.documents.qr import verification_url
 from app.services.documents.rendering import CertificateRenderingError, render_certificate
 from app.services.storage.supabase import SupabaseStorage
-from app.services.templates.analysis import analyze_pdf_text, detect_certificate_placeholders, has_signature_like_content
+from app.services.templates.analysis import (
+    analyze_pdf_text,
+    detect_certificate_placeholders,
+    has_signature_like_content,
+)
 from app.services.templates.fields import missing_required_fields
 from app.services.templates.signature_choice import require_signature_choice
 from app.services.templates.validation import ensure_font, ensure_pdf
