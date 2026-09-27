@@ -84,7 +84,16 @@ def _insert_text(
         ) from error
     if font_size <= 4:
         raise CertificateRenderingError(f"Value for template field '{field.field_name}' does not fit")
-    point = fitz.Point(field.x + max((field.width - text_width) / 2, 0), field.y + (field.height + font_size) / 2)
+    baseline_y = field.y + (field.height + font_size) / 2
+    if field.field_name == "student_name":
+        # A recipient name is normally placed immediately above an underline.
+        # Vertical centring lets the Amsterdam glyph descenders cut through
+        # that line, so reserve a small bottom margin inside its field box.
+        # The embedded Amsterdam font reports a deep descent in PDF metrics.
+        # Place its baseline well above the bottom of the box so the visible
+        # glyphs stop before the certificate underline.
+        baseline_y = field.y + max(4, field.height - font_size * 1.1)
+    point = fitz.Point(field.x + max((field.width - text_width) / 2, 0), baseline_y)
     page.insert_text(
         point,
         value,
@@ -101,6 +110,20 @@ def _effective_qr_field(page: fitz.Page, field: TemplateField) -> TemplateField:
     Keep those templates usable by resolving the enclosing drawn panel while
     rendering instead of requiring an admin to recreate every template.
     """
+    frame = _qr_panel_for_field(page, field)
+    if frame is None:
+        return field
+    size = max(16, min(frame.width, frame.height) - 8)
+    effective = copy(field)
+    effective.x = frame.x0 + (frame.width - size) / 2
+    effective.y = frame.y0 + (frame.height - size) / 2
+    effective.width = size
+    effective.height = size
+    return effective
+
+
+def _qr_panel_for_field(page: fitz.Page, field: TemplateField) -> fitz.Rect | None:
+    """Return the smallest drawn QR panel containing a configured QR field."""
     center = fitz.Point(field.x + field.width / 2, field.y + field.height / 2)
     frames = [
         drawing["rect"]
@@ -110,15 +133,8 @@ def _effective_qr_field(page: fitz.Page, field: TemplateField) -> TemplateField:
         and drawing["rect"].contains(center)
     ]
     if not frames:
-        return field
-    frame = min(frames, key=lambda rectangle: rectangle.width * rectangle.height)
-    size = max(16, min(frame.width, frame.height) - 8)
-    effective = copy(field)
-    effective.x = frame.x0 + (frame.width - size) / 2
-    effective.y = frame.y0 + (frame.height - size) / 2
-    effective.width = size
-    effective.height = size
-    return effective
+        return None
+    return min(frames, key=lambda rectangle: rectangle.width * rectangle.height)
 
 
 def _insert_qr(page: fitz.Page, field: TemplateField, verification_url: str) -> None:
@@ -142,6 +158,16 @@ def _verification_field_below_qr(
     if qr_field is None:
         return field
     aligned = copy(field)
+    panel = _qr_panel_for_field(page, qr_field)
+    # A tall, wide QR card can reserve a dedicated bottom strip for the
+    # serial. A normal square panel cannot, so leave it outside the outline.
+    if panel is not None and panel.width >= 72 and panel.height >= qr_field.height + 26:
+        aligned.width = max(16, panel.width - 8)
+        aligned.height = 12
+        aligned.x = panel.x0 + (panel.width - aligned.width) / 2
+        aligned.y = panel.y1 - aligned.height - 4
+        aligned.font_size = min(getattr(field, "font_size", None) or 10, 8)
+        return aligned
     aligned.width = min(84, max(qr_field.width + 22, 68))
     aligned.height = max(12, min(field.height, 16))
     aligned.x = max(

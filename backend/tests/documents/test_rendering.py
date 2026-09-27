@@ -29,6 +29,35 @@ def test_rendering_replaces_an_inline_pdf_token_without_leaving_it_visible() -> 
     assert "Awais Khan" in text.replace("\u00a0", " ")
 
 
+def test_rendering_places_student_name_above_its_underline() -> None:
+    document = fitz.open()
+    page = document.new_page(width=600, height=400)
+    underline_y = 200
+    page.draw_line((120, underline_y), (480, underline_y), width=1)
+    template = document.tobytes()
+    document.close()
+    field = SimpleNamespace(
+        field_name="student_name", page_number=1, x=160, y=164, width=280, height=36,
+        font_family="tiro", custom_font_storage_key=None, font_size=28, text_color="#000000",
+    )
+
+    output = render_certificate(
+        template, [field], {"student_name": "Awais Khan"}, verification_url="https://example.test/verify/x",
+        required_field_names=frozenset({"student_name"}),
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    span = next(
+        span
+        for block in rendered[0].get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for span in line["spans"]
+        if "Awais" in span["text"]
+    )
+    rendered.close()
+    assert span["bbox"][3] < underline_y
+
+
 def test_rendering_replaces_a_complete_tagged_paragraph_without_old_text() -> None:
     document = fitz.open()
     page = document.new_page()
@@ -274,3 +303,35 @@ def test_rendering_expands_a_saved_tiny_qr_tag_box_to_its_panel() -> None:
     rendered.close()
     assert rectangle.width >= 50
     assert rectangle.height >= 50
+
+
+def test_rendering_keeps_verification_id_inside_a_tall_qr_panel() -> None:
+    document = fitz.open()
+    page = document.new_page(width=600, height=600)
+    panel = fitz.Rect(430, 380, 530, 510)
+    page.draw_rect(panel)
+    template = document.tobytes()
+    document.close()
+    fields = [
+        SimpleNamespace(field_name="qr_code", page_number=1, x=455, y=420, width=36, height=14,
+                        font_family="helv", custom_font_storage_key=None, font_size=10, text_color="#000000"),
+        SimpleNamespace(field_name="verification_id", page_number=1, x=300, y=540, width=120, height=16,
+                        font_family="helv", custom_font_storage_key=None, font_size=10, text_color="#000000"),
+    ]
+
+    output = render_certificate(
+        template, fields, {"verification_id": "EMC-TEST123"},
+        verification_url="https://example.test/verify/EMC-TEST123", required_field_names=frozenset(),
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    serial = next(
+        span
+        for block in rendered[0].get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for span in line["spans"]
+        if "EMC-TEST123" in span["text"]
+    )
+    rendered.close()
+    assert panel.x0 <= serial["bbox"][0] < serial["bbox"][2] <= panel.x1
+    assert panel.y0 <= serial["bbox"][1] < serial["bbox"][3] <= panel.y1
