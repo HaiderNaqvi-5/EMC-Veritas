@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 import fitz
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.admin.dependencies import super_admin_required
@@ -43,7 +43,7 @@ from app.services.signatures.rendering import missing_signature_fields, signatur
 from app.services.storage.supabase import SupabaseStorage
 from app.services.templates.analysis import (
     analyze_pdf_text,
-    detect_certificate_placeholders,
+    detect_leadership_placeholders,
     has_signature_like_content,
 )
 from app.services.templates.signature_choice import require_signature_choice
@@ -150,10 +150,10 @@ def analyze_leadership_template(
         ocr_used=analysis.ocr_used,
         ocr_required=analysis.ocr_required,
         signature_content_detected=has_signature_like_content(analysis.pages),
-        # Recognise visible labels such as "Serial No." as the system-managed
-        # verification ID, just as certificate templates do.
+        # Detect the actual leadership-letter token locations rather than
+        # falling back to arbitrary editor coordinates.
         detected_fields=[
-            field for field in detect_certificate_placeholders(pdf_bytes)
+            field for field in detect_leadership_placeholders(pdf_bytes)
             if field.field_name in _ALLOWED_FIELD_NAMES
         ],
     )
@@ -169,10 +169,11 @@ def configure_leadership_template_fields(
     template = _template_or_404(db, template_id)
     if template.active:
         raise HTTPException(status_code=409, detail="Active templates are immutable; upload a replacement")
-    if db.scalar(
-        select(LeadershipTemplateField.id).where(LeadershipTemplateField.leadership_template_id == template.id)
-    ) is not None:
-        raise HTTPException(status_code=409, detail="Leadership template fields are already configured")
+    # A draft is editable. Replacing its saved placement lets an admin correct
+    # a detector result before activation without having to upload another PDF.
+    db.execute(
+        delete(LeadershipTemplateField).where(LeadershipTemplateField.leadership_template_id == template.id)
+    )
     names = [field.field_name for field in payload.fields]
     if len(names) != len(set(names)):
         raise HTTPException(status_code=422, detail="Template field names must be unique")

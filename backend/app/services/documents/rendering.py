@@ -156,7 +156,10 @@ def _remove_inline_placeholder(page: fitz.Page, field_name: str) -> None:
     # Older, human-authored templates sometimes reserve the serial reference
     # with this label instead of the machine field name.
     if field_name == "verification_id":
-        tokens.extend(("{{Serial No.}}", "{{Serial No}}", "{{Serial Number}}"))
+        tokens.extend((
+            "{{Serial No.}}", "{{Serial No}}", "{{Serial Number}}",
+            "{{serial_no.}}", "{{serial_no}}",
+        ))
     rectangles: list[fitz.Rect] = []
     for token in tokens:
         rectangles = page.search_for(token)
@@ -247,16 +250,39 @@ def _paragraph_from_tagged_block(page: fitz.Page, values: Mapping[str, str]) -> 
     PDF.  This replaces the *whole* text block, not just the tags, so the old
     paragraph cannot remain visible beneath replacement values.
     """
-    token_pattern = re.compile(r"\{\{(student_name|roll_number|activity_name|activity_date)\}\}")
-    for block in page.get_text("dict").get("blocks", []):
-        if "lines" not in block:
+    token_pattern = re.compile(r"\{\{([a-z][a-z0-9_]*)\}\}")
+    blocks = [
+        (fitz.Rect(block["bbox"]), _block_text_from_words(page, fitz.Rect(block["bbox"])))
+        for block in page.get_text("dict").get("blocks", [])
+        if "lines" in block
+    ]
+    for index, (first_rectangle, first_text) in enumerate(blocks):
+        names = {name for name in token_pattern.findall(first_text) if name in values}
+        # A flowing paragraph can be exported as one block per line. Its first
+        # line contains at least two fields, which distinguishes it from the
+        # standalone student-name marker above the paragraph.
+        if len(names) < 2:
             continue
-        text = _block_text_from_words(page, fitz.Rect(block["bbox"]))
-        names = set(token_pattern.findall(text))
-        if len(names) < 2 or not names.issubset(values):
-            continue
-        rectangle = _paragraph_rectangle(page, fitz.Rect(block["bbox"]))
-        content = token_pattern.sub(lambda match: values[match.group(1)], text).strip()
+        rectangles = [first_rectangle]
+        texts = [first_text]
+        last_bottom = first_rectangle.y1
+        for rectangle, text in blocks[index + 1 :]:
+            if rectangle.y0 > last_bottom + 24:
+                break
+            line_names = {name for name in token_pattern.findall(text) if name in values}
+            if not line_names:
+                break
+            rectangles.append(rectangle)
+            texts.append(text)
+            names.update(line_names)
+            last_bottom = max(last_bottom, rectangle.y1)
+        combined = fitz.Rect(rectangles[0])
+        for rectangle in rectangles[1:]:
+            combined.include_rect(rectangle)
+        rectangle = _paragraph_rectangle(page, combined)
+        content = token_pattern.sub(
+            lambda match: values.get(match.group(1), match.group(0)), " ".join(texts)
+        ).strip()
         font, size, rgb = _source_text_style(page, rectangle)
         _remove_text_in_rectangle(page, rectangle)
         return rectangle, content, names, font, size, rgb
@@ -453,7 +479,13 @@ def render_certificate(
             if job:
                 rectangle, text, replaced_names, font, size, rgb = job
                 paragraph_jobs[page_number] = rectangle, text, font, size, rgb
-                paragraph_fields.update((page_number, name) for name in replaced_names)
+                # Student names frequently occur twice: once as the prominent
+                # recipient line and once in the body paragraph. Keep the
+                # dedicated recipient field so the visible name is still
+                # replaced with its intended certificate styling.
+                paragraph_fields.update(
+                    (page_number, name) for name in replaced_names - {"student_name"}
+                )
         for field in field_list:
             if field.page_number < 1 or field.page_number > document.page_count:
                 raise CertificateRenderingError(

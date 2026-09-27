@@ -50,6 +50,18 @@ _CERTIFICATE_PLACEHOLDERS: dict[str, tuple[str, ...]] = {
     ),
     "qr_code": ("{{qr_code}}", "qr_code", "qr code"),
 }
+_LEADERSHIP_PLACEHOLDERS: dict[str, tuple[str, ...]] = {
+    "student_name": ("{{student_name}}",),
+    "roll_number": ("{{roll_number}}",),
+    "role": ("{{role}}",),
+    "society_name": ("{{society_name}}",),
+    "role_start_date": ("{{role_start_date}}",),
+    "role_end_date": ("{{role_end_date}}",),
+    "session_name": ("{{session_name}}",),
+    "issue_date": ("{{issue_date}}",),
+    "verification_id": _CERTIFICATE_PLACEHOLDERS["verification_id"],
+    "qr_code": ("{{qr_code}}", "qr_code", "qr code"),
+}
 _SIGNATURE_PLACEHOLDER = re.compile(r"\{\{(signature_[a-z][a-z0-9_]*)\}\}", re.IGNORECASE)
 
 
@@ -95,7 +107,9 @@ def analyze_pdf_text(pdf_bytes: bytes) -> PdfTextAnalysis:
     return PdfTextAnalysis(pages=pages, ocr_used=ocr_used, ocr_required=requires_ocr(pages))
 
 
-def detect_certificate_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateField]:
+def detect_certificate_placeholders(
+    pdf_bytes: bytes, *, placeholders: dict[str, tuple[str, ...]] | None = None
+) -> list[DetectedTemplateField]:
     """Find common visible certificate placeholders and return editable field suggestions.
 
     Text extraction alone is informational.  This separate step supplies the
@@ -103,8 +117,9 @@ def detect_certificate_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateFi
     field configuration.  It deliberately does not save or approve anything.
     """
     detected: list[DetectedTemplateField] = []
+    placeholder_map = placeholders or _CERTIFICATE_PLACEHOLDERS
     with fitz.open(stream=pdf_bytes, filetype="pdf") as document:
-        for field_name, aliases in _CERTIFICATE_PLACEHOLDERS.items():
+        for field_name, aliases in placeholder_map.items():
             if field_name == "qr_code" and document.page_count:
                 page = document[0]
                 qr_rectangle = _dedicated_qr_rectangle(page)
@@ -192,6 +207,11 @@ def detect_certificate_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateFi
                     )
                 )
     return detected
+
+
+def detect_leadership_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateField]:
+    """Detect the fixed-record placeholders used by leadership letters."""
+    return detect_certificate_placeholders(pdf_bytes, placeholders=_LEADERSHIP_PLACEHOLDERS)
 
 
 def _signature_field_rectangle(page: fitz.Page, placeholder: fitz.Rect) -> fitz.Rect:

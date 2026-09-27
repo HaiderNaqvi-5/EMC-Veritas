@@ -20,11 +20,16 @@ export function LeadershipTemplatesPage() {
   const upload = useMutation({ mutationFn: () => uploadLeadershipTemplate(name, role, type, file as File), onSuccess: (template) => { setSelected(template.id); setName(""); setFile(null); void refresh(); } });
   const detectedGeometry = new Map((analysis.data?.detected_fields ?? []).map((field) => [field.field_name, field]));
   const configuredFields = fields.map((field) => {
-    // The visible serial label is the only leadership field whose placement is
-    // inferred from the PDF.  QR placement remains the dedicated editable box.
-    const detected = field.field_name === "verification_id" ? detectedGeometry.get(field.field_name) : undefined;
+    // Use the PDF's real token locations for letter text. The QR box remains a
+    // dedicated editable square because decorative frames vary by design.
+    const detected = field.field_name === "qr_code" ? undefined : detectedGeometry.get(field.field_name);
     return detected ? { ...field, page_number: detected.page_number, x: detected.x, y: detected.y, width: detected.width, height: detected.height } : field;
   });
+  for (const detected of analysis.data?.detected_fields ?? []) {
+    if (detected.field_name.startsWith("signature_") && !configuredFields.some((field) => field.field_name === detected.field_name)) {
+      configuredFields.push(detected);
+    }
+  }
   const configure = useMutation({ mutationFn: () => configureLeadershipTemplate(selected, configuredFields, signatureHandling), onSuccess: () => void refresh() });
   const activate = useMutation({ mutationFn: activateLeadershipTemplate, onSuccess: () => void refresh() }); const deactivate = useMutation({ mutationFn: deactivateLeadershipTemplate, onSuccess: () => void refresh() }); const archive = useMutation({ mutationFn: archiveLeadershipTemplate, onSuccess: () => void refresh() });
   const preview = useMutation({ mutationFn: () => previewLeadershipTemplate(selected, membershipId), onSuccess: (blob) => { if (previewUrl) URL.revokeObjectURL(previewUrl); setPreviewUrl(URL.createObjectURL(blob)); } });
