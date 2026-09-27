@@ -269,8 +269,10 @@ def _dedicated_qr_rectangle(page: fitz.Page, placeholder: fitz.Rect | None = Non
     frames = [
         drawing["rect"]
         for drawing in page.get_drawings()
-        if 32 <= drawing["rect"].width <= 160
-        and drawing["rect"].height >= drawing["rect"].width
+        if 32 <= min(drawing["rect"].width, drawing["rect"].height) <= 160
+        and max(drawing["rect"].width, drawing["rect"].height) <= 180
+        and max(drawing["rect"].width, drawing["rect"].height)
+        / min(drawing["rect"].width, drawing["rect"].height) <= 1.6
     ]
     if placeholder is not None:
         center = fitz.Point((placeholder.x0 + placeholder.x1) / 2, (placeholder.y0 + placeholder.y1) / 2)

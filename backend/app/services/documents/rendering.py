@@ -128,8 +128,12 @@ def _qr_panel_for_field(page: fitz.Page, field: TemplateField) -> fitz.Rect | No
     frames = [
         drawing["rect"]
         for drawing in page.get_drawings()
-        if 32 <= drawing["rect"].width <= 160
-        and drawing["rect"].height >= drawing["rect"].width
+        # A QR holder can be a little wider than it is tall. Its usable QR
+        # area is the largest square inside it, not the narrow tag label.
+        if 32 <= min(drawing["rect"].width, drawing["rect"].height) <= 160
+        and max(drawing["rect"].width, drawing["rect"].height) <= 180
+        and max(drawing["rect"].width, drawing["rect"].height)
+        / min(drawing["rect"].width, drawing["rect"].height) <= 1.6
         and drawing["rect"].contains(center)
     ]
     if not frames:
