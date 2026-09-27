@@ -63,7 +63,9 @@ def leadership_fields_for_rendering(fields: Iterable[object]) -> list[object]:
     """
     prepared = []
     for field in fields:
-        if getattr(field, "field_name", None) != "student_name":
+        if getattr(field, "field_name", None) != "student_name" or not all(
+            hasattr(field, attribute) for attribute in ("y", "height")
+        ):
             prepared.append(field)
             continue
         adjusted = copy(field)
