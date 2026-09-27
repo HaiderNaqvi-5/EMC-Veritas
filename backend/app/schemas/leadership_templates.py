@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.templates import DetectedTemplateFieldResponse
+
 LeadershipDocumentType = Literal["LEADERSHIP_RECOGNITION", "END_OF_TENURE_APPRECIATION"]
 
 
@@ -40,6 +42,7 @@ class LeadershipTemplateAnalysisResponse(BaseModel):
     ocr_used: bool
     ocr_required: bool
     signature_content_detected: bool
+    detected_fields: list[DetectedTemplateFieldResponse]
 
 
 class LeadershipTemplatePreviewRequest(BaseModel):

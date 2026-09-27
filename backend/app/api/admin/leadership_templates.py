@@ -41,7 +41,11 @@ from app.services.signatures.availability import missing_titles, select_effectiv
 from app.services.signatures.policy import required_titles
 from app.services.signatures.rendering import missing_signature_fields, signature_field_name
 from app.services.storage.supabase import SupabaseStorage
-from app.services.templates.analysis import analyze_pdf_text, has_signature_like_content
+from app.services.templates.analysis import (
+    analyze_pdf_text,
+    detect_certificate_placeholders,
+    has_signature_like_content,
+)
 from app.services.templates.signature_choice import require_signature_choice
 from app.services.templates.validation import ensure_pdf
 
@@ -146,6 +150,12 @@ def analyze_leadership_template(
         ocr_used=analysis.ocr_used,
         ocr_required=analysis.ocr_required,
         signature_content_detected=has_signature_like_content(analysis.pages),
+        # Recognise visible labels such as "Serial No." as the system-managed
+        # verification ID, just as certificate templates do.
+        detected_fields=[
+            field for field in detect_certificate_placeholders(pdf_bytes)
+            if field.field_name in _ALLOWED_FIELD_NAMES
+        ],
     )
 
 

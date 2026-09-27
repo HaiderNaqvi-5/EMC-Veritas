@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { activateLeadershipTemplate, archiveLeadershipTemplate, configureLeadershipTemplate, deactivateLeadershipTemplate, listExecutiveMemberships, listLeadershipTemplates, previewLeadershipTemplate, uploadLeadershipTemplate } from "../../api/leadershipTemplates";
+import { activateLeadershipTemplate, analyzeLeadershipTemplate, archiveLeadershipTemplate, configureLeadershipTemplate, deactivateLeadershipTemplate, listExecutiveMemberships, listLeadershipTemplates, previewLeadershipTemplate, uploadLeadershipTemplate } from "../../api/leadershipTemplates";
 import { Skeleton } from "../../components/ui/Skeleton";
 
 const roles = ["President", "Vice President", "Deputy Vice President", "General Secretary", "Finance Head", "Director of Club Operations (DCO)", "External Affairs", "Society Head"];
@@ -15,9 +15,17 @@ export function LeadershipTemplatesPage() {
   const cache = useQueryClient(); const templates = useQuery({ queryKey: ["admin", "leadership-templates"], queryFn: listLeadershipTemplates });
   const memberships = useQuery({ queryKey: ["admin", "executive-memberships"], queryFn: listExecutiveMemberships });
   const [name, setName] = useState(""); const [role, setRole] = useState(roles[0]); const [type, setType] = useState<"LEADERSHIP_RECOGNITION" | "END_OF_TENURE_APPRECIATION">("LEADERSHIP_RECOGNITION"); const [file, setFile] = useState<File | null>(null); const [selected, setSelected] = useState(""); const [membershipId, setMembershipId] = useState(""); const [signatureHandling, setSignatureHandling] = useState<"retain" | "replace">("retain"); const [previewUrl, setPreviewUrl] = useState("");
+  const analysis = useQuery({ queryKey: ["leadership-template-analysis", selected], queryFn: () => analyzeLeadershipTemplate(selected), enabled: Boolean(selected) });
   const refresh = () => cache.invalidateQueries({ queryKey: ["admin", "leadership-templates"] });
   const upload = useMutation({ mutationFn: () => uploadLeadershipTemplate(name, role, type, file as File), onSuccess: (template) => { setSelected(template.id); setName(""); setFile(null); void refresh(); } });
-  const configure = useMutation({ mutationFn: () => configureLeadershipTemplate(selected, fields, signatureHandling), onSuccess: () => void refresh() });
+  const detectedGeometry = new Map((analysis.data?.detected_fields ?? []).map((field) => [field.field_name, field]));
+  const configuredFields = fields.map((field) => {
+    // The visible serial label is the only leadership field whose placement is
+    // inferred from the PDF.  QR placement remains the dedicated editable box.
+    const detected = field.field_name === "verification_id" ? detectedGeometry.get(field.field_name) : undefined;
+    return detected ? { ...field, page_number: detected.page_number, x: detected.x, y: detected.y, width: detected.width, height: detected.height } : field;
+  });
+  const configure = useMutation({ mutationFn: () => configureLeadershipTemplate(selected, configuredFields, signatureHandling), onSuccess: () => void refresh() });
   const activate = useMutation({ mutationFn: activateLeadershipTemplate, onSuccess: () => void refresh() }); const deactivate = useMutation({ mutationFn: deactivateLeadershipTemplate, onSuccess: () => void refresh() }); const archive = useMutation({ mutationFn: archiveLeadershipTemplate, onSuccess: () => void refresh() });
   const preview = useMutation({ mutationFn: () => previewLeadershipTemplate(selected, membershipId), onSuccess: (blob) => { if (previewUrl) URL.revokeObjectURL(previewUrl); setPreviewUrl(URL.createObjectURL(blob)); } });
   const current = templates.data?.find((template) => template.id === selected); const error = [upload.error, configure.error, activate.error, deactivate.error, archive.error, preview.error].find(Boolean);
