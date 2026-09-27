@@ -66,6 +66,18 @@ def prepare_signature_image(content: bytes) -> bytes:
         raise ValueError("Signature image is unreadable") from error
 
     red, green, blue, source_alpha = image.split()
+    alpha_minimum, source_alpha_maximum = source_alpha.getextrema()
+    # A signature exported from Canva already has its paper removed. Its RGB
+    # canvas is commonly black even where alpha is zero, so estimating a paper
+    # background from RGB would erase the real black ink. Preserve the alpha
+    # mask directly in that case and simply normalize the ink colour to black.
+    if alpha_minimum == 0 and source_alpha_maximum >= 32:
+        output_image = Image.new("RGBA", image.size, (0, 0, 0, 0))
+        output_image.putalpha(source_alpha)
+        output_image = _crop_to_ink(output_image, source_alpha)
+        output = BytesIO()
+        output_image.save(output, format="PNG", optimize=True)
+        return output.getvalue()
     colour_difference = ImageChops.lighter(
         ImageChops.difference(red, green),
         ImageChops.lighter(ImageChops.difference(red, blue), ImageChops.difference(green, blue)),
@@ -88,7 +100,6 @@ def prepare_signature_image(content: bytes) -> bytes:
     # PNGs with useful RGB ink but alpha values of only 1–2.  Treat such an
     # image as an opaque source while rebuilding its mask; otherwise a later
     # certificate render can never make the handwriting visible again.
-    _minimum, source_alpha_maximum = source_alpha.getextrema()
     effective_source_alpha = (
         source_alpha
         if source_alpha_maximum >= 32
@@ -100,4 +111,37 @@ def prepare_signature_image(content: bytes) -> bytes:
     output_image = _crop_to_ink(output_image, alpha)
     output = BytesIO()
     output_image.save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+def restore_legacy_signature_alpha(content: bytes) -> bytes:
+    """Make an old nearly-transparent processed signature visible again.
+
+    A previous renderer stored black PNGs whose ink alpha was only 1–2/255.
+    Their RGB channels contain no useful paper/ink contrast, but the alpha
+    channel still preserves the handwriting shape. Scale that mask instead of
+    attempting to re-detect ink from a fully black transparent canvas.
+    """
+    try:
+        with Image.open(BytesIO(content)) as source:
+            image = source.convert("RGBA")
+    except (OSError, UnidentifiedImageError):
+        # Let the PDF renderer retain its normal validation and error message
+        # for genuinely corrupt or unsupported files.
+        return content
+
+    alpha = image.getchannel("A")
+    _minimum, maximum = alpha.getextrema()
+    if maximum == 0 or maximum >= 32:
+        return content
+
+    restored_alpha = alpha.point([min(255, value * 128) for value in range(256)])
+    restored = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    restored.putalpha(restored_alpha)
+    try:
+        restored = _crop_to_ink(restored, restored_alpha)
+    except ValueError:
+        return content
+    output = BytesIO()
+    restored.save(output, format="PNG", optimize=True)
     return output.getvalue()

@@ -2,7 +2,7 @@ from io import BytesIO
 
 from PIL import Image, ImageDraw
 
-from app.services.signatures.image import prepare_signature_image
+from app.services.signatures.image import prepare_signature_image, restore_legacy_signature_alpha
 
 
 def test_prepare_signature_image_removes_paper_and_blackens_ink() -> None:
@@ -46,3 +46,26 @@ def test_prepare_signature_image_recovers_ink_from_a_nearly_transparent_legacy_p
     output = prepare_signature_image(source.getvalue())
     with Image.open(BytesIO(output)).convert("RGBA") as result:
         assert max(result.getchannel("A").getextrema()) >= 100
+
+
+def test_prepare_signature_image_preserves_existing_transparent_signature_ink() -> None:
+    image = Image.new("RGBA", (2500, 2500), (0, 0, 0, 0))
+    ImageDraw.Draw(image).line((600, 1400, 1900, 1000), fill=(0, 0, 0, 255), width=40)
+    source = BytesIO()
+    image.save(source, format="PNG")
+
+    output = prepare_signature_image(source.getvalue())
+    with Image.open(BytesIO(output)).convert("RGBA") as result:
+        assert result.size[0] < 1500
+        assert max(result.getchannel("A").getextrema()) == 255
+
+
+def test_restore_legacy_signature_alpha_makes_low_alpha_ink_visible() -> None:
+    image = Image.new("RGBA", (100, 60), (0, 0, 0, 0))
+    ImageDraw.Draw(image).line((20, 35, 80, 20), fill=(0, 0, 0, 2), width=5)
+    source = BytesIO()
+    image.save(source, format="PNG")
+
+    output = restore_legacy_signature_alpha(source.getvalue())
+    with Image.open(BytesIO(output)).convert("RGBA") as result:
+        assert max(result.getchannel("A").getextrema()) == 255

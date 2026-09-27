@@ -10,6 +10,7 @@ import fitz
 from app.models.domain import TemplateField
 from app.services.documents.qr_image import qr_png
 from app.services.documents.text_fit import fit_font_size
+from app.services.signatures.image import restore_legacy_signature_alpha
 from app.services.templates.fields import REQUIRED_CERTIFICATE_FIELDS
 
 
@@ -132,10 +133,13 @@ def _insert_image(page: fitz.Page, field: TemplateField, image_bytes: bytes) -> 
         raise CertificateRenderingError(f"Template field '{field.field_name}' has an invalid box")
     rectangle = fitz.Rect(field.x, field.y, field.x + field.width, field.y + field.height)
     try:
-        # Signature files are validated and normalized at upload time. Do not
-        # process them a second time here: legacy transparent PNGs can become
-        # unreadable when re-cropped, which must never cancel a preview.
-        page.insert_image(rectangle, stream=image_bytes, keep_proportion=True)
+        # New uploads are already normalized. Legacy files with an alpha mask
+        # of 1–2/255 are restored here so their genuine handwriting is visible.
+        page.insert_image(
+            rectangle,
+            stream=restore_legacy_signature_alpha(image_bytes),
+            keep_proportion=True,
+        )
     except (ValueError, RuntimeError) as error:
         raise CertificateRenderingError(
             f"Signature image for template field '{field.field_name}' is unreadable"
