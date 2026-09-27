@@ -96,6 +96,25 @@ def test_analysis_prefers_an_explicit_qr_tag_over_a_decorative_frame() -> None:
     assert qr.detected_text == "{{qr_code}}"
 
 
+def test_analysis_expands_an_explicit_qr_tag_to_its_enclosing_panel() -> None:
+    document = fitz.open()
+    page = document.new_page(width=600, height=400)
+    panel = fitz.Rect(48, 260, 108, 330)
+    page.draw_rect(panel)
+    page.insert_text((54, 295), "{{qr_code}}")
+    pdf_bytes = document.tobytes()
+    document.close()
+
+    fields = analysis.detect_certificate_placeholders(pdf_bytes)
+    qr = next(field for field in fields if field.field_name == "qr_code")
+
+    assert qr.detected_text == "{{qr_code}}"
+    assert qr.width >= 50
+    assert qr.height >= 50
+    assert qr.x >= panel.x0
+    assert qr.y >= panel.y0
+
+
 def test_analysis_detects_dynamic_signature_placeholders() -> None:
     result = analysis.detect_certificate_placeholders(
         _pdf_with_page_text("{{signature_dsa}}\n{{signature_hod}}")

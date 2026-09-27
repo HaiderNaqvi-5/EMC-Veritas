@@ -94,7 +94,35 @@ def _insert_text(
     )
 
 
+def _effective_qr_field(page: fitz.Page, field: TemplateField) -> TemplateField:
+    """Expand a saved QR tag box to the QR panel that contains it.
+
+    Earlier template analysis saved the small ``{{qr_code}}`` text bounds.
+    Keep those templates usable by resolving the enclosing drawn panel while
+    rendering instead of requiring an admin to recreate every template.
+    """
+    center = fitz.Point(field.x + field.width / 2, field.y + field.height / 2)
+    frames = [
+        drawing["rect"]
+        for drawing in page.get_drawings()
+        if 32 <= drawing["rect"].width <= 160
+        and drawing["rect"].height >= drawing["rect"].width
+        and drawing["rect"].contains(center)
+    ]
+    if not frames:
+        return field
+    frame = min(frames, key=lambda rectangle: rectangle.width * rectangle.height)
+    size = max(16, min(frame.width, frame.height) - 8)
+    effective = copy(field)
+    effective.x = frame.x0 + (frame.width - size) / 2
+    effective.y = frame.y0 + (frame.height - size) / 2
+    effective.width = size
+    effective.height = size
+    return effective
+
+
 def _insert_qr(page: fitz.Page, field: TemplateField, verification_url: str) -> None:
+    field = _effective_qr_field(page, field)
     if field.width <= 0 or field.height <= 0:
         raise CertificateRenderingError("Template QR field has an invalid box")
     rectangle = fitz.Rect(field.x, field.y, field.x + field.width, field.y + field.height)
@@ -503,7 +531,9 @@ def render_certificate(
         for page_number, (rectangle, text, font, size, rgb) in paragraph_jobs.items():
             _render_activity_paragraph(document[page_number - 1], rectangle, text, font, size, rgb)
         qr_fields = {
-            field.page_number: field for field in field_list if field.field_name == "qr_code"
+            field.page_number: _effective_qr_field(document[field.page_number - 1], field)
+            for field in field_list
+            if field.field_name == "qr_code"
         }
         for field in field_list:
             page = document[field.page_number - 1]

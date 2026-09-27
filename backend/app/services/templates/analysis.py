@@ -169,6 +169,11 @@ def detect_certificate_placeholders(
                     rectangle.x0 + min(128, max(16, available_width)),
                     rectangle.y1,
                 )
+            if field_name == "qr_code":
+                # A QR tag is often written *inside* a decorative QR panel.
+                # The tag's text bounds are much smaller than the panel, so
+                # using them would produce an unreadably tiny generated code.
+                rectangle = _dedicated_qr_rectangle(page=document[page_index], placeholder=rectangle)
             x, y, width, height = _safe_field_geometry(document[page_index], rectangle)
             detected.append(
                 DetectedTemplateField(
@@ -259,26 +264,40 @@ def _combined_placeholder_rect(rectangles: list[fitz.Rect]) -> fitz.Rect:
     return combined
 
 
-def _dedicated_qr_rectangle(page: fitz.Page) -> fitz.Rect:
+def _dedicated_qr_rectangle(page: fitz.Page, placeholder: fitz.Rect | None = None) -> fitz.Rect:
     """Find a footer QR frame drawn in the PDF and inset the generated code."""
     frames = [
         drawing["rect"]
         for drawing in page.get_drawings()
-        if drawing["rect"].x0 > page.rect.width / 2
-        and 64 <= drawing["rect"].width <= 160
+        if 32 <= drawing["rect"].width <= 160
         and drawing["rect"].height >= drawing["rect"].width
     ]
+    if placeholder is not None:
+        center = fitz.Point((placeholder.x0 + placeholder.x1) / 2, (placeholder.y0 + placeholder.y1) / 2)
+        containing = [frame for frame in frames if frame.contains(center)]
+        if containing:
+            frame = min(containing, key=lambda rectangle: rectangle.width * rectangle.height)
+            return _qr_rectangle_inside_frame(frame)
+        # An explicit tag remains authoritative when the PDF has no enclosing
+        # box, such as a deliberately borderless QR layout.
+        return placeholder
+    frames = [frame for frame in frames if frame.x0 > page.rect.width / 2]
     if frames:
         frame = min(frames, key=lambda rectangle: rectangle.y0)
-        size = min(frame.width, frame.height) - 16
-        return fitz.Rect(
-            frame.x0 + (frame.width - size) / 2,
-            frame.y0 + 8,
-            frame.x0 + (frame.width + size) / 2,
-            frame.y0 + 8 + size,
-        )
+        return _qr_rectangle_inside_frame(frame)
     size = 80
     return fitz.Rect(page.rect.width - size - 74, page.rect.height - size - 74, page.rect.width - 74, page.rect.height - 74)
+
+
+def _qr_rectangle_inside_frame(frame: fitz.Rect) -> fitz.Rect:
+    """Use almost all of a QR panel while retaining a small visual margin."""
+    size = max(16, min(frame.width, frame.height) - 8)
+    return fitz.Rect(
+        frame.x0 + (frame.width - size) / 2,
+        frame.y0 + (frame.height - size) / 2,
+        frame.x0 + (frame.width + size) / 2,
+        frame.y0 + (frame.height + size) / 2,
+    )
 
 
 def _style_at(page: fitz.Page, rectangle: fitz.Rect) -> tuple[str, int, str]:

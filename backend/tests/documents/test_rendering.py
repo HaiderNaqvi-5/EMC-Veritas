@@ -250,3 +250,27 @@ def test_rendering_centres_verification_id_below_its_qr_code() -> None:
     serial_center = (serial["bbox"][0] + serial["bbox"][2]) / 2
     assert abs(serial_center - 488) < 3
     assert serial["bbox"][1] >= 480
+
+
+def test_rendering_expands_a_saved_tiny_qr_tag_box_to_its_panel() -> None:
+    document = fitz.open()
+    page = document.new_page(width=600, height=600)
+    panel = fitz.Rect(50, 420, 110, 490)
+    page.draw_rect(panel)
+    template = document.tobytes()
+    document.close()
+    field = SimpleNamespace(
+        field_name="qr_code", page_number=1, x=58, y=448, width=34, height=14,
+        font_family="helv", custom_font_storage_key=None, font_size=10, text_color="#000000",
+    )
+
+    output = render_certificate(
+        template, [field], {}, verification_url="https://example.test/verify/x", required_field_names=frozenset()
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    image = next(item for item in rendered[0].get_images(full=True) if item[2] > 100)
+    rectangle = rendered[0].get_image_rects(image[0])[0]
+    rendered.close()
+    assert rectangle.width >= 50
+    assert rectangle.height >= 50
