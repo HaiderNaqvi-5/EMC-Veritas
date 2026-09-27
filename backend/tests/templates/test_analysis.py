@@ -89,6 +89,13 @@ def test_analysis_accepts_the_legacy_serial_placeholder_syntax() -> None:
     assert verification.detected_text == "{{serial_no.}}"
 
 
+def test_analysis_prefers_an_explicit_qr_tag_over_a_decorative_frame() -> None:
+    fields = analysis.detect_certificate_placeholders(_pdf_with_page_text("{{qr_code}}"))
+
+    qr = next(field for field in fields if field.field_name == "qr_code")
+    assert qr.detected_text == "{{qr_code}}"
+
+
 def test_analysis_detects_dynamic_signature_placeholders() -> None:
     result = analysis.detect_certificate_placeholders(
         _pdf_with_page_text("{{signature_dsa}}\n{{signature_hod}}")

@@ -120,7 +120,18 @@ def detect_certificate_placeholders(
     placeholder_map = placeholders or _CERTIFICATE_PLACEHOLDERS
     with fitz.open(stream=pdf_bytes, filetype="pdf") as document:
         for field_name, aliases in placeholder_map.items():
-            if field_name == "qr_code" and document.page_count:
+            match: tuple[int, fitz.Rect, str] | None = None
+            for page_index, page in enumerate(document):
+                for alias in aliases:
+                    rectangles = page.search_for(alias)
+                    if rectangles:
+                        match = (page_index, _combined_placeholder_rect(rectangles), alias)
+                        break
+                if match is not None:
+                    break
+            if match is None and field_name == "qr_code" and document.page_count:
+                # A tagged QR location is authoritative. Only infer a drawn
+                # square when no explicit QR marker exists in the PDF.
                 page = document[0]
                 qr_rectangle = _dedicated_qr_rectangle(page)
                 detected.append(
@@ -133,15 +144,6 @@ def detect_certificate_placeholders(
                     )
                 )
                 continue
-            match: tuple[int, fitz.Rect, str] | None = None
-            for page_index, page in enumerate(document):
-                for alias in aliases:
-                    rectangles = page.search_for(alias)
-                    if rectangles:
-                        match = (page_index, _combined_placeholder_rect(rectangles), alias)
-                        break
-                if match is not None:
-                    break
             if match is None:
                 continue
             page_index, rectangle, alias = match

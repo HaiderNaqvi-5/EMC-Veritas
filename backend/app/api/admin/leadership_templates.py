@@ -159,6 +159,28 @@ def analyze_leadership_template(
     )
 
 
+@router.get("/{template_id}/pages/{page_number}")
+def leadership_template_page_image(
+    template_id: UUID,
+    page_number: int,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> StreamingResponse:
+    """Render the source page used by the leadership field-placement preview."""
+    template = _template_or_404(db, template_id)
+    try:
+        pdf_bytes = SupabaseStorage().download(template.storage_key)
+        document = fitz.open(stream=pdf_bytes, filetype="pdf")
+        if page_number < 1 or page_number > document.page_count:
+            document.close()
+            raise HTTPException(status_code=404, detail="Leadership template page not found")
+        image = document[page_number - 1].get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
+        document.close()
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="Template storage is temporarily unavailable") from error
+    return StreamingResponse(BytesIO(image.tobytes("png")), media_type="image/png")
+
+
 @router.post("/{template_id}/fields", response_model=LeadershipTemplateResponse)
 def configure_leadership_template_fields(
     template_id: UUID,
