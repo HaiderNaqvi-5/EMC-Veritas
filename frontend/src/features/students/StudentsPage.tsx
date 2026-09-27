@@ -39,6 +39,10 @@ export function StudentsPage() {
     onSuccess: () =>
       void client.invalidateQueries({ queryKey: ["admin", "students"] }),
   });
+  const remove = useMutation({
+    mutationFn: (id: string) => apiRequest<void>(`/admin/students/${id}`, { method: "DELETE" }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["admin", "students"] }),
+  });
   function submit(event: FormEvent) {
     event.preventDefault();
     create.mutate();
@@ -105,13 +109,23 @@ export function StudentsPage() {
                     {student.active ? "Active" : "Deactivated"}
                   </td>
                   <td className="p-4">
-                    {student.active && (
+                    {student.active ? (
                       <button
                         onClick={() => deactivate.mutate(student.id)}
                         disabled={deactivate.isPending}
                         className="underline"
                       >
                         Deactivate
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Delete ${student.full_name}? This cannot be undone.`)) remove.mutate(student.id);
+                        }}
+                        disabled={remove.isPending}
+                        className="text-red-700 underline disabled:opacity-60"
+                      >
+                        Delete
                       </button>
                     )}
                   </td>

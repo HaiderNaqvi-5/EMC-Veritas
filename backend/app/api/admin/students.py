@@ -8,7 +8,12 @@ from app.db.session import get_db
 from app.models.domain import Student
 from app.schemas.operations import StudentCreate, StudentResponse
 from app.services.audit import record_audit_event
-from app.services.students import create_student, deactivate_student, list_students
+from app.services.students import (
+    create_student,
+    deactivate_student,
+    delete_inactive_student,
+    list_students,
+)
 
 router = APIRouter(prefix="/students", tags=["admin-students"])
 
@@ -47,3 +52,17 @@ def deactivate(student_id: str, admin_id: UUID = Depends(require_admin), db: Ses
     record_audit_event(db, event_type="STUDENT_DEACTIVATED", entity_type="student", entity_id=student.id, payload={}, actor_admin_id=admin_id)
     db.commit(); db.refresh(student)
     return student
+
+
+@router.delete("/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_student(student_id: str, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)) -> None:
+    student = db.get(Student, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    roll_number = student.roll_number
+    try:
+        delete_inactive_student(db, student)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    record_audit_event(db, event_type="STUDENT_DELETED", entity_type="student", entity_id=student_id, payload={"roll_number": roll_number}, actor_admin_id=admin_id)
+    db.commit()

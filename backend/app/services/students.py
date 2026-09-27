@@ -1,7 +1,13 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models.domain import Student
+from app.models.domain import (
+    ActivityParticipant,
+    Admin,
+    ExecutiveMembership,
+    IssuedDocument,
+    Student,
+)
 from app.schemas.operations import StudentCreate
 
 
@@ -36,3 +42,16 @@ def deactivate_student(db: Session, student: Student) -> Student:
     student.active = False
     db.flush()
     return student
+
+
+def delete_inactive_student(db: Session, student: Student) -> None:
+    """Remove a disposable inactive student without ever breaking issued history."""
+    if student.active:
+        raise ValueError("Deactivate this student before deleting the record")
+    if db.scalar(select(IssuedDocument.id).where(IssuedDocument.student_id == student.id)):
+        raise ValueError("Students with issued documents cannot be deleted; keep them deactivated")
+    db.execute(delete(ActivityParticipant).where(ActivityParticipant.student_id == student.id))
+    db.execute(delete(ExecutiveMembership).where(ExecutiveMembership.student_id == student.id))
+    db.execute(delete(Admin).where(Admin.student_id == student.id))
+    db.delete(student)
+    db.flush()
