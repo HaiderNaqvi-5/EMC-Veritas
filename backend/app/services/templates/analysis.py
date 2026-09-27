@@ -108,7 +108,10 @@ def analyze_pdf_text(pdf_bytes: bytes) -> PdfTextAnalysis:
 
 
 def detect_certificate_placeholders(
-    pdf_bytes: bytes, *, placeholders: dict[str, tuple[str, ...]] | None = None
+    pdf_bytes: bytes,
+    *,
+    placeholders: dict[str, tuple[str, ...]] | None = None,
+    infer_qr_frame: bool = True,
 ) -> list[DetectedTemplateField]:
     """Find common visible certificate placeholders and return editable field suggestions.
 
@@ -129,7 +132,7 @@ def detect_certificate_placeholders(
                         break
                 if match is not None:
                     break
-            if match is None and field_name == "qr_code" and document.page_count:
+            if match is None and field_name == "qr_code" and infer_qr_frame and document.page_count:
                 # A tagged QR location is authoritative. Only infer a drawn
                 # square when no explicit QR marker exists in the PDF.
                 page = document[0]
@@ -213,7 +216,11 @@ def detect_certificate_placeholders(
 
 def detect_leadership_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateField]:
     """Detect the fixed-record placeholders used by leadership letters."""
-    return detect_certificate_placeholders(pdf_bytes, placeholders=_LEADERSHIP_PLACEHOLDERS)
+    # Leadership PDFs must use an explicit QR tag. This avoids spending time
+    # inspecting every decorative vector square on heavily designed letters.
+    return detect_certificate_placeholders(
+        pdf_bytes, placeholders=_LEADERSHIP_PLACEHOLDERS, infer_qr_frame=False
+    )
 
 
 def _signature_field_rectangle(page: fitz.Page, placeholder: fitz.Rect) -> fitz.Rect:
