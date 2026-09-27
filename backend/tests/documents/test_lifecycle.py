@@ -165,6 +165,28 @@ def test_renderer_places_configured_signature_image() -> None:
     assert rendered[0].get_images(full=True)
 
 
+def test_renderer_allows_an_unmatched_optional_signature_slot() -> None:
+    output = render_certificate(
+        _blank_template(),
+        [
+            _field("student_name", 150, 160),
+            _field("roll_number", 150, 210),
+            _field("activity_name", 150, 260),
+            _field("activity_date", 150, 310),
+            _field("signature_hod", 100, 500, 100, 40),
+        ],
+        {
+            "student_name": "Ayesha Khan",
+            "roll_number": "FA21-BCS-001",
+            "activity_name": "Welcome Week",
+            "activity_date": date(2026, 9, 1),
+        },
+        verification_url="https://portal.example.edu/verify/EMC-TEST123",
+    )
+
+    assert output
+
+
 def test_renderer_honors_configured_bundled_font_and_color() -> None:
     field = _field("student_name", 150, 160)
     field.font_family = "cour"

@@ -441,7 +441,10 @@ def render_certificate(
         raise CertificateRenderingError(
             "Template is missing image fields: " + ", ".join(sorted(unknown_images))
         )
-    needed_values = configured_names - {"qr_code", *images}
+    # Signature slots are optional images. A preview should still render when
+    # a template contains a signature tag but no active matching upload exists.
+    signature_slots = {name for name in configured_names if name.startswith("signature_")}
+    needed_values = configured_names - {"qr_code", *images, *signature_slots}
     absent_values = sorted(name for name in needed_values if name not in normalized_values)
     if absent_values:
         raise CertificateRenderingError(
@@ -508,6 +511,10 @@ def render_certificate(
                 _insert_qr(page, field, verification_url)
             elif field.field_name in images:
                 _insert_image(page, field, images[field.field_name])
+            elif field.field_name in signature_slots:
+                # An unconfigured signature box is intentionally blank in
+                # previews. Its source placeholder was already redacted.
+                continue
             elif (field.page_number, field.field_name) in paragraph_fields:
                 continue
             else:

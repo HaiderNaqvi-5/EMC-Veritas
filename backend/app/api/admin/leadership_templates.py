@@ -38,9 +38,8 @@ from app.services.executive.letters import (
     leadership_letter_values,
     missing_leadership_template_fields,
 )
-from app.services.signatures.availability import missing_titles, select_effective_signatories
-from app.services.signatures.policy import required_titles
-from app.services.signatures.rendering import missing_signature_fields, signature_field_name
+from app.services.signatures.availability import select_effective_signatories_for_fields
+from app.services.signatures.rendering import configured_signature_field_names
 from app.services.storage.supabase import SupabaseStorage
 from app.services.templates.analysis import (
     analyze_pdf_text,
@@ -55,8 +54,15 @@ router = APIRouter(prefix="/leadership-templates", tags=["leadership templates"]
 _ALLOWED_DOCUMENT_TYPES = frozenset(
     {DocumentType.LEADERSHIP_RECOGNITION, DocumentType.END_OF_TENURE_APPRECIATION}
 )
-_ALLOWED_SIGNATURE_FIELDS = frozenset({"signature_president", "signature_dsa", "signature_hod"})
-_ALLOWED_FIELD_NAMES = REQUIRED_LEADERSHIP_TEMPLATE_FIELDS | _ALLOWED_SIGNATURE_FIELDS
+
+
+def _is_allowed_field_name(field_name: str) -> bool:
+    """Allow the letter fields plus any explicitly named signature slot.
+
+    Signatory titles are configured by an administrator, so Leadership
+    templates cannot be restricted to a fixed President/DSA/HOD list.
+    """
+    return field_name in REQUIRED_LEADERSHIP_TEMPLATE_FIELDS or field_name.startswith("signature_")
 
 
 def _template_or_404(db: Session, template_id: UUID) -> LeadershipTemplate:
@@ -157,7 +163,7 @@ def analyze_leadership_template(
         detected_fields=[
             DetectedTemplateFieldResponse(**field.__dict__)
             for field in detected_fields
-            if field.field_name in _ALLOWED_FIELD_NAMES
+            if _is_allowed_field_name(field.field_name)
         ],
     )
 
@@ -202,7 +208,7 @@ def configure_leadership_template_fields(
     names = [field.field_name for field in payload.fields]
     if len(names) != len(set(names)):
         raise HTTPException(status_code=422, detail="Template field names must be unique")
-    unsupported = set(names) - _ALLOWED_FIELD_NAMES
+    unsupported = {name for name in names if not _is_allowed_field_name(name)}
     if unsupported:
         raise HTTPException(
             status_code=422,
@@ -277,35 +283,16 @@ def preview_leadership_template(
         storage = SupabaseStorage()
         template_pdf = storage.download(template.storage_key)
         if template.signature_handling == "replace":
-            titles = required_titles(
-                role=membership.role,
-                appreciation=template.document_type is DocumentType.END_OF_TENURE_APPRECIATION,
-            )
             signatories = list(db.scalars(select(Signatory).where(Signatory.active.is_(True))).all())
-            available = {
-                title: [
-                    (signatory.effective_start_date, signatory.effective_end_date)
-                    for signatory in signatories
-                    if signatory.official_title == title
-                ]
-                for title in titles
-            }
-            missing_signatories = missing_titles(titles, available, end_date)
-            if missing_signatories:
-                raise HTTPException(
-                    status_code=422,
-                    detail="Required signatories are unavailable: " + ", ".join(missing_signatories),
-                )
-            selected = select_effective_signatories(signatories, titles, end_date)
-            missing_boxes = missing_signature_fields(fields, selected)
-            if missing_boxes:
-                raise HTTPException(
-                    status_code=422,
-                    detail="Template is missing signature fields: " + ", ".join(missing_boxes),
-                )
+            # A preview must reflect the fields that this particular PDF
+            # actually requests. It must never impose role-policy titles such
+            # as President or DSA on a template that only contains HOD.
+            selected = select_effective_signatories_for_fields(
+                signatories, configured_signature_field_names(fields), end_date
+            )
             image_values = {
-                signature_field_name(signatory.official_title): storage.download(signatory.signature_storage_key)
-                for signatory in selected.values()
+                field_name: storage.download(signatory.signature_storage_key)
+                for field_name, signatory in selected.items()
             }
         output = render_certificate(
             template_pdf,
