@@ -34,13 +34,13 @@ from app.schemas.documents import (
     DocumentReissueResponse,
 )
 from app.services.audit import record_audit_event
-from app.services.documents.lifecycle import DocumentLifecycleError, generate_on_first_download
 from app.services.documents.issuance import reserve_document
+from app.services.documents.lifecycle import DocumentLifecycleError, generate_on_first_download
 from app.services.signatures.availability import select_effective_signatories_for_fields
 from app.services.signatures.rendering import (
     configured_signature_field_names,
-    signature_field_name,
     should_replace_signatures,
+    signature_field_name,
 )
 from app.services.storage.supabase import SupabaseStorage
 from app.services.templates.fields import missing_required_fields
