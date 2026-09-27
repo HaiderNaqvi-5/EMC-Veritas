@@ -44,12 +44,14 @@ def _insert_text(
     font_family = getattr(field, "font_family", "helv")
     custom_font_key = getattr(field, "custom_font_storage_key", None)
     if field.field_name == "student_name" and font_family != "custom" and custom_font_key is None:
-        font_bytes = (Path(__file__).resolve().parents[2] / "assets" / "Amsterdam.ttf").read_bytes()
-        font_name = "EMCAmsterdam"
+        # IBM Plex Sans is IBM's corporate typeface and provides a clear,
+        # modern, professional recipient-name treatment in every document type.
+        font_bytes = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
+        font_name = "EMCIBMPlexSansMedium"
         try:
             page.insert_font(fontname=font_name, fontbuffer=font_bytes)
         except (RuntimeError, ValueError) as error:
-            raise CertificateRenderingError("Amsterdam font for the student name is unreadable") from error
+            raise CertificateRenderingError("IBM Plex font for the student name is unreadable") from error
     elif font_family == "custom":
         if not custom_font_key or custom_font_key not in custom_fonts:
             raise CertificateRenderingError(
@@ -87,12 +89,8 @@ def _insert_text(
     baseline_y = field.y + (field.height + font_size) / 2
     if field.field_name == "student_name":
         # A recipient name is normally placed immediately above an underline.
-        # Vertical centring lets the Amsterdam glyph descenders cut through
-        # that line, so reserve a small bottom margin inside its field box.
-        # The embedded Amsterdam font reports a deep descent in PDF metrics.
-        # Place its baseline well above the bottom of the box so the visible
-        # glyphs stop before the certificate underline.
-        baseline_y = field.y + max(4, field.height - font_size * 1.1)
+        # Reserve a bottom margin so the visible glyphs remain above it.
+        baseline_y = field.y + max(4, field.height - font_size * 0.35)
     point = fitz.Point(field.x + max((field.width - text_width) / 2, 0), baseline_y)
     page.insert_text(
         point,
