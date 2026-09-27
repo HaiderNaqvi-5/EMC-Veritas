@@ -40,7 +40,10 @@ export function StudentsPage() {
       void client.invalidateQueries({ queryKey: ["admin", "students"] }),
   });
   const remove = useMutation({
-    mutationFn: (id: string) => retryConnection(() => apiRequest<void>(`/admin/students/${id}`, { method: "DELETE" })),
+    mutationFn: (id: string) => retryConnection(
+      () => apiRequest<void>(`/admin/students/${id}`, { method: "DELETE", signal: AbortSignal.timeout(8_000) }),
+      1,
+    ),
     onSuccess: () => void client.invalidateQueries({ queryKey: ["admin", "students"] }),
   });
   function submit(event: FormEvent) {
