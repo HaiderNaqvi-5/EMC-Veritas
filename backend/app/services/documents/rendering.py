@@ -136,11 +136,14 @@ def _insert_image(page: fitz.Page, field: TemplateField, image_bytes: bytes) -> 
         # Normalize again at render time. This makes issuance resilient to
         # signatures uploaded before the alpha-mask bug was fixed, without
         # changing the immutable stored source or requiring re-upload.
-        page.insert_image(
-            rectangle,
-            stream=prepare_signature_image(image_bytes),
-            keep_proportion=True,
-        )
+        try:
+            renderable_image = prepare_signature_image(image_bytes)
+        except ValueError:
+            # Do not block a certificate preview merely because an older
+            # stored signature has no recoverable ink. The original image is
+            # still a valid PDF image stream and can be replaced later.
+            renderable_image = image_bytes
+        page.insert_image(rectangle, stream=renderable_image, keep_proportion=True)
     except (ValueError, RuntimeError) as error:
         raise CertificateRenderingError(
             f"Signature image for template field '{field.field_name}' is unreadable"
