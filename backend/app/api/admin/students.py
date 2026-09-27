@@ -58,7 +58,9 @@ def deactivate(student_id: str, admin_id: UUID = Depends(require_admin), db: Ses
 def delete_student(student_id: str, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)) -> None:
     student = db.get(Student, student_id)
     if student is None:
-        raise HTTPException(status_code=404, detail="Student not found")
+        # A browser retry after a dropped response must be safe: the first
+        # request may have completed even though the UI did not receive 204.
+        return
     roll_number = student.roll_number
     try:
         delete_inactive_student(db, student)
