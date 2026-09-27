@@ -35,6 +35,7 @@ from app.services.documents.rendering import CertificateRenderingError, render_c
 from app.services.executive.constants import EXECUTIVE_ROLES
 from app.services.executive.letters import (
     REQUIRED_LEADERSHIP_TEMPLATE_FIELDS,
+    leadership_fields_for_rendering,
     leadership_letter_values,
     missing_leadership_template_fields,
 )
@@ -296,7 +297,7 @@ def preview_leadership_template(
             }
         output = render_certificate(
             template_pdf,
-            fields,
+            leadership_fields_for_rendering(fields),
             values,
             verification_url=verification_url(settings.public_app_url, "PREVIEW"),
             watermark="PREVIEW",

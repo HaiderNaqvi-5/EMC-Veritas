@@ -1,4 +1,5 @@
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from copy import copy
 from datetime import date
 
 REQUIRED_LEADERSHIP_FIELDS = frozenset(
@@ -50,3 +51,24 @@ def leadership_letter_values(
         "session_name": session_name,
         "issue_date": issue_date,
     }
+
+
+def leadership_fields_for_rendering(fields: Iterable[object]) -> list[object]:
+    """Apply the Leadership letter's recipient-name geometry at render time.
+
+    Leadership PDFs put the name marker immediately above an existing rule.
+    The detected marker box is too close to that rule for a prominent name, so
+    shift the actual field upward and enlarge it without mutating the saved
+    editor coordinates or requiring an active template to be recreated.
+    """
+    prepared = []
+    for field in fields:
+        if getattr(field, "field_name", None) != "student_name":
+            prepared.append(field)
+            continue
+        adjusted = copy(field)
+        adjusted.y = max(0, field.y - 18)
+        adjusted.height = max(field.height, 32)
+        adjusted.font_size = 24
+        prepared.append(adjusted)
+    return prepared

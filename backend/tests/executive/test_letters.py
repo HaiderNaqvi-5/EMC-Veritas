@@ -1,29 +1,16 @@
-from datetime import date
+from types import SimpleNamespace
 
-from app.services.executive.letters import (
-    REQUIRED_LEADERSHIP_FIELDS,
-    leadership_letter_values,
-    missing_leadership_fields,
-)
+from app.services.executive.letters import leadership_fields_for_rendering
 
 
-def test_leadership_template_requires_only_fixed_record_placeholders() -> None:
-    assert missing_leadership_fields(set()) == REQUIRED_LEADERSHIP_FIELDS
-    assert missing_leadership_fields(set(REQUIRED_LEADERSHIP_FIELDS)) == set()
+def test_leadership_recipient_field_moves_above_its_underline_and_grows() -> None:
+    source = SimpleNamespace(field_name="student_name", x=200, y=168, width=280, height=18)
 
+    rendered = leadership_fields_for_rendering([source])[0]
 
-def test_leadership_letter_values_are_deterministic_and_never_ai_generated() -> None:
-    values = leadership_letter_values(
-        student_name="Ayesha Khan",
-        roll_number="FA21-BCS-001",
-        role="Society Head",
-        society_name="SciTech",
-        role_start_date=date(2025, 9, 1),
-        role_end_date=date(2026, 6, 30),
-        session_name="2025–26",
-        issue_date=date(2026, 7, 1),
-    )
-
-    assert set(values) == REQUIRED_LEADERSHIP_FIELDS
-    assert values["society_name"] == "SciTech"
-    assert values["issue_date"] == date(2026, 7, 1)
+    assert rendered is not source
+    assert rendered.y == 150
+    assert rendered.height == 32
+    assert rendered.font_size == 24
+    assert source.y == 168
+    assert source.height == 18
