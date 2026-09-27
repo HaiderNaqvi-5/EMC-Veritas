@@ -413,3 +413,29 @@ def archive_leadership_template(
     db.commit()
     db.refresh(template)
     return template
+
+
+@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_leadership_template(
+    template_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> None:
+    """Remove a draft/test template from the editor without breaking issued letters.
+
+    This deliberately archives rather than physically removes the row: issued
+    documents retain their immutable reference to the template used to create
+    them, while the deleted template immediately disappears from the UI.
+    """
+    template = _template_or_404(db, template_id)
+    template.active = False
+    template.archived = True
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="LEADERSHIP_TEMPLATE_DELETED",
+        entity_type="leadership_template",
+        entity_id=template.id,
+        payload={"name": template.name},
+    )
+    db.commit()
