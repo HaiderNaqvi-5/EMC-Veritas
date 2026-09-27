@@ -36,7 +36,18 @@ _CERTIFICATE_PLACEHOLDERS: dict[str, tuple[str, ...]] = {
     "roll_number": ("{{roll_number}}", "roll_number", "student roll number", "roll number"),
     "activity_name": ("{{activity_name}}", "activity_name", "activity name"),
     "activity_date": ("{{activity_date}}", "activity_date", "activity date"),
-    "verification_id": ("{{verification_id}}", "verification_id", "verification id", "serial number", "serial no"),
+    # Keep the original authoring syntax working across every template type.
+    # PDFs created for earlier certificate templates commonly use
+    # ``{{serial_no.}}`` rather than the internal field name.
+    "verification_id": (
+        "{{verification_id}}",
+        "{{serial_no.}}",
+        "{{serial_no}}",
+        "verification_id",
+        "verification id",
+        "serial number",
+        "serial no",
+    ),
     "qr_code": ("{{qr_code}}", "qr_code", "qr code"),
 }
 _SIGNATURE_PLACEHOLDER = re.compile(r"\{\{(signature_[a-z][a-z0-9_]*)\}\}", re.IGNORECASE)

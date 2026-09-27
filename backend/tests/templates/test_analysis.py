@@ -82,6 +82,13 @@ def test_detected_fields_stay_in_bounds_without_adjacent_line_overlap() -> None:
     assert by_name["roll_number"].y + by_name["roll_number"].height <= by_name["activity_name"].y
 
 
+def test_analysis_accepts_the_legacy_serial_placeholder_syntax() -> None:
+    fields = analysis.detect_certificate_placeholders(_pdf_with_page_text("{{serial_no.}}"))
+
+    verification = next(field for field in fields if field.field_name == "verification_id")
+    assert verification.detected_text == "{{serial_no.}}"
+
+
 def test_analysis_detects_dynamic_signature_placeholders() -> None:
     result = analysis.detect_certificate_placeholders(
         _pdf_with_page_text("{{signature_dsa}}\n{{signature_hod}}")
