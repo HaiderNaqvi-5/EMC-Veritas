@@ -13,7 +13,10 @@ REQUIRED_LEADERSHIP_FIELDS = frozenset(
         "issue_date",
     }
 )
-REQUIRED_LEADERSHIP_TEMPLATE_FIELDS = REQUIRED_LEADERSHIP_FIELDS | {"qr_code"}
+# The verification identifier is rendered directly below the QR code.  The QR
+# code remains the verification link; the printed ID gives recipients a
+# practical fallback for checking a leadership letter manually.
+REQUIRED_LEADERSHIP_TEMPLATE_FIELDS = REQUIRED_LEADERSHIP_FIELDS | {"qr_code", "verification_id"}
 
 
 def missing_leadership_fields(field_names: set[str]) -> set[str]:

@@ -232,6 +232,10 @@ def preview_leadership_template(
         session_name=session.name,
         issue_date=session.end_date,
     )
+    # Previews are not issued documents, so use a clear non-verifiable marker.
+    # Issued leadership letters receive their immutable real ID at download
+    # time from the reserved document record.
+    values["verification_id"] = "PREVIEW"
     image_values: dict[str, bytes] | None = None
     try:
         storage = SupabaseStorage()

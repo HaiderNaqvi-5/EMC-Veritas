@@ -4,7 +4,12 @@ import { activateLeadershipTemplate, archiveLeadershipTemplate, configureLeaders
 import { Skeleton } from "../../components/ui/Skeleton";
 
 const roles = ["President", "Vice President", "Deputy Vice President", "General Secretary", "Finance Head", "Director of Club Operations (DCO)", "External Affairs", "Society Head"];
-const fields = ["student_name", "roll_number", "role", "society_name", "role_start_date", "role_end_date", "session_name", "issue_date", "qr_code"].map((field_name, index) => ({ field_name, page_number: 1, x: 100, y: 100 + index * 40, width: field_name === "qr_code" ? 96 : 300, height: field_name === "qr_code" ? 96 : 28 }));
+const fields = [
+  ...["student_name", "roll_number", "role", "society_name", "role_start_date", "role_end_date", "session_name", "issue_date"].map((field_name, index) => ({ field_name, page_number: 1, x: 100, y: 100 + index * 40, width: 300, height: 28 })),
+  // Keep the human-readable verification ID centred directly below the QR box.
+  { field_name: "qr_code", page_number: 1, x: 700, y: 440, width: 96, height: 96 },
+  { field_name: "verification_id", page_number: 1, x: 680, y: 544, width: 136, height: 20 },
+];
 
 export function LeadershipTemplatesPage() {
   const cache = useQueryClient(); const templates = useQuery({ queryKey: ["admin", "leadership-templates"], queryFn: listLeadershipTemplates });
