@@ -87,7 +87,7 @@ def test_delete_inactive_student_removes_related_draft_links() -> None:
     delete_inactive_student(db, student)
 
     assert db.deleted == [student]
-    assert len(db.executed) == 3
+    assert len(db.executed) == 5
 
 
 def test_delete_inactive_student_detaches_audit_history_from_removed_admin() -> None:
@@ -99,7 +99,17 @@ def test_delete_inactive_student_detaches_audit_history_from_removed_admin() -> 
     delete_inactive_student(db, student, protected_admin_id=uuid4())
 
     assert db.deleted == [student]
-    assert len(db.executed) == 4
+    assert len(db.executed) == 6
+
+
+def test_delete_inactive_student_keeps_active_document_protection() -> None:
+    db = DeletionDatabase()
+    student = create_student(db, StudentCreate(roll_number="2K22-BSCS-996", full_name="Test Student"))
+    deactivate_student(db, student)
+    db.existing = uuid4()
+
+    with pytest.raises(ValueError, match="active or superseded"):
+        delete_inactive_student(db, student)
 
 
 def test_delete_inactive_student_refuses_the_current_administrator() -> None:
