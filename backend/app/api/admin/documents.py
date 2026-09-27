@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.admin.dependencies import current_active_admin
+from app.core.settings import settings
 from app.db.session import get_db
 from app.models.domain import (
     Activity,
@@ -28,16 +29,20 @@ from app.models.domain import (
 )
 from app.schemas.documents import (
     ActivityIssueResponse,
+    ActivityPreGenerationResponse,
     AdminDocumentResponse,
     DocumentReissueResponse,
 )
 from app.services.audit import record_audit_event
+from app.services.documents.lifecycle import DocumentLifecycleError, generate_on_first_download
 from app.services.documents.issuance import reserve_document
 from app.services.signatures.availability import select_effective_signatories_for_fields
 from app.services.signatures.rendering import (
     configured_signature_field_names,
+    signature_field_name,
     should_replace_signatures,
 )
+from app.services.storage.supabase import SupabaseStorage
 from app.services.templates.fields import missing_required_fields
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -62,6 +67,22 @@ def _admin_document_response(
         storage_key=document.storage_key,
         sha256=document.sha256,
     )
+
+
+def _signature_images_for_reserved_document(
+    db: Session, document: IssuedDocument, storage: SupabaseStorage
+) -> dict[str, bytes]:
+    rows = db.execute(
+        select(DocumentSignatory, Signatory)
+        .join(Signatory, DocumentSignatory.signatory_id == Signatory.id)
+        .where(DocumentSignatory.issued_document_id == document.id)
+    ).all()
+    if not rows:
+        raise DocumentLifecycleError("The document has no reserved signature snapshot")
+    return {
+        signature_field_name(snapshot.official_title): storage.download(signatory.signature_storage_key)
+        for snapshot, signatory in rows
+    }
 
 
 @router.get("", response_model=list[AdminDocumentResponse])
@@ -249,6 +270,99 @@ def issue_activity_documents(
         issue_date=issue_date,
         issued_document_ids=issued_document_ids,
         skipped_student_ids=skipped_student_ids,
+    )
+
+
+@router.post("/activities/{activity_id}/pre-generate", response_model=ActivityPreGenerationResponse)
+def pre_generate_activity_documents(
+    activity_id: UUID,
+    limit: int = 5,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(current_active_admin),
+) -> ActivityPreGenerationResponse:
+    """Render a small bounded batch before a public link is shared."""
+    if limit < 1 or limit > 20:
+        raise HTTPException(status_code=422, detail="Batch size must be between 1 and 20")
+    activity = db.get(Activity, activity_id)
+    if activity is None:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    valid_documents = list(
+        db.scalars(
+            select(IssuedDocument)
+            .where(
+                IssuedDocument.activity_id == activity.id,
+                IssuedDocument.document_type == DocumentType.ACTIVITY_CERTIFICATE,
+                IssuedDocument.status == DocumentStatus.VALID,
+            )
+            .order_by(IssuedDocument.created_at)
+        ).all()
+    )
+    pending = [document for document in valid_documents if not document.storage_key][:limit]
+    ready_before = len(valid_documents) - sum(1 for document in valid_documents if not document.storage_key)
+    generated = 0
+    failed_document_ids: list[UUID] = []
+    storage = SupabaseStorage()
+    for document in pending:
+        document_id = document.id
+        try:
+            student = db.get(Student, document.student_id)
+            template = db.get(Template, document.template_id or activity.template_id)
+            if student is None or template is None:
+                raise DocumentLifecycleError("The issued document is missing its student or template")
+            fields = list(db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all())
+            try:
+                values = json.loads(document.render_payload_json or "")
+            except json.JSONDecodeError as error:
+                raise DocumentLifecycleError("The reserved certificate data is unavailable") from error
+            if not values:
+                values = {
+                    "student_name": student.full_name,
+                    "roll_number": student.roll_number,
+                    "activity_name": activity.name,
+                    "activity_date": activity.activity_date.isoformat(),
+                    "issue_date": document.issue_date.isoformat(),
+                }
+            values["verification_id"] = document.verification_id
+            template_pdf = storage.download(template.storage_key)
+            image_values = (
+                _signature_images_for_reserved_document(db, document, storage)
+                if should_replace_signatures(template.signature_handling, fields)
+                else None
+            )
+            generate_on_first_download(
+                db,
+                document=document,
+                template_pdf=template_pdf,
+                template_fields=fields,
+                values=values,
+                storage=storage,
+                public_base_url=settings.public_app_url,
+                actor_admin_id=admin.id,
+                image_values=image_values,
+            )
+            db.commit()
+            generated += 1
+        except (DocumentLifecycleError, RuntimeError):
+            db.rollback()
+            failed_document_ids.append(document_id)
+    ready = ready_before + generated
+    total = len(valid_documents)
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="ACTIVITY_DOCUMENTS_PREGENERATED",
+        entity_type="activity",
+        entity_id=activity.id,
+        payload={"generated_count": generated, "failed_document_ids": [str(item) for item in failed_document_ids]},
+    )
+    db.commit()
+    return ActivityPreGenerationResponse(
+        activity_id=activity.id,
+        total_documents=total,
+        ready_documents=ready,
+        generated_documents=generated,
+        remaining_documents=max(total - ready, 0),
+        failed_document_ids=failed_document_ids,
     )
 
 

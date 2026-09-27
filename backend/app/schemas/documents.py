@@ -11,6 +11,15 @@ class ActivityIssueResponse(BaseModel):
     skipped_student_ids: list[UUID]
 
 
+class ActivityPreGenerationResponse(BaseModel):
+    activity_id: UUID
+    total_documents: int
+    ready_documents: int
+    generated_documents: int
+    remaining_documents: int
+    failed_document_ids: list[UUID]
+
+
 class DocumentReissueResponse(BaseModel):
     superseded_document_id: UUID
     replacement_document_id: UUID
