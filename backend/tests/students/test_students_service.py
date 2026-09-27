@@ -1,3 +1,7 @@
+from uuid import uuid4
+
+import pytest
+
 from app.schemas.operations import StudentCreate
 from app.services.students import create_student, deactivate_student, delete_inactive_student
 
@@ -14,15 +18,22 @@ class FakeDatabase:
     def scalar(self, _query):
         return self.existing
 
+    def scalars(self, _query):
+        return []
+
     def flush(self) -> None:
         self.flush_count += 1
 
 
 class DeletionDatabase(FakeDatabase):
-    def __init__(self) -> None:
+    def __init__(self, related_admin_ids=()) -> None:
         super().__init__()
         self.executed = []
         self.deleted = []
+        self.related_admin_ids = related_admin_ids
+
+    def scalars(self, _query):
+        return self.related_admin_ids
 
     def execute(self, statement) -> None:
         self.executed.append(statement)
@@ -77,3 +88,25 @@ def test_delete_inactive_student_removes_related_draft_links() -> None:
 
     assert db.deleted == [student]
     assert len(db.executed) == 3
+
+
+def test_delete_inactive_student_detaches_audit_history_from_removed_admin() -> None:
+    linked_admin_id = uuid4()
+    db = DeletionDatabase([linked_admin_id])
+    student = create_student(db, StudentCreate(roll_number="2K22-BSCS-998", full_name="Test Student"))
+    deactivate_student(db, student)
+
+    delete_inactive_student(db, student, protected_admin_id=uuid4())
+
+    assert db.deleted == [student]
+    assert len(db.executed) == 4
+
+
+def test_delete_inactive_student_refuses_the_current_administrator() -> None:
+    linked_admin_id = uuid4()
+    db = DeletionDatabase([linked_admin_id])
+    student = create_student(db, StudentCreate(roll_number="2K22-BSCS-997", full_name="Test Student"))
+    deactivate_student(db, student)
+
+    with pytest.raises(ValueError, match="own administrator"):
+        delete_inactive_student(db, student, protected_admin_id=linked_admin_id)

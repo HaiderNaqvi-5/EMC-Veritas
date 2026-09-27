@@ -1,9 +1,12 @@
-from sqlalchemy import delete, select
+from uuid import UUID
+
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.models.domain import (
     ActivityParticipant,
     Admin,
+    AuditLog,
     ExecutiveMembership,
     IssuedDocument,
     Student,
@@ -44,14 +47,23 @@ def deactivate_student(db: Session, student: Student) -> Student:
     return student
 
 
-def delete_inactive_student(db: Session, student: Student) -> None:
+def delete_inactive_student(
+    db: Session, student: Student, *, protected_admin_id: UUID | None = None
+) -> None:
     """Remove a disposable inactive student without ever breaking issued history."""
     if student.active:
         raise ValueError("Deactivate this student before deleting the record")
     if db.scalar(select(IssuedDocument.id).where(IssuedDocument.student_id == student.id)):
         raise ValueError("Students with issued documents cannot be deleted; keep them deactivated")
+    linked_admin_ids = list(db.scalars(select(Admin.id).where(Admin.student_id == student.id)))
+    if protected_admin_id in linked_admin_ids:
+        raise ValueError("You cannot delete the student record for your own administrator account")
     db.execute(delete(ActivityParticipant).where(ActivityParticipant.student_id == student.id))
     db.execute(delete(ExecutiveMembership).where(ExecutiveMembership.student_id == student.id))
+    # Audit history must survive deletion of a disposable administrator account.
+    # Preserve the event while clearing only its now-invalid actor foreign key.
+    if linked_admin_ids:
+        db.execute(update(AuditLog).where(AuditLog.actor_admin_id.in_(linked_admin_ids)).values(actor_admin_id=None))
     db.execute(delete(Admin).where(Admin.student_id == student.id))
     db.delete(student)
     db.flush()

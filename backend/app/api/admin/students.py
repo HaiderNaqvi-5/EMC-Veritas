@@ -63,7 +63,7 @@ def delete_student(student_id: str, admin_id: UUID = Depends(require_admin), db:
         return
     roll_number = student.roll_number
     try:
-        delete_inactive_student(db, student)
+        delete_inactive_student(db, student, protected_admin_id=admin_id)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     record_audit_event(db, event_type="STUDENT_DELETED", entity_type="student", entity_id=student_id, payload={"roll_number": roll_number}, actor_admin_id=admin_id)
