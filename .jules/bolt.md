@@ -1,0 +1,3 @@
+## 2024-05-14 - AdminAccountsPage Form Inputs Triggering O(N) Array Operations
+**Learning:** Found that some form components mapping and filtering over API lists do not memoize these heavy operations. For example, `AdminAccountsPage` maps `accounts.data` to a Set and then filters `students.data`, all on every re-render. Since there are form inputs (like password typing), these operations were triggered on every single keystroke.
+**Action:** Use `useMemo` for derived lists of objects depending on API results, particularly when the component includes interactive form fields that trigger frequent re-renders.
