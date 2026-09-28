@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { apiRequest } from "../../lib/api/client";
@@ -36,8 +36,10 @@ export function AdminAccountsPage() {
     mutationFn: ({ id, password }: { id: string; password: string }) => apiRequest<AdminAccount>(`/admin/admins/${id}/reset-password`, { method: "POST", body: JSON.stringify({ temporary_password: password }) }),
     onSuccess: (account) => { setMessage(`Reset the password for ${account.full_name}. They must choose a new password when they sign in.`); refresh(); },
   });
-  const existingStudentIds = new Set((accounts.data ?? []).map((account) => account.student_id));
-  const eligibleStudents = (students.data ?? []).filter((student) => student.active && !existingStudentIds.has(student.id));
+  // ⚡ Bolt Performance Optimization
+  // Memoized `existingStudentIds` and `eligibleStudents` to prevent O(N) recalculations on every render (e.g. while typing).
+  const existingStudentIds = useMemo(() => new Set((accounts.data ?? []).map((account) => account.student_id)), [accounts.data]);
+  const eligibleStudents = useMemo(() => (students.data ?? []).filter((student) => student.active && !existingStudentIds.has(student.id)), [students.data, existingStudentIds]);
   const error = accounts.error?.message ?? students.error?.message ?? create.error?.message ?? deactivate.error?.message ?? resetPassword.error?.message;
 
   function submitCreate(event: FormEvent) { event.preventDefault(); setMessage(""); create.mutate(); }
