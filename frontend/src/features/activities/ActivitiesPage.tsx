@@ -179,8 +179,16 @@ export function ActivitiesPage() {
       },
     });
   }
-  const activeSessions =
-    sessions.data?.filter((item) => item.status === "ACTIVE") ?? [];
+  // Memoize session filtering to prevent O(N) recalculations on every form input keystroke.
+  const activeSessions = useMemo(
+    () => sessions.data?.filter((item) => item.status === "ACTIVE") ?? [],
+    [sessions.data],
+  );
+  // Memoize active student filtering to prevent O(N) recalculations on every form input keystroke.
+  const activeStudents = useMemo(
+    () => students.data?.filter((item) => item.active) ?? [],
+    [students.data],
+  );
   return (
     <section>
       <h1 className="text-3xl font-bold">Activities</h1>
@@ -282,13 +290,11 @@ export function ActivitiesPage() {
           className="rounded border p-2"
         >
           <option value="">Choose active student</option>
-          {students.data
-            ?.filter((item) => item.active)
-            .map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.roll_number} — {item.full_name}
-              </option>
-            ))}
+          {activeStudents.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.roll_number} — {item.full_name}
+            </option>
+          ))}
         </select>
         <button className="rounded bg-slate-900 p-2 text-white">
           Add eligible participant
