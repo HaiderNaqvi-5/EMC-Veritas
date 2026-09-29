@@ -3,9 +3,26 @@ from collections.abc import Iterable
 
 from app.models.domain import TemplateField
 
+_STANDARD_SIGNATURE_TITLE_ALIASES = {
+    # Signatories are entered by people, and older records commonly include
+    # the society name in the title.  Certificate templates, however, use the
+    # role-only field names.  Keep the mapping here (where existing records
+    # are resolved) instead of requiring those signatories to be uploaded
+    # again.
+    "president_emc": "president",
+    "emc_president": "president",
+    "president_of_emc": "president",
+    "vice_president_emc": "vice_president",
+    "emc_vice_president": "vice_president",
+    "vice_president_of_emc": "vice_president",
+    "vice_president_vp": "vice_president",
+    "vp": "vice_president",
+}
+
 
 def signature_field_name(official_title: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "_", official_title.lower()).strip("_")
+    normalized = _STANDARD_SIGNATURE_TITLE_ALIASES.get(normalized, normalized)
     return "signature_" + normalized
 
 

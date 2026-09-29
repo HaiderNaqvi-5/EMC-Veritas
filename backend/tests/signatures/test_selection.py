@@ -42,6 +42,25 @@ def test_signature_field_names_require_positions_for_every_selected_title() -> N
     assert missing_signature_fields(fields, ["President", "DSA"]) == ["signature_dsa"]
 
 
+def test_standard_signatory_title_variants_match_certificate_field_names() -> None:
+    president = _signatory(1, "President, EMC", date(2026, 1, 1))
+    vice_president = _signatory(2, "Vice President (EMC)", date(2026, 1, 1))
+
+    selected = select_effective_signatories_for_fields(
+        [president, vice_president],
+        ["signature_president", "signature_vice_president"],
+        date(2026, 9, 1),
+    )
+
+    assert signature_field_name("President, EMC") == "signature_president"
+    assert signature_field_name("Vice President (EMC)") == "signature_vice_president"
+    assert signature_field_name("Deputy Vice President") == "signature_deputy_vice_president"
+    assert selected == {
+        "signature_president": president,
+        "signature_vice_president": vice_president,
+    }
+
+
 def test_selecting_signatories_uses_the_template_field_names_not_fixed_roles() -> None:
     dsa = _signatory(1, "DSA", date(2026, 1, 1))
     hod = _signatory(2, "HOD", date(2026, 1, 1))
