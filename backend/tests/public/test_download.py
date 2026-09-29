@@ -1,10 +1,13 @@
+import base64
 import json
 from datetime import date
 from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from itsdangerous import TimestampSigner
 
+from app.core.settings import settings
 from app.db.session import get_db
 from app.main import app
 from app.models.domain import DocumentStatus
@@ -49,6 +52,13 @@ class _Db:
         raise AssertionError("A valid download should not roll back")
 
 
+def _client_for(student: SimpleNamespace) -> TestClient:
+    client = TestClient(app)
+    payload = base64.b64encode(json.dumps({"student_id": str(student.id)}).encode())
+    client.cookies.set("session", TimestampSigner(settings.session_secret).sign(payload).decode())
+    return client
+
+
 def test_public_download_uses_approved_template_and_commits_cache(monkeypatch) -> None:
     document_id = uuid4()
     document = SimpleNamespace(
@@ -57,7 +67,7 @@ def test_public_download_uses_approved_template_and_commits_cache(monkeypatch) -
         status=DocumentStatus.VALID,
         issue_date=date(2026, 9, 23),
     )
-    student = SimpleNamespace(full_name="Ayesha Khan", roll_number="FA21-BCS-001")
+    student = SimpleNamespace(id=uuid4(), full_name="Ayesha Khan", roll_number="FA21-BCS-001")
     activity = SimpleNamespace(id=uuid4(), template_id=uuid4(), name="Welcome Week", activity_date=date(2026, 9, 1))
     template = SimpleNamespace(id=activity.template_id, storage_key="templates/welcome.pdf")
     fields = [SimpleNamespace(field_name="student_name")]
@@ -81,7 +91,7 @@ def test_public_download_uses_approved_template_and_commits_cache(monkeypatch) -
     monkeypatch.setattr(public_router, "generate_on_first_download", generate)
     app.dependency_overrides[get_db] = lambda: db
     try:
-        response = TestClient(app).get(f"/api/public/documents/{document_id}/download")
+        response = _client_for(student).get(f"/api/public/documents/{document_id}/download")
     finally:
         app.dependency_overrides.clear()
 
@@ -103,10 +113,11 @@ def test_public_download_uses_approved_template_and_commits_cache(monkeypatch) -
 
 def test_public_download_rejects_revoked_document(monkeypatch) -> None:
     document = SimpleNamespace(id=uuid4(), verification_id="EMC-REVOKED", status=DocumentStatus.REVOKED)
-    db = _Db((document, object(), object()), object(), [])
+    student = SimpleNamespace(id=uuid4())
+    db = _Db((document, student, object()), object(), [])
     app.dependency_overrides[get_db] = lambda: db
     try:
-        response = TestClient(app).get(f"/api/public/documents/{document.id}/download")
+        response = _client_for(student).get(f"/api/public/documents/{document.id}/download")
     finally:
         app.dependency_overrides.clear()
 
@@ -150,7 +161,8 @@ def test_public_download_renders_reserved_leadership_template(monkeypatch) -> No
     )
     template = SimpleNamespace(id=document.leadership_template_id, storage_key="leadership/president.pdf", signature_handling="retain")
     fields = [SimpleNamespace(field_name="student_name")]
-    db = _Db((document, SimpleNamespace(), None), template, fields)
+    student = SimpleNamespace(id=uuid4())
+    db = _Db((document, student, None), template, fields)
 
     class Storage:
         def download(self, key: str) -> bytes:
@@ -170,7 +182,7 @@ def test_public_download_renders_reserved_leadership_template(monkeypatch) -> No
     monkeypatch.setattr(public_router, "generate_on_first_download", generate)
     app.dependency_overrides[get_db] = lambda: db
     try:
-        response = TestClient(app).get(f"/api/public/documents/{document_id}/download")
+        response = _client_for(student).get(f"/api/public/documents/{document_id}/download")
     finally:
         app.dependency_overrides.clear()
 
