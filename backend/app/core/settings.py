@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     supabase_service_role_key: str | None = None
     supabase_storage_bucket: str = "emc-veritas"
     session_secret: str
-    cookie_secure: bool = False
+    # Secure by default: production is HTTPS-only, so the session cookie must
+    # never travel over plaintext. Local development overrides this to false
+    # via .env (see .env.example).
+    cookie_secure: bool = True
     cookie_same_site: Literal["lax", "strict", "none"] = "lax"
     public_app_url: str = "http://localhost:5173"
     frontend_origins_raw: str = Field(

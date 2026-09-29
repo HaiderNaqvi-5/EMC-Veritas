@@ -5,9 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.admin.students import require_admin
+from app.api.admin.dependencies import current_active_admin
 from app.db.session import get_db
 from app.models.domain import (
+    Admin,
     EmcSession,
     ExecutiveMembership,
     MembershipStatus,
@@ -73,14 +74,14 @@ def _validate_membership_inputs(
 
 
 @router.get("/societies", response_model=list[SocietyResponse])
-def list_societies(_: UUID = Depends(require_admin), db: Session = Depends(get_db)) -> list[Society]:
+def list_societies(_: Admin = Depends(current_active_admin), db: Session = Depends(get_db)) -> list[Society]:
     return list(db.scalars(select(Society).where(Society.active.is_(True)).order_by(Society.name)).all())
 
 
 @router.get("", response_model=list[ExecutiveMembershipResponse])
 def list_memberships(
     session_id: UUID | None = None,
-    _: UUID = Depends(require_admin),
+    _: Admin = Depends(current_active_admin),
     db: Session = Depends(get_db),
 ) -> list[ExecutiveMembershipResponse]:
     query = (
@@ -98,7 +99,7 @@ def list_memberships(
 @router.post("", response_model=ExecutiveMembershipResponse, status_code=status.HTTP_201_CREATED)
 def create_membership(
     payload: ExecutiveMembershipCreate,
-    admin_id: UUID = Depends(require_admin),
+    admin: Admin = Depends(current_active_admin),
     db: Session = Depends(get_db),
 ) -> ExecutiveMembershipResponse:
     student = db.get(Student, payload.student_id)
@@ -120,7 +121,7 @@ def create_membership(
     db.add(membership)
     record_audit_event(
         db,
-        actor_admin_id=admin_id,
+        actor_admin_id=admin.id,
         event_type="EXECUTIVE_MEMBERSHIP_CREATED",
         entity_type="executive_membership",
         entity_id=membership.id,
@@ -143,7 +144,7 @@ def create_membership(
 def update_membership(
     membership_id: UUID,
     payload: ExecutiveMembershipUpdate,
-    admin_id: UUID = Depends(require_admin),
+    admin: Admin = Depends(current_active_admin),
     db: Session = Depends(get_db),
 ) -> ExecutiveMembershipResponse:
     membership = db.get(ExecutiveMembership, membership_id)
@@ -162,7 +163,7 @@ def update_membership(
         setattr(membership, key, value)
     record_audit_event(
         db,
-        actor_admin_id=admin_id,
+        actor_admin_id=admin.id,
         event_type="EXECUTIVE_MEMBERSHIP_UPDATED",
         entity_type="executive_membership",
         entity_id=membership.id,
@@ -181,7 +182,7 @@ def update_membership(
 @router.post("/{membership_id}/complete", response_model=ExecutiveMembershipResponse)
 def complete_membership(
     membership_id: UUID,
-    admin_id: UUID = Depends(require_admin),
+    admin: Admin = Depends(current_active_admin),
     db: Session = Depends(get_db),
 ) -> ExecutiveMembershipResponse:
     membership = db.get(ExecutiveMembership, membership_id)
@@ -194,7 +195,7 @@ def complete_membership(
     membership.end_date = membership.end_date or session.end_date
     record_audit_event(
         db,
-        actor_admin_id=admin_id,
+        actor_admin_id=admin.id,
         event_type="EXECUTIVE_MEMBERSHIP_COMPLETED",
         entity_type="executive_membership",
         entity_id=membership.id,
@@ -209,7 +210,7 @@ def complete_membership(
 @router.post("/{membership_id}/remove", response_model=ExecutiveMembershipResponse)
 def remove_membership(
     membership_id: UUID,
-    admin_id: UUID = Depends(require_admin),
+    admin: Admin = Depends(current_active_admin),
     db: Session = Depends(get_db),
 ) -> ExecutiveMembershipResponse:
     membership = db.get(ExecutiveMembership, membership_id)
@@ -222,7 +223,7 @@ def remove_membership(
     membership.end_date = membership.end_date or session.end_date
     record_audit_event(
         db,
-        actor_admin_id=admin_id,
+        actor_admin_id=admin.id,
         event_type="EXECUTIVE_MEMBERSHIP_REMOVED",
         entity_type="executive_membership",
         entity_id=membership.id,

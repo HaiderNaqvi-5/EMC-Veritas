@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.admin.activities import router as admin_activities_router
@@ -15,12 +17,15 @@ from app.api.admin.signatories import router as admin_signatories_router
 from app.api.admin.students import router as admin_students_router
 from app.api.admin.templates import router as admin_templates_router
 from app.api.public.router import router as public_router
+from app.core.rate_limit import limiter
 from app.core.settings import settings
 from app.services.readiness.router import router as readiness_router
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="EMC Veritas API", version="0.1.0")
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.session_secret,

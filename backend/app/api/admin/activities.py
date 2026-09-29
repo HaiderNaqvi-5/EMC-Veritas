@@ -6,12 +6,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.admin.students import require_admin
+from app.api.admin.dependencies import current_active_admin
 from app.db.session import get_db
 from app.models.domain import (
     Activity,
     ActivityParticipant,
     ActivityStatus,
+    Admin,
     DocumentStatus,
     DocumentType,
     IssuedDocument,
@@ -50,13 +51,13 @@ class ActivityStatusChange(BaseModel):
 
 
 @router.get("", response_model=list[ActivityResponse])
-def get_all(_: UUID = Depends(require_admin), db: Session = Depends(get_db)):
+def get_all(_: Admin = Depends(current_active_admin), db: Session = Depends(get_db)):
     return list_activities(db)
 
 
 @router.get("/templates", response_model=list[ApprovedTemplateOption])
 def list_approved_templates(
-    _: UUID = Depends(require_admin), db: Session = Depends(get_db)
+    _: Admin = Depends(current_active_admin), db: Session = Depends(get_db)
 ) -> list[Template]:
     return list(
         db.query(Template)
@@ -67,28 +68,28 @@ def list_approved_templates(
 
 
 @router.post("", response_model=ActivityResponse, status_code=status.HTTP_201_CREATED)
-def create(payload: ActivityCreate, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)):
-    item = create_activity(db, payload, admin_id)
-    record_audit_event(db, event_type="ACTIVITY_CREATED", entity_type="activity", entity_id=item.id, payload={}, actor_admin_id=admin_id)
+def create(payload: ActivityCreate, admin: Admin = Depends(current_active_admin), db: Session = Depends(get_db)):
+    item = create_activity(db, payload, admin.id)
+    record_audit_event(db, event_type="ACTIVITY_CREATED", entity_type="activity", entity_id=item.id, payload={}, actor_admin_id=admin.id)
     db.commit()
     db.refresh(item)
     return item
 
 
 @router.put("/{activity_id}", response_model=ActivityResponse)
-def update(activity_id: UUID, payload: ActivityUpdate, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)):
+def update(activity_id: UUID, payload: ActivityUpdate, admin: Admin = Depends(current_active_admin), db: Session = Depends(get_db)):
     item = db.get(Activity, activity_id)
     if item is None:
         raise HTTPException(404, "Activity not found")
     update_activity(db, item, payload)
-    record_audit_event(db, event_type="ACTIVITY_UPDATED", entity_type="activity", entity_id=item.id, payload={}, actor_admin_id=admin_id)
+    record_audit_event(db, event_type="ACTIVITY_UPDATED", entity_type="activity", entity_id=item.id, payload={}, actor_admin_id=admin.id)
     db.commit()
     db.refresh(item)
     return item
 
 
 @router.delete("/{activity_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_activity(activity_id: UUID, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)):
+def delete_activity(activity_id: UUID, admin: Admin = Depends(current_active_admin), db: Session = Depends(get_db)):
     item = db.get(Activity, activity_id)
     if item is None:
         raise HTTPException(404, "Activity not found")
@@ -103,30 +104,30 @@ def delete_activity(activity_id: UUID, admin_id: UUID = Depends(require_admin), 
             entity_type="activity",
             entity_id=item.id,
             payload={"name": item.name, "reason": "deleted_from_admin"},
-            actor_admin_id=admin_id,
+            actor_admin_id=admin.id,
         )
         db.commit()
         return
     db.query(ActivityParticipant).filter(ActivityParticipant.activity_id == item.id).delete(synchronize_session=False)
-    record_audit_event(db, event_type="ACTIVITY_DELETED", entity_type="activity", entity_id=item.id, payload={"name": item.name}, actor_admin_id=admin_id)
+    record_audit_event(db, event_type="ACTIVITY_DELETED", entity_type="activity", entity_id=item.id, payload={"name": item.name}, actor_admin_id=admin.id)
     db.delete(item)
     db.commit()
 
 
 @router.get("/{activity_id}/participants")
-def get_participants(activity_id: UUID, _: UUID = Depends(require_admin), db: Session = Depends(get_db)):
+def get_participants(activity_id: UUID, _: Admin = Depends(current_active_admin), db: Session = Depends(get_db)):
     if db.get(Activity, activity_id) is None:
         raise HTTPException(404, "Activity not found")
     return participants(db, activity_id)
 
 
 @router.post("/{activity_id}/participants", status_code=status.HTTP_201_CREATED)
-def add(activity_id: UUID, payload: ParticipantCreate, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)):
+def add(activity_id: UUID, payload: ParticipantCreate, admin: Admin = Depends(current_active_admin), db: Session = Depends(get_db)):
     if db.get(Activity, activity_id) is None:
         raise HTTPException(404, "Activity not found")
     try:
         item = add_participant(db, activity_id, payload.student_id, payload.eligible)
-        record_audit_event(db, event_type="PARTICIPANT_ADDED", entity_type="activity_participant", entity_id=item.id, payload={"eligible": item.eligible}, actor_admin_id=admin_id)
+        record_audit_event(db, event_type="PARTICIPANT_ADDED", entity_type="activity_participant", entity_id=item.id, payload={"eligible": item.eligible}, actor_admin_id=admin.id)
         db.commit()
         return {"id": str(item.id), "student_id": str(item.student_id), "eligible": item.eligible}
     except LookupError:
@@ -137,7 +138,7 @@ def add(activity_id: UUID, payload: ParticipantCreate, admin_id: UUID = Depends(
 
 
 @router.post("/{activity_id}/status", response_model=ActivityResponse)
-def set_status(activity_id: UUID, payload: ActivityStatusChange, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)):
+def set_status(activity_id: UUID, payload: ActivityStatusChange, admin: Admin = Depends(current_active_admin), db: Session = Depends(get_db)):
     item = db.get(Activity, activity_id)
     if item is None:
         raise HTTPException(404, "Activity not found")
@@ -145,19 +146,19 @@ def set_status(activity_id: UUID, payload: ActivityStatusChange, admin_id: UUID 
         change_activity_status(item, payload.status)
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
-    record_audit_event(db, event_type="ACTIVITY_STATUS_CHANGED", entity_type="activity", entity_id=item.id, payload={"status": item.status.value}, actor_admin_id=admin_id)
+    record_audit_event(db, event_type="ACTIVITY_STATUS_CHANGED", entity_type="activity", entity_id=item.id, payload={"status": item.status.value}, actor_admin_id=admin.id)
     db.commit()
     db.refresh(item)
     return item
 
 
 @router.post("/{activity_id}/participants/{participant_id}/eligibility")
-def set_eligibility(activity_id: UUID, participant_id: UUID, payload: EligibilityChange, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)):
+def set_eligibility(activity_id: UUID, participant_id: UUID, payload: EligibilityChange, admin: Admin = Depends(current_active_admin), db: Session = Depends(get_db)):
     item = db.get(ActivityParticipant, participant_id)
     if item is None or item.activity_id != activity_id:
         raise HTTPException(404, "Participant not found")
     item.eligible = payload.eligible
-    record_audit_event(db, event_type="PARTICIPANT_ELIGIBILITY_CHANGED", entity_type="activity_participant", entity_id=item.id, payload={"eligible": item.eligible}, actor_admin_id=admin_id)
+    record_audit_event(db, event_type="PARTICIPANT_ELIGIBILITY_CHANGED", entity_type="activity_participant", entity_id=item.id, payload={"eligible": item.eligible}, actor_admin_id=admin.id)
     if not item.eligible:
         documents = db.scalars(
             select(IssuedDocument).where(
@@ -175,7 +176,7 @@ def set_eligibility(activity_id: UUID, participant_id: UUID, payload: Eligibilit
                 entity_type="issued_document",
                 entity_id=document.id,
                 payload={"reason": "participant_ineligible", "verification_id": document.verification_id},
-                actor_admin_id=admin_id,
+                actor_admin_id=admin.id,
             )
     db.commit()
     return {"id": str(item.id), "student_id": str(item.student_id), "eligible": item.eligible}
