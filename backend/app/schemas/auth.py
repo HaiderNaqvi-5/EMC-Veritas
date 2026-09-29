@@ -3,16 +3,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-class AdminLookupRequest(BaseModel):
+class LoginRequest(BaseModel):
     roll_number: str = Field(min_length=1, max_length=64)
-
-
-class AdminLookupResponse(BaseModel):
-    is_admin: bool
-    active: bool
-
-
-class LoginRequest(AdminLookupRequest):
     password: str = Field(min_length=1, max_length=256)
 
 

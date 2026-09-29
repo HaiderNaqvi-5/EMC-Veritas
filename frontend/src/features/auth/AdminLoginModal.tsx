@@ -1,9 +1,12 @@
 import { FormEvent, useState } from "react";
 import { notifyAction } from "../../lib/feedback/actions";
+import { canonicalRollNumber } from "../../lib/utils";
 
 type AdminLoginModalProps = {
-  rollNumber: string;
-  onSubmit: (password: string) => Promise<void>;
+  // When omitted the modal asks for the roll number too, so the portal never
+  // needs a pre-login endpoint that reveals whether a roll number is an admin.
+  rollNumber?: string;
+  onSubmit: (rollNumber: string, password: string) => Promise<void>;
   onClose: () => void;
 };
 
@@ -12,6 +15,7 @@ export function AdminLoginModal({
   onSubmit,
   onClose,
 }: AdminLoginModalProps) {
+  const [rollNumberInput, setRollNumberInput] = useState(rollNumber ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -21,7 +25,7 @@ export function AdminLoginModal({
     setError(null);
     setSubmitting(true);
     try {
-      await onSubmit(password);
+      await onSubmit((rollNumber ?? rollNumberInput).trim(), password);
       notifyAction("success", "Signed in successfully.");
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Unable to sign in. Please try again.";
@@ -49,7 +53,7 @@ export function AdminLoginModal({
               Admin sign in
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              Continue as {rollNumber}.
+              {rollNumber ? `Continue as ${rollNumber}.` : "Sign in with your admin roll number."}
             </p>
           </div>
           <button
@@ -62,6 +66,20 @@ export function AdminLoginModal({
           </button>
         </div>
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+          {!rollNumber && (
+            <label className="block text-sm font-medium" htmlFor="admin-roll-number">
+              Roll number
+              <input
+                id="admin-roll-number"
+                className="mt-1 block w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-700"
+                type="text"
+                value={rollNumberInput}
+                onChange={(event) => setRollNumberInput(canonicalRollNumber(event.target.value))}
+                autoComplete="username"
+                required
+              />
+            </label>
+          )}
           <label className="block text-sm font-medium" htmlFor="admin-password">
             Password
             <input

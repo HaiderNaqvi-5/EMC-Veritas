@@ -9,7 +9,6 @@ import {
 } from "../api/documents/public";
 import { AdminLoginModal } from "../features/auth/AdminLoginModal";
 import { authApi } from "../features/auth/contracts";
-import { notifyAction } from "../lib/feedback/actions";
 import { Button } from "../components/ui/Button";
 import { Skeleton } from "../components/ui/Skeleton";
 import { canonicalRollNumber } from "../lib/utils";
@@ -265,9 +264,7 @@ export function StudentPortal() {
     null,
   );
   const [rollNumber, setRollNumber] = useState("");
-  const [adminRollNumber, setAdminRollNumber] = useState<string | null>(null);
-  const [lookupError, setLookupError] = useState<string | null>(null);
-  const [checkingLookup, setCheckingLookup] = useState(false);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
   const navigate = useNavigate();
   const query = useQuery({
     queryKey: ["student-documents", submittedRollNumber],
@@ -275,28 +272,16 @@ export function StudentPortal() {
     enabled: !!submittedRollNumber,
     retry: 2,
   });
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault();
     const normalized = rollNumber.trim();
-    if (!normalized || query.isFetching || checkingLookup) return;
-    setLookupError(null);
-    setCheckingLookup(true);
-    try {
-      const lookup = await authApi.lookup(normalized);
-      if (lookup.is_admin && lookup.active) setAdminRollNumber(normalized);
-      else setSubmittedRollNumber(normalized);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to check this roll number.";
-      setLookupError(message);
-      notifyAction("error", message);
-    } finally {
-      setCheckingLookup(false);
-    }
+    if (!normalized || query.isFetching) return;
+    setSubmittedRollNumber(normalized);
   }
-  async function login(password: string) {
-    if (!adminRollNumber) return;
-    const session = await authApi.login(adminRollNumber, password);
+  async function login(loginRollNumber: string, password: string) {
+    const session = await authApi.login(loginRollNumber, password);
     if (!session.authenticated) throw new Error("Unable to sign in.");
+    setShowAdminLogin(false);
     navigate("/admin");
   }
   const scrollToLookup = () =>
@@ -380,21 +365,20 @@ export function StudentPortal() {
               />
               <Button
                 type="submit"
-                disabled={query.isFetching || checkingLookup}
+                disabled={query.isFetching}
               >
-                {checkingLookup ? "Checking…" : "Find my record"}
+                Find my record
                 <Arrow />
               </Button>
             </form>
+            <button
+              type="button"
+              onClick={() => setShowAdminLogin(true)}
+              className="mt-4 text-sm font-medium text-slate-300 underline-offset-4 hover:underline"
+            >
+              Admin sign in
+            </button>
             <div className="hero-principles mt-7"><span>Find</span><span>Keep</span><span>Verify</span></div>
-            {lookupError && (
-              <p
-                role="alert"
-                className="mt-5 rounded-lg border border-red-300/30 bg-red-950/50 p-3 text-sm text-red-100"
-              >
-                {lookupError}
-              </p>
-            )}
             {query.isFetching && (
               <>
                 <p role="status" className="mt-5 text-sm text-slate-200">
@@ -543,11 +527,10 @@ export function StudentPortal() {
           <div className="landing-nfc-mark"><img src="/assets/logos/nfc-iet-logo.png" alt="NFC-IET Multan" className="h-12 w-12 object-contain" /><span>NFC-IET<br />MULTAN</span></div>
         </div>
       </footer>
-      {adminRollNumber && (
+      {showAdminLogin && (
         <AdminLoginModal
-          rollNumber={adminRollNumber}
           onSubmit={login}
-          onClose={() => setAdminRollNumber(null)}
+          onClose={() => setShowAdminLogin(false)}
         />
       )}
     </main>

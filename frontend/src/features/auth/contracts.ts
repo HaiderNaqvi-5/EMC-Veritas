@@ -1,14 +1,12 @@
-import { apiRequest, retryConnection } from "../../lib/api/client";
+import { apiRequest } from "../../lib/api/client";
 
 export type AdminRole = "ADMIN" | "SUPER_ADMIN";
 
-export type AdminLookup = { is_admin: boolean; active: boolean };
 export type AdminSession = { authenticated: boolean; role?: AdminRole; temporary_password_change_required?: boolean };
 
 export const authApi = {
-  // Lookup has no side effects, so it is safe to retry while the hosted API
-  // wakes. Login and all write actions deliberately remain single-attempt.
-  lookup: (rollNumber: string) => retryConnection(() => apiRequest<AdminLookup>("/admin/auth/lookup", { method: "POST", body: JSON.stringify({ roll_number: rollNumber }) })),
+  // Login and all write actions deliberately remain single-attempt: retrying
+  // them while the hosted API wakes could double-submit a state change.
   login: (rollNumber: string, password: string) => apiRequest<AdminSession>("/admin/auth/login", { method: "POST", body: JSON.stringify({ roll_number: rollNumber, password }) }),
   logout: () => apiRequest<void>("/admin/auth/logout", { method: "POST" }),
   currentSession: () => apiRequest<AdminSession>("/admin/auth/session"),
