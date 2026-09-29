@@ -4,6 +4,11 @@ import { BrowserRouter } from "react-router-dom";
 import { App } from "./routes/App";
 import { ActionFeedback } from "./components/ui/ActionFeedback";
 import { queryClient } from "./lib/query/client";
+import "@fontsource/fraunces/latin-400.css";
+import "@fontsource/fraunces/latin-600.css";
+import "@fontsource/public-sans/latin-400.css";
+import "@fontsource/public-sans/latin-600.css";
+import "@fontsource/public-sans/latin-700.css";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(

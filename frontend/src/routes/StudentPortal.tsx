@@ -150,7 +150,7 @@ function CertificatePreview() {
 }
 function RecognitionCanvas() {
   return (
-    <motion.aside role="img" className="portal-preview" initial={{ opacity: 0, y: 28, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: .8, delay: .12, ease: [0.22, 1, 0.36, 1] }} aria-label="Preview of the EMC Veritas record portal, showing issued records and document verification.">
+    <aside role="img" className="portal-preview" aria-label="Preview of the EMC Veritas record portal, showing issued records and document verification.">
       <div className="portal-preview__rail"><strong>EMC<br />VERITAS</strong><span className="portal-preview__rail-dot" /><span>ARCHIVE</span><span>VERIFY</span><span>RECORDS</span></div>
       <div className="portal-preview__main">
         <div className="portal-preview__header"><span>RECOGNITION RECORD</span><span className="portal-preview__status"><Shield /> VERIFIED SYSTEM</span></div>
@@ -158,7 +158,7 @@ function RecognitionCanvas() {
         <div className="portal-preview__tabs"><span className="is-active">Overview</span><span>Records</span><span>Verification</span></div>
         <div className="portal-preview__content"><div className="portal-preview__timeline"><p>WHAT A RECORD CAN INCLUDE</p><div><i /><span><strong>Participation</strong><small>Official event involvement</small></span></div><div><i /><span><strong>Appreciation</strong><small>Recognised contribution</small></span></div><div><i /><span><strong>Leadership</strong><small>Role and responsibility</small></span></div></div><div className="portal-preview__certificate"><p>ISSUED BY EMC</p><FileIcon /><strong>A record designed<br />to be useful.</strong><span>Downloadable · Verifiable</span><VeritasSeal small /></div></div>
       </div>
-    </motion.aside>
+    </aside>
   );
 }
 function DocumentList({ documents }: { documents: PublicDocument[] }) {
@@ -331,11 +331,7 @@ export function StudentPortal() {
         <div className="landing-hero-grid" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_27%,rgba(152,30,50,.28),transparent_31%),radial-gradient(circle_at_8%_38%,rgba(202,155,72,.1),transparent_25%)]" />
         <div className="landing-shell relative grid items-center gap-12 py-16 lg:grid-cols-[.95fr_1.05fr] lg:py-24">
-          <motion.div
-            initial={{ opacity: 0, x: -24 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.65 }}
-          >
+          <div>
             <p className="landing-eyebrow">Event Management Club · NFC-IET Multan</p>
             <h1 className="landing-hero-title mt-5">
               Your work deserves
@@ -420,7 +416,7 @@ export function StudentPortal() {
                 </div>
               </section>
             )}
-          </motion.div>
+          </div>
           <RecognitionCanvas />
         </div>
       </section>
@@ -457,18 +453,14 @@ export function StudentPortal() {
               <Shield />,
             ],
           ].map(([number, title, copy, label, icon]) => (
-            <motion.div
+            <div
               key={String(number)}
               className="record-flow__item"
-              initial={{ opacity: 0, y: 18 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.05 }}
-              transition={{ duration: 0.42, delay: Number(number) * 0.06 }}
             >
               <div className="record-flow__marker"><span>{number}</span><i /></div>
               <div className="record-flow__copy"><p className="landing-eyebrow">{label}</p><h3>{title}</h3><p>{copy}</p></div>
               <div className="record-flow__icon">{icon as ReactNode}</div>
-            </motion.div>
+            </div>
           ))}
         </div>
       </section>

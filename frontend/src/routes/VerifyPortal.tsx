@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Button } from "../components/ui/Button";
 
 function Arrow() {
@@ -15,12 +15,22 @@ function VerificationSeal() {
 
 export function VerifyPortal() {
   const [verificationId, setVerificationId] = useState("");
+  const [formatError, setFormatError] = useState("");
   const navigate = useNavigate();
+  const prefersReducedMotion = useReducedMotion();
+
+  const primaryEntrance = prefersReducedMotion ? {} : { initial: { opacity: 0, y: 20 }, animate: { opacity: 1, y: 0 }, transition: { duration: .55 } };
+  const recordEntrance = prefersReducedMotion ? {} : { initial: { opacity: 0, y: 24, scale: .98 }, animate: { opacity: 1, y: 0, scale: 1 }, transition: { duration: .7, delay: .12, ease: [0.22, 1, 0.36, 1] } };
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    const id = verificationId.trim();
-    if (id) navigate(`/verify/${encodeURIComponent(id)}`);
+    const id = verificationId.trim().toUpperCase();
+    if (!/^EMC-[A-HJ-NP-Z2-9]{8}$/.test(id)) {
+      setFormatError("Verification IDs look like EMC-A1B2C3D4 — EMC- followed by 8 characters.");
+      return;
+    }
+    setFormatError("");
+    navigate(`/verify/${encodeURIComponent(id)}`);
   }
 
   return (
@@ -36,21 +46,22 @@ export function VerifyPortal() {
       <section className="verification-v2__hero">
         <div className="verification-v2__grid" aria-hidden="true" />
         <div className="verification-v2__shell">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .55 }}>
+          <motion.div {...primaryEntrance}>
             <p className="verification-v2__eyebrow">Official document check</p>
             <h1>Verify the <em>record,</em><br />not just the certificate.</h1>
             <p className="verification-v2__lead">Use the verification ID printed on an issued EMC document to confirm its holder, recognition type, issue record, and current status.</p>
             <form onSubmit={submit} className="verification-v2__form">
               <label htmlFor="verification-id">Verification ID</label>
               <div className="verification-v2__lookup">
-                <input id="verification-id" value={verificationId} onChange={(event) => setVerificationId(event.target.value)} placeholder="e.g. EMC-ABC123" autoComplete="off" required />
+                <input id="verification-id" value={verificationId} onChange={(event) => { setVerificationId(event.target.value); setFormatError(""); }} placeholder="e.g. EMC-A1B2C3D4" autoComplete="off" aria-describedby={formatError ? "verification-id-help verification-id-error" : "verification-id-help"} aria-invalid={formatError ? "true" : undefined} required />
                 <Button type="submit">Verify document <Arrow /></Button>
               </div>
-              <p>You can find the ID beside the QR code on an issued document.</p>
+              <p id="verification-id-help">You can find the ID beside the QR code on an issued document.</p>
+              {formatError && <p id="verification-id-error" role="alert" className="verification-v2__form-error">{formatError}</p>}
             </form>
           </motion.div>
 
-          <motion.aside initial={{ opacity: 0, y: 24, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: .7, delay: .12, ease: [0.22, 1, 0.36, 1] }} className="verification-v2__record" aria-label="An example EMC verification record">
+          <motion.aside {...recordEntrance} className="verification-v2__record" aria-label="An example EMC verification record">
             <div className="verification-v2__record-head"><span>EMC VERITAS</span><span>CHECK / 001</span></div>
             <div className="verification-v2__record-body">
               <p className="verification-v2__eyebrow">Verification archive</p>
