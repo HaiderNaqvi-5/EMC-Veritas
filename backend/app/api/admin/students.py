@@ -1,11 +1,10 @@
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.admin.dependencies import current_active_admin
 from app.db.session import get_db
-from app.models.domain import Student
+from app.models.domain import Admin, Student
 from app.schemas.operations import StudentCreate, StudentResponse
 from app.services.audit import record_audit_event
 from app.services.students import (
@@ -18,23 +17,16 @@ from app.services.students import (
 router = APIRouter(prefix="/students", tags=["admin-students"])
 
 
-def require_admin(request: Request) -> UUID:
-    admin_id = request.session.get("admin_id")
-    if not admin_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin session required")
-    return UUID(admin_id)
-
-
 @router.get("", response_model=list[StudentResponse])
-def get_students(_: UUID = Depends(require_admin), db: Session = Depends(get_db)) -> list[Student]:
+def get_students(_: Admin = Depends(current_active_admin), db: Session = Depends(get_db)) -> list[Student]:
     return list_students(db)
 
 
 @router.post("", response_model=StudentResponse, status_code=status.HTTP_201_CREATED)
-def add_student(payload: StudentCreate, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)) -> Student:
+def add_student(payload: StudentCreate, admin: Admin = Depends(current_active_admin), db: Session = Depends(get_db)) -> Student:
     try:
         student = create_student(db, payload)
-        record_audit_event(db, event_type="STUDENT_CREATED", entity_type="student", entity_id=student.id, payload={"roll_number": student.roll_number}, actor_admin_id=admin_id)
+        record_audit_event(db, event_type="STUDENT_CREATED", entity_type="student", entity_id=student.id, payload={"roll_number": student.roll_number}, actor_admin_id=admin.id)
         db.commit(); db.refresh(student)
         return student
     except IntegrityError:
@@ -45,17 +37,17 @@ def add_student(payload: StudentCreate, admin_id: UUID = Depends(require_admin),
 
 
 @router.post("/{student_id}/deactivate", response_model=StudentResponse)
-def deactivate(student_id: str, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)) -> Student:
+def deactivate(student_id: str, admin: Admin = Depends(current_active_admin), db: Session = Depends(get_db)) -> Student:
     student = db.get(Student, student_id)
     if student is None: raise HTTPException(status_code=404, detail="Student not found")
     deactivate_student(db, student)
-    record_audit_event(db, event_type="STUDENT_DEACTIVATED", entity_type="student", entity_id=student.id, payload={}, actor_admin_id=admin_id)
+    record_audit_event(db, event_type="STUDENT_DEACTIVATED", entity_type="student", entity_id=student.id, payload={}, actor_admin_id=admin.id)
     db.commit(); db.refresh(student)
     return student
 
 
 @router.delete("/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_student(student_id: str, admin_id: UUID = Depends(require_admin), db: Session = Depends(get_db)) -> None:
+def delete_student(student_id: str, admin: Admin = Depends(current_active_admin), db: Session = Depends(get_db)) -> None:
     student = db.get(Student, student_id)
     if student is None:
         # A browser retry after a dropped response must be safe: the first
@@ -63,8 +55,8 @@ def delete_student(student_id: str, admin_id: UUID = Depends(require_admin), db:
         return
     roll_number = student.roll_number
     try:
-        delete_inactive_student(db, student, protected_admin_id=admin_id)
+        delete_inactive_student(db, student, protected_admin_id=admin.id)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
-    record_audit_event(db, event_type="STUDENT_DELETED", entity_type="student", entity_id=student_id, payload={"roll_number": roll_number}, actor_admin_id=admin_id)
+    record_audit_event(db, event_type="STUDENT_DELETED", entity_type="student", entity_id=student_id, payload={"roll_number": roll_number}, actor_admin_id=admin.id)
     db.commit()
