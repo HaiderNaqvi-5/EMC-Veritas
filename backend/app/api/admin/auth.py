@@ -9,6 +9,7 @@ from app.schemas.auth import (
     LoginRequest,
     PasswordChangeRequest,
 )
+from app.core.rate_limit import limiter
 from app.services.audit import record_audit_event
 from app.services.auth import authenticate, change_password, find_admin_by_roll_number
 
@@ -21,12 +22,14 @@ def session_response(request: Request) -> AdminSessionResponse:
 
 
 @router.post("/lookup", response_model=AdminLookupResponse)
-def lookup(payload: AdminLookupRequest, db: Session = Depends(get_db)) -> AdminLookupResponse:
+@limiter.limit("10/minute")
+def lookup(request: Request, payload: AdminLookupRequest, db: Session = Depends(get_db)) -> AdminLookupResponse:
     admin = find_admin_by_roll_number(db, payload.roll_number)
     return AdminLookupResponse(is_admin=admin is not None and admin.active, active=admin is not None and admin.active)
 
 
 @router.post("/login", response_model=AdminSessionResponse)
+@limiter.limit("10/minute")
 def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> AdminSessionResponse:
     admin = authenticate(db, payload.roll_number, payload.password)
     if admin is None:

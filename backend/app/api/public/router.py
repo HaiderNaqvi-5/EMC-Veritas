@@ -2,11 +2,12 @@ import json
 from io import BytesIO
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import limiter
 from app.core.settings import settings
 from app.db.session import get_db
 from app.models.domain import (
@@ -51,7 +52,8 @@ def _signature_images_for_document(
     }
 
 @router.get("/students/{roll_number}/documents", response_model=StudentDocumentsResponse)
-def student_documents(roll_number: str, db: Session = Depends(get_db)) -> StudentDocumentsResponse:
+@limiter.limit("30/minute")
+def student_documents(request: Request, roll_number: str, db: Session = Depends(get_db)) -> StudentDocumentsResponse:
     student = db.scalar(select(Student).where(func.upper(Student.roll_number) == normalize_roll_number(roll_number), Student.active.is_(True)))
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
@@ -83,7 +85,8 @@ def student_documents(roll_number: str, db: Session = Depends(get_db)) -> Studen
 
 
 @router.get("/verify/{verification_id}", response_model=VerificationResponse)
-def verify_document(verification_id: str, db: Session = Depends(get_db)) -> VerificationResponse:
+@limiter.limit("30/minute")
+def verify_document(request: Request, verification_id: str, db: Session = Depends(get_db)) -> VerificationResponse:
     row = db.execute(
         select(IssuedDocument, Student, Activity.name, Activity.activity_date)
         .join(Student, IssuedDocument.student_id == Student.id)
@@ -107,7 +110,8 @@ def verify_document(verification_id: str, db: Session = Depends(get_db)) -> Veri
 
 
 @router.get("/documents/{document_id}/download")
-def download_document(document_id: UUID, db: Session = Depends(get_db)) -> StreamingResponse:
+@limiter.limit("30/minute")
+def download_document(request: Request, document_id: UUID, db: Session = Depends(get_db)) -> StreamingResponse:
     row = db.execute(
         select(IssuedDocument, Student, Activity)
         .join(Student, IssuedDocument.student_id == Student.id)
