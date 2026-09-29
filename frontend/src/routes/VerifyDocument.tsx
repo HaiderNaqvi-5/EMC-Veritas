@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { verifyDocument } from "../api/documents/public";
+import { VerificationError, verifyDocument } from "../api/documents/public";
 import { Skeleton } from "../components/ui/Skeleton";
 
 function CheckIcon() { return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-7 w-7 fill-none stroke-current stroke-[1.8]"><circle cx="12" cy="12" r="9" /><path d="m8 12 2.5 2.5L16 9" /></svg>; }
@@ -12,7 +12,15 @@ export function VerifyDocument() {
   const query = useQuery({ queryKey: ["verification", verificationId], queryFn: () => verifyDocument(verificationId), retry: 2 });
 
   if (query.isLoading) return <VerificationLayout><p role="status" className="verification-result__eyebrow">Checking the authoritative record…</p><div className="mt-7 space-y-3"><Skeleton className="h-7 w-44" /><Skeleton className="h-5 w-full" /><Skeleton className="h-5 w-4/5" /></div></VerificationLayout>;
-  if (query.isError) return <VerificationLayout><p role="alert" className="verification-result__error">{query.error.message}</p><Link to="/verify" className="verification-result__link">Try another verification ID <Arrow /></Link></VerificationLayout>;
+  if (query.isError) {
+    const notFound = query.error instanceof VerificationError && query.error.status === 404;
+    return <VerificationLayout><div role="alert">
+      <p className="verification-result__eyebrow">{notFound ? "No matching record" : "Verification unavailable"}</p>
+      <h1 className="verification-result__error">{notFound ? "We couldn't find this verification ID." : "Something went wrong on our end."}</h1>
+      {notFound && <p className="verification-result__summary">Check the ID printed beside the QR code on the issued document — it starts with <strong>EMC-</strong> followed by 8 characters. A single mistyped character is the most common cause.</p>}
+      <Link to="/verify" className="verification-result__link">Try another verification ID <Arrow /></Link>
+    </div></VerificationLayout>;
+  }
 
   const record = query.data!;
   return <VerificationLayout>

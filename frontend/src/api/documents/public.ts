@@ -11,8 +11,21 @@ export function documentDownloadUrl(documentId: string): string {
   return `${apiBase}/public/documents/${encodeURIComponent(documentId)}/download`;
 }
 export type Verification = { verified: boolean; status: string; verification_id: string; full_name: string; roll_number: string; document_type: string; context: string; activity_date: string | null; issue_date: string };
+export class VerificationError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "VerificationError";
+    this.status = status;
+  }
+}
 export async function verifyDocument(verificationId: string): Promise<Verification> {
   const response = await fetch(`${apiBase}/public/verify/${encodeURIComponent(verificationId)}`);
-  if (!response.ok) throw new Error("Verification record not found.");
+  if (!response.ok) throw new VerificationError(
+    response.status,
+    response.status === 404
+      ? "No record matches this verification ID."
+      : "Verification is temporarily unavailable. Please try again in a moment.",
+  );
   return response.json();
 }
