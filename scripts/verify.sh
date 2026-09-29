@@ -27,6 +27,7 @@ echo "==> Frontend: deterministic install and build"
 (
   cd "$project_root/frontend"
   npm ci
+  npm test
   npm run build
 )
 
