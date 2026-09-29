@@ -4,14 +4,12 @@ from sqlalchemy.orm import Session
 from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.schemas.auth import (
-    AdminLookupRequest,
-    AdminLookupResponse,
     AdminSessionResponse,
     LoginRequest,
     PasswordChangeRequest,
 )
 from app.services.audit import record_audit_event
-from app.services.auth import authenticate, change_password, find_admin_by_roll_number
+from app.services.auth import authenticate, change_password
 
 router = APIRouter(prefix="/auth", tags=["admin-auth"])
 
@@ -19,13 +17,6 @@ router = APIRouter(prefix="/auth", tags=["admin-auth"])
 def session_response(request: Request) -> AdminSessionResponse:
     role = request.session.get("role")
     return AdminSessionResponse(authenticated=bool(request.session.get("admin_id")), role=role, temporary_password_change_required=bool(request.session.get("must_change_password")))
-
-
-@router.post("/lookup", response_model=AdminLookupResponse)
-@limiter.limit("10/minute")
-def lookup(request: Request, payload: AdminLookupRequest, db: Session = Depends(get_db)) -> AdminLookupResponse:
-    admin = find_admin_by_roll_number(db, payload.roll_number)
-    return AdminLookupResponse(is_admin=admin is not None and admin.active, active=admin is not None and admin.active)
 
 
 @router.post("/login", response_model=AdminSessionResponse)

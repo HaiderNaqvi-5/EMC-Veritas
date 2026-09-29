@@ -59,7 +59,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     throw new ApiConnectionError();
   }
   if (!response.ok) {
-    if (response.status === 401 && !path.startsWith("/admin/auth/login") && !path.startsWith("/admin/auth/lookup")) {
+    if (response.status === 401 && !path.startsWith("/admin/auth/login")) {
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     }
     const body = (await response.json().catch(() => null)) as { detail?: string } | null;
@@ -88,7 +88,7 @@ export async function apiBlobRequest(path: string, init: RequestInit = {}): Prom
     throw new ApiConnectionError();
   }
   if (!response.ok) {
-    if (response.status === 401 && !path.startsWith("/admin/auth/login") && !path.startsWith("/admin/auth/lookup")) {
+    if (response.status === 401 && !path.startsWith("/admin/auth/login")) {
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     }
     const body = (await response.json().catch(() => null)) as { detail?: string } | null;
