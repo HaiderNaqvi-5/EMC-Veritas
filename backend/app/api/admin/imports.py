@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -13,11 +14,26 @@ from app.services.imports import import_activity_participants, participant_expor
 from app.services.students import create_student, normalize_roll_number
 
 router=APIRouter(prefix="/imports",tags=["admin-imports"])
+
+logger = logging.getLogger(__name__)
+
+# Participant rosters are small spreadsheets; 10 MB is generous headroom
+# while keeping one request from exhausting worker memory.
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+async def _bounded_read(file: UploadFile) -> bytes:
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "Upload exceeds the 10 MB limit")
+    return content
 @router.post("/students/preview")
 async def preview(file: UploadFile=File(...), _: Admin=Depends(current_active_admin), db: Session=Depends(get_db)):
     if not file.filename or not file.filename.lower().endswith(".xlsx"): raise HTTPException(400,"Only .xlsx files are accepted")
-    try: return preview_students(db, await file.read())
-    except ValueError as error: raise HTTPException(400,str(error))
+    try: return preview_students(db, await _bounded_read(file))
+    except ValueError as error:
+        logger.warning("student import preview rejected: %s", type(error).__name__)
+        raise HTTPException(400, "The file could not be processed. Check the format and try again.")
 
 @router.get("/activities/{activity_id}/participants/export")
 def export(activity_id: UUID, _: Admin=Depends(current_active_admin), db: Session=Depends(get_db)):
@@ -28,9 +44,11 @@ def export(activity_id: UUID, _: Admin=Depends(current_active_admin), db: Sessio
 @router.post("/activities/{activity_id}/participants/import")
 async def import_participants(activity_id: UUID, file: UploadFile=File(...), admin: Admin=Depends(current_active_admin), db: Session=Depends(get_db)):
     if not file.filename or not file.filename.lower().endswith(".xlsx"): raise HTTPException(400, "Only .xlsx files are accepted")
-    try: result = import_activity_participants(db, activity_id, await file.read())
+    try: result = import_activity_participants(db, activity_id, await _bounded_read(file))
     except LookupError: raise HTTPException(404, "Activity not found")
-    except ValueError as error: raise HTTPException(400, str(error))
+    except ValueError as error:
+        logger.warning("activity participant import rejected: %s", type(error).__name__)
+        raise HTTPException(400, "The file could not be processed. Check the format and try again.")
     record_audit_event(db, actor_admin_id=admin.id, event_type="ACTIVITY_PARTICIPANTS_IMPORTED", entity_type="activity", entity_id=activity_id, payload=result)
     db.commit(); return result
 
