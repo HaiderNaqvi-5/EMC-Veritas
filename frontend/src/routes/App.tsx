@@ -5,6 +5,7 @@ import { AdminPortal } from "./AdminPortal";
 import { StudentPortal } from "./StudentPortal";
 import { VerifyDocument } from "./VerifyDocument";
 import { VerifyPortal } from "./VerifyPortal";
+import { StudentActivation, StudentLogin } from "./StudentAccess";
 
 export function App() {
   useEffect(() => {
@@ -13,6 +14,8 @@ export function App() {
   return (
     <Routes>
       <Route path="/" element={<StudentPortal />} />
+      <Route path="/student-login" element={<StudentLogin />} />
+      <Route path="/activate" element={<StudentActivation />} />
       <Route path="/verify" element={<VerifyPortal />} />
       <Route path="/verify/:verificationId" element={<VerifyDocument />} />
       <Route path="/admin/*" element={<AdminPortal />} />

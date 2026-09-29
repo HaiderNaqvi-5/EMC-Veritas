@@ -1,5 +1,7 @@
+from datetime import datetime
 from io import BytesIO
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import fitz
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -47,6 +49,7 @@ from app.services.templates.signature_choice import require_signature_choice
 from app.services.templates.validation import ensure_font, ensure_pdf
 
 router = APIRouter(prefix="/templates", tags=["templates"])
+EMC_TIMEZONE = ZoneInfo("Asia/Karachi")
 
 
 def _template_or_404(db: Session, template_id: UUID) -> Template:
@@ -329,6 +332,10 @@ def preview_template(
     if activity is None:
         raise HTTPException(status_code=404, detail="Activity not found")
     fields = db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all()
+    # Signatory authority follows the date a certificate is issued, not the
+    # date an event happened. This lets a newly uploaded office-holder sign a
+    # certificate for a past activity when the certificate is created today.
+    signature_date = activity.issue_date or datetime.now(EMC_TIMEZONE).date()
     try:
         storage = SupabaseStorage()
         template_pdf = storage.download(template.storage_key)
@@ -344,7 +351,7 @@ def preview_template(
                 db.scalars(select(Signatory).where(Signatory.active.is_(True))).all()
             )
             selected_signatories = select_effective_signatories_for_fields(
-                active_signatories, signature_fields, activity.activity_date
+                active_signatories, signature_fields, signature_date
             )
             unavailable_fields = sorted(set(signature_fields) - set(selected_signatories))
             if unavailable_fields:

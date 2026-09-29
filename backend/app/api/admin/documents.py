@@ -165,6 +165,7 @@ def issue_activity_documents(
             detail="Template is missing required fields: " + ", ".join(sorted(missing_fields)),
         )
 
+    issue_date = activity.issue_date or datetime.now(EMC_TIMEZONE).date()
     selected_signatories = {}
     if should_replace_signatures(template.signature_handling, template_fields):
         signature_fields = configured_signature_field_names(template_fields)
@@ -175,7 +176,7 @@ def issue_activity_documents(
             )
         active_signatories = list(db.scalars(select(Signatory).where(Signatory.active.is_(True))).all())
         selected_signatories = select_effective_signatories_for_fields(
-            active_signatories, signature_fields, activity.activity_date
+            active_signatories, signature_fields, issue_date
         )
         unavailable_fields = sorted(set(signature_fields) - set(selected_signatories))
         if unavailable_fields:
@@ -184,7 +185,6 @@ def issue_activity_documents(
                 detail="Configured signatories are unavailable for: " + ", ".join(unavailable_fields),
             )
 
-    issue_date = activity.issue_date or datetime.now(EMC_TIMEZONE).date()
     eligible_student_ids = list(
         db.scalars(
             select(ActivityParticipant.student_id)
@@ -434,6 +434,7 @@ def reissue_document(
             status_code=409,
             detail="Template is missing required fields: " + ", ".join(sorted(missing_fields)),
         )
+    issue_date = datetime.now(EMC_TIMEZONE).date()
     selected_signatories = {}
     if should_replace_signatures(template.signature_handling, template_fields):
         signature_fields = configured_signature_field_names(template_fields)
@@ -444,7 +445,7 @@ def reissue_document(
             )
         active_signatories = list(db.scalars(select(Signatory).where(Signatory.active.is_(True))).all())
         selected_signatories = select_effective_signatories_for_fields(
-            active_signatories, signature_fields, activity.activity_date
+            active_signatories, signature_fields, issue_date
         )
         unavailable_fields = sorted(set(signature_fields) - set(selected_signatories))
         if unavailable_fields:
@@ -453,7 +454,6 @@ def reissue_document(
                 detail="Configured signatories are unavailable for: " + ", ".join(unavailable_fields),
             )
 
-    issue_date = datetime.now(EMC_TIMEZONE).date()
     document.status = DocumentStatus.SUPERSEDED
     replacement = reserve_document(
         db,

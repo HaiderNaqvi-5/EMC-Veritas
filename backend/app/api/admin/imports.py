@@ -61,9 +61,16 @@ def commit(payload: ImportCommit, admin: Admin=Depends(current_active_admin), db
         if current is None:
             create_student(
                 db,
-                StudentCreate(roll_number=canonical_roll_number, full_name=row.full_name.strip()),
+                StudentCreate(roll_number=canonical_roll_number, full_name=row.full_name.strip(), email=row.email),
             )
             created += 1
+        elif current.full_name == row.full_name.strip() and not current.email and row.email:
+            # Legacy student rows can be enrolled once from the verified roster;
+            # an already-set email is never overwritten by an import.
+            current.email = row.email.strip().lower()
+        elif current.email and row.email and current.email.lower() != row.email.strip().lower():
+            if row.conflict_resolution != "skip": raise HTTPException(409,"Every conflicting email requires explicit skip resolution")
+            skipped += 1
         elif current.full_name != row.full_name.strip():
             if row.conflict_resolution != "skip": raise HTTPException(409,"Every conflicting name requires explicit skip resolution")
             skipped += 1

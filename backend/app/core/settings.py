@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     cookie_secure: bool = True
     cookie_same_site: Literal["lax", "strict", "none"] = "lax"
     public_app_url: str = "http://localhost:5173"
+    email_delivery_mode: Literal["console", "disabled", "provider"] = "console"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    email_from: str | None = None
     frontend_origins_raw: str = Field(
         default="http://localhost:5173", validation_alias="FRONTEND_ORIGINS"
     )

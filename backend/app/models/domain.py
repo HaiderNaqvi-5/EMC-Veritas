@@ -29,6 +29,8 @@ class MembershipStatus(str, enum.Enum): ACTIVE = "ACTIVE"; COMPLETED = "COMPLETE
 class DocumentStatus(str, enum.Enum): VALID = "VALID"; REVOKED = "REVOKED"; SUPERSEDED = "SUPERSEDED"
 class DocumentType(str, enum.Enum): ACTIVITY_CERTIFICATE = "ACTIVITY_CERTIFICATE"; LEADERSHIP_RECOGNITION = "LEADERSHIP_RECOGNITION"; END_OF_TENURE_APPRECIATION = "END_OF_TENURE_APPRECIATION"
 class AdminRole(str, enum.Enum): ADMIN = "ADMIN"; SUPER_ADMIN = "SUPER_ADMIN"
+class StudentAccountTokenPurpose(str, enum.Enum): ACTIVATION = "ACTIVATION"; PASSWORD_RESET = "PASSWORD_RESET"
+class EmailChangeRequestStatus(str, enum.Enum): PENDING = "PENDING"; APPROVED = "APPROVED"; REJECTED = "REJECTED"
 
 
 class Timestamped:
@@ -41,7 +43,41 @@ class Student(Timestamped, Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     roll_number: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # This is supplied through the verified roster import, never by an
+    # unauthenticated activation request.
+    email: Mapped[str | None] = mapped_column(String(320), unique=True)
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class StudentAccount(Timestamped, Base):
+    __tablename__ = "student_accounts"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), unique=True, nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class StudentAccountToken(Timestamped, Base):
+    __tablename__ = "student_account_tokens"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
+    purpose: Mapped[StudentAccountTokenPurpose] = mapped_column(Enum(StudentAccountTokenPurpose, name="student_account_token_purpose"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EmailChangeRequest(Timestamped, Base):
+    __tablename__ = "email_change_requests"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
+    requested_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[EmailChangeRequestStatus] = mapped_column(Enum(EmailChangeRequestStatus, name="email_change_request_status"), nullable=False, default=EmailChangeRequestStatus.PENDING)
+    reviewed_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admins.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Admin(Timestamped, Base):

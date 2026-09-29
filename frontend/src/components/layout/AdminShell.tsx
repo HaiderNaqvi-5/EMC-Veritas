@@ -9,6 +9,7 @@ const navigation = [
   { label: "Activities", path: "/admin/activities" },
   { label: "Sessions", path: "/admin/sessions" },
   { label: "Imports", path: "/admin/imports" },
+  { label: "Email recovery", path: "/admin/student-recovery", superAdmin: true },
   { label: "Signatories", path: "/admin/signatories" },
   { label: "Council memberships", path: "/admin/executive-memberships" },
   { label: "Certificate templates", path: "/admin/templates", superAdmin: true },

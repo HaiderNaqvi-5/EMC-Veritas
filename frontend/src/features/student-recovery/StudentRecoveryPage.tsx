@@ -1,0 +1,11 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "../../lib/api/client";
+
+type RecoveryRequest = { id: string; roll_number: string; full_name: string; requested_email: string; reason: string; created_at: string };
+
+export function StudentRecoveryPage() {
+  const client = useQueryClient();
+  const requests = useQuery({ queryKey: ["admin", "student-recovery"], queryFn: () => apiRequest<RecoveryRequest[]>("/admin/student-recovery") });
+  const approve = useMutation({ mutationFn: (id: string) => apiRequest<void>(`/admin/student-recovery/${id}/approve`, { method: "POST" }), onSuccess: () => void client.invalidateQueries({ queryKey: ["admin", "student-recovery"] }) });
+  return <section><h1 className="text-3xl font-bold">Student email recovery</h1><p className="mt-2 text-slate-600 dark:text-slate-400">Approve only after you have completed manual, in-person identity verification. Approval sends an activation link to the new email address.</p>{requests.isLoading && <p className="mt-6">Loading requests…</p>}{requests.isError && <p role="alert" className="mt-6 text-red-700">{requests.error.message}</p>}{requests.data?.length === 0 && <p className="mt-6 rounded border p-4">No pending recovery requests.</p>}{requests.data && requests.data.length > 0 && <div className="mt-6 overflow-x-auto rounded-xl border"><table className="w-full text-left text-sm"><thead><tr><th className="p-3">Student</th><th className="p-3">New email</th><th className="p-3">Reason</th><th className="p-3">Requested</th><th className="p-3">Action</th></tr></thead><tbody>{requests.data.map((item) => <tr className="border-t" key={item.id}><td className="p-3"><strong>{item.full_name}</strong><br />{item.roll_number}</td><td className="p-3">{item.requested_email}</td><td className="p-3">{item.reason}</td><td className="p-3">{new Date(item.created_at).toLocaleString()}</td><td className="p-3"><button disabled={approve.isPending} onClick={() => approve.mutate(item.id)} className="rounded bg-[#a91f35] px-3 py-2 font-semibold text-white">Approve after in-person check</button></td></tr>)}</tbody></table></div>}{approve.isError && <p role="alert" className="mt-4 text-red-700">{approve.error.message}</p>}</section>;
+}

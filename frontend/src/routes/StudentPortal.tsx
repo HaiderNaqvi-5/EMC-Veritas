@@ -378,6 +378,12 @@ export function StudentPortal() {
             >
               Admin sign in
             </button>
+            <Link
+              to="/student-login"
+              className="ml-4 text-sm font-medium text-slate-300 underline-offset-4 hover:underline"
+            >
+              Student sign in
+            </Link>
             <div className="hero-principles mt-7"><span>Find</span><span>Keep</span><span>Verify</span></div>
             {query.isFetching && (
               <>

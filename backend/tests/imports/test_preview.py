@@ -13,6 +13,7 @@ class EmptyDatabase:
 class ConflictingDatabase:
     class StudentRecord:
         full_name = "Different name"
+        email = None
 
     def scalar(self, _query):
         return self.StudentRecord()
@@ -25,7 +26,7 @@ def workbook(headers, rows):
 
 
 def test_preview_recognizes_heading_aliases_and_duplicates():
-    result = preview_students(EmptyDatabase(), workbook(["Roll No", "Student Name"], [["A1", "Ahmed"], ["A1", "Ahmed"]]))
+    result = preview_students(EmptyDatabase(), workbook(["Roll No", "Student Name", "Email"], [["A1", "Ahmed", "ahmed@example.edu"], ["A1", "Ahmed", "ahmed@example.edu"]]))
     assert result["valid_rows"] == 1
     assert result["duplicate_rows"] == 1
 
@@ -40,6 +41,6 @@ def test_preview_requires_canonical_fields():
 
 
 def test_preview_marks_existing_name_difference_as_conflict():
-    result = preview_students(ConflictingDatabase(), workbook(["Roll Number", "Full Name"], [["A1", "Ahmed"]]))
+    result = preview_students(ConflictingDatabase(), workbook(["Roll Number", "Full Name", "Email"], [["A1", "Ahmed", "ahmed@example.edu"]]))
     assert result["conflicting_rows"] == 1
     assert result["rows"][0]["outcome"] == "conflict"

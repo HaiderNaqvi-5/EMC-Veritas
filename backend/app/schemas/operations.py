@@ -13,6 +13,7 @@ class APIModel(BaseModel):
 class StudentCreate(APIModel):
     roll_number: str = Field(min_length=1, max_length=64)
     full_name: str = Field(min_length=1, max_length=255)
+    email: str | None = Field(default=None, max_length=320)
 
 
 class StudentResponse(StudentCreate):
@@ -67,6 +68,7 @@ class ImportPreviewRow(APIModel):
     row_number: int
     roll_number: str | None
     full_name: str | None
+    email: str | None = None
     outcome: str
     detail: str | None = None
 
@@ -82,6 +84,7 @@ class ImportPreview(APIModel):
 class ImportCommitRow(APIModel):
     roll_number: str = Field(min_length=1, max_length=64)
     full_name: str = Field(min_length=1, max_length=255)
+    email: str | None = Field(default=None, max_length=320)
     conflict_resolution: str | None = None
 
 

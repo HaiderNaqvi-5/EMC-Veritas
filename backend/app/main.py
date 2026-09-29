@@ -14,9 +14,11 @@ from app.api.admin.imports import router as admin_imports_router
 from app.api.admin.leadership_templates import router as admin_leadership_templates_router
 from app.api.admin.sessions import router as admin_sessions_router
 from app.api.admin.signatories import router as admin_signatories_router
+from app.api.admin.student_recovery import router as admin_student_recovery_router
 from app.api.admin.students import router as admin_students_router
 from app.api.admin.templates import router as admin_templates_router
 from app.api.public.router import router as public_router
+from app.api.student_auth import router as student_auth_router
 from app.core.rate_limit import limiter
 from app.core.settings import settings
 from app.services.readiness.router import router as readiness_router
@@ -44,6 +46,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(readiness_router, prefix=settings.api_prefix)
     app.include_router(public_router, prefix=settings.api_prefix)
+    app.include_router(student_auth_router, prefix=settings.api_prefix)
     app.include_router(admin_auth_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_admins_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_audit_router, prefix=f"{settings.api_prefix}/admin")
@@ -55,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_sessions_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_signatories_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_students_router, prefix=f"{settings.api_prefix}/admin")
+    app.include_router(admin_student_recovery_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_templates_router, prefix=f"{settings.api_prefix}/admin")
     return app
 

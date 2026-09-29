@@ -34,10 +34,17 @@ def create_student(db: Session, payload: StudentCreate) -> Student:
         # A roll number represents the student's identity.  Keep historical
         # document links intact, but make a deactivated record usable again.
         student.full_name = payload.full_name.strip()
+        if payload.email:
+            student.email = payload.email.strip().lower()
         student.active = True
         db.flush()
         return student
-    student = Student(roll_number=roll_number, full_name=payload.full_name.strip(), active=True)
+    student = Student(
+        roll_number=roll_number,
+        full_name=payload.full_name.strip(),
+        email=payload.email.strip().lower() if payload.email else None,
+        active=True,
+    )
     db.add(student)
     db.flush()
     return student
