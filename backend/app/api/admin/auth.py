@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.schemas.auth import (
     AdminLookupRequest,
@@ -9,7 +10,6 @@ from app.schemas.auth import (
     LoginRequest,
     PasswordChangeRequest,
 )
-from app.core.rate_limit import limiter
 from app.services.audit import record_audit_event
 from app.services.auth import authenticate, change_password, find_admin_by_roll_number
 
