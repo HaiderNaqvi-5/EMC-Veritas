@@ -1,0 +1,3 @@
+## 2025-02-28 - Avoid O(N) recalculations for large lists in form components
+**Learning:** In the frontend React codebase, components displaying API data in `select` dropdowns (e.g. students, sessions) that use inline `.filter()` or create `Set`s/`Map`s inside the JSX will recalculate on every render. Given these forms track user input state (e.g., keystrokes in inputs, selecting dropdown items), this causes an O(N) operation on *every keystroke* or form interaction, leading to substantial UI lag when the data lists are large.
+**Action:** Always wrap heavy list operations (like filtering or creating Maps/Sets) in `useMemo` when they depend on API data in form components to prevent O(N) recalculations on every keystroke.
