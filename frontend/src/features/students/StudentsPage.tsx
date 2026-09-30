@@ -114,7 +114,7 @@ export function StudentsPage() {
                   <td className="p-4">
                     {student.active ? (
                       <button
-                        onClick={() => deactivate.mutate(student.id)}
+                        onClick={() => { if (window.confirm(`Deactivate student ${student.full_name}?`)) deactivate.mutate(student.id); }}
                         disabled={deactivate.isPending}
                         className="underline"
                       >
