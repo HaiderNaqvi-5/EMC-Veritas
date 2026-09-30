@@ -1,0 +1,3 @@
+## 2026-09-30 - Prevent O(N) recalculations on keystrokes in forms
+**Learning:** In form components like `ActivitiesPage`, every keystroke triggers a re-render. If large API data lists (`students.data`, `sessions.data`) are filtered directly within the render function or JSX, it causes an O(N) recalculation on every keystroke, which can significantly degrade form input performance as data grows.
+**Action:** Always wrap heavy list operations (like `.filter()`, `.map()` for data transformation, or creating Sets/Maps) that depend on API data in `useMemo` hooks, especially when the component contains controlled form inputs that cause frequent re-renders.
