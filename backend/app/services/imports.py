@@ -11,21 +11,25 @@ ROLL = {"roll number", "roll no", "registration no", "roll_number"}
 NAME = {"full name", "student name", "name", "full_name"}
 EMAIL = {"email", "email address", "student email", "email_address"}
 
+# Keep roster-email support available for a future rollout without making it
+# part of the current student-import workflow.
+STUDENT_IMPORT_EMAIL_ENABLED = False
+
 def preview_students(db: Session, content: bytes) -> dict:
     sheet = load_workbook(BytesIO(content), read_only=True, data_only=True).active
     headers = {str(value).strip().lower(): index for index, value in enumerate(next(sheet.iter_rows(values_only=True))) if value}
-    roll_index = next((headers[key] for key in ROLL if key in headers), None); name_index = next((headers[key] for key in NAME if key in headers), None); email_index = next((headers[key] for key in EMAIL if key in headers), None)
-    if roll_index is None or name_index is None or email_index is None: raise ValueError("Spreadsheet must include Roll Number, Full Name, and Email headings")
+    roll_index = next((headers[key] for key in ROLL if key in headers), None); name_index = next((headers[key] for key in NAME if key in headers), None); email_index = next((headers[key] for key in EMAIL if key in headers), None) if STUDENT_IMPORT_EMAIL_ENABLED else None
+    if roll_index is None or name_index is None: raise ValueError("Spreadsheet must include Roll Number and Full Name headings")
     seen=set(); rows=[]; counts={"valid_rows":0,"duplicate_rows":0,"conflicting_rows":0,"invalid_rows":0}
     for number, values in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
-        roll=normalize_roll_number(str(values[roll_index])) if values[roll_index] is not None else ""; name=str(values[name_index]).strip() if values[name_index] is not None else ""; email=str(values[email_index]).strip().lower() if values[email_index] is not None else ""
+        roll=normalize_roll_number(str(values[roll_index])) if values[roll_index] is not None else ""; name=str(values[name_index]).strip() if values[name_index] is not None else ""; email=str(values[email_index]).strip().lower() if email_index is not None and values[email_index] is not None else ""
         outcome="valid"; detail=None
-        if not roll or not name or "@" not in email: outcome="invalid"; detail="Roll number, full name, and a valid email are required"
+        if not roll or not name: outcome="invalid"; detail="Roll number and full name are required"
         elif roll in seen: outcome="duplicate"; detail="Duplicate roll number in spreadsheet"
         else:
             existing=db.scalar(select(Student).where(Student.roll_number == roll))
             if existing and existing.full_name != name: outcome="conflict"; detail="Existing student name differs; choose a resolution explicitly"
-            elif existing and existing.email and existing.email.lower() != email: outcome="conflict"; detail="Existing verified email differs; use the Super Admin recovery flow instead"
+            elif STUDENT_IMPORT_EMAIL_ENABLED and email and existing and existing.email and existing.email.lower() != email: outcome="conflict"; detail="Existing verified email differs; use the Super Admin recovery flow instead"
         seen.add(roll)
         count_key = "conflicting_rows" if outcome == "conflict" else f"{outcome}_rows"
         counts[count_key] += 1

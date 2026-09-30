@@ -26,12 +26,21 @@ def workbook(headers, rows):
 
 
 def test_preview_recognizes_heading_aliases_and_duplicates():
-    result = preview_students(EmptyDatabase(), workbook(["Roll No", "Student Name", "Email"], [["A1", "Ahmed", "ahmed@example.edu"], ["A1", "Ahmed", "ahmed@example.edu"]]))
+    result = preview_students(EmptyDatabase(), workbook(["Roll No", "Student Name"], [["A1", "Ahmed"], ["A1", "Ahmed"]]))
     assert result["valid_rows"] == 1
     assert result["duplicate_rows"] == 1
 
 
-def test_preview_requires_canonical_fields():
+def test_preview_ignores_email_column_while_email_import_is_disabled():
+    result = preview_students(
+        EmptyDatabase(),
+        workbook(["Roll Number", "Full Name", "Email"], [["A1", "Ahmed", "not-an-email"]]),
+    )
+    assert result["valid_rows"] == 1
+    assert result["rows"][0]["email"] is None
+
+
+def test_preview_requires_student_identity_fields():
     try:
         preview_students(EmptyDatabase(), workbook(["Identifier"], [["A1"]]))
     except ValueError as error:
@@ -41,6 +50,6 @@ def test_preview_requires_canonical_fields():
 
 
 def test_preview_marks_existing_name_difference_as_conflict():
-    result = preview_students(ConflictingDatabase(), workbook(["Roll Number", "Full Name", "Email"], [["A1", "Ahmed", "ahmed@example.edu"]]))
+    result = preview_students(ConflictingDatabase(), workbook(["Roll Number", "Full Name"], [["A1", "Ahmed"]]))
     assert result["conflicting_rows"] == 1
     assert result["rows"][0]["outcome"] == "conflict"

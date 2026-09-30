@@ -10,7 +10,12 @@ from app.db.session import get_db
 from app.models.domain import Admin, Student
 from app.schemas.operations import ImportCommit, StudentCreate
 from app.services.audit import record_audit_event
-from app.services.imports import import_activity_participants, participant_export, preview_students
+from app.services.imports import (
+    STUDENT_IMPORT_EMAIL_ENABLED,
+    import_activity_participants,
+    participant_export,
+    preview_students,
+)
 from app.services.students import create_student, normalize_roll_number
 
 router=APIRouter(prefix="/imports",tags=["admin-imports"])
@@ -57,18 +62,19 @@ def commit(payload: ImportCommit, admin: Admin=Depends(current_active_admin), db
     created=0; skipped=0
     for row in payload.rows:
         canonical_roll_number = normalize_roll_number(row.roll_number)
+        email = row.email if STUDENT_IMPORT_EMAIL_ENABLED else None
         current=db.query(Student).filter(Student.roll_number == canonical_roll_number).one_or_none()
         if current is None:
             create_student(
                 db,
-                StudentCreate(roll_number=canonical_roll_number, full_name=row.full_name.strip(), email=row.email),
+                StudentCreate(roll_number=canonical_roll_number, full_name=row.full_name.strip(), email=email),
             )
             created += 1
-        elif current.full_name == row.full_name.strip() and not current.email and row.email:
+        elif current.full_name == row.full_name.strip() and not current.email and email:
             # Legacy student rows can be enrolled once from the verified roster;
             # an already-set email is never overwritten by an import.
-            current.email = row.email.strip().lower()
-        elif current.email and row.email and current.email.lower() != row.email.strip().lower():
+            current.email = email.strip().lower()
+        elif STUDENT_IMPORT_EMAIL_ENABLED and current.email and email and current.email.lower() != email.strip().lower():
             if row.conflict_resolution != "skip": raise HTTPException(409,"Every conflicting email requires explicit skip resolution")
             skipped += 1
         elif current.full_name != row.full_name.strip():
