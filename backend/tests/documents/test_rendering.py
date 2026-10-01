@@ -99,6 +99,9 @@ def test_rendering_keeps_the_roll_number_clause_when_canva_exports_it_as_a_separ
         "coordination, and commitment significantly contributed to the successful execution of the activity.",
         fontsize=12,
     )
+    # Canva can write this visible line later in the PDF object order despite
+    # placing it above the paragraph on the page.
+    page.insert_text((267, 225), "This certificate is proudly presented to", fontsize=12)
     template = document.tobytes()
     document.close()
     fields = [
@@ -117,9 +120,19 @@ def test_rendering_keeps_the_roll_number_clause_when_canva_exports_it_as_a_separ
 
     rendered = fitz.open(stream=output, filetype="pdf")
     text = rendered[0].get_text().replace("\u00a0", " ").replace("\n", " ")
+    paragraph_span = next(
+        span
+        for block in rendered[0].get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for span in line["spans"]
+        if "Bearing roll number" in span["text"]
+    )
     rendered.close()
     assert "Bearing roll number 2K23-BSCS-104" in text
     assert "Orientation 2K25 held on 2025-09-01" in text
+    assert "This certificate is proudly presented to" in text
+    assert paragraph_span["bbox"][1] >= 300
+    assert paragraph_span["size"] == 12
 
 
 def test_rendering_preserves_word_boundaries_when_pdf_splits_a_tagged_paragraph() -> None:

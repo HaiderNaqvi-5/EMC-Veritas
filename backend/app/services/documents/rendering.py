@@ -338,6 +338,12 @@ def _paragraph_from_tagged_block(page: fitz.Page, values: Mapping[str, str]) -> 
             first_top = min(first_top, rectangle.y0)
         last_bottom = anchor_rectangle.y1
         for rectangle, text in blocks[index + 1 :]:
+            # PDF drawing order is not necessarily top-to-bottom. Canva can
+            # place the "presented to" line after the paragraph in the PDF
+            # object order even though it is visibly above it. Never let such
+            # an out-of-order block enlarge the paragraph's dedicated area.
+            if rectangle.y1 <= last_bottom:
+                continue
             if rectangle.y0 > last_bottom + 24:
                 break
             line_names = {name for name in token_pattern.findall(text) if name in values}
@@ -464,20 +470,19 @@ def _render_activity_paragraph(
     rgb: tuple[int, int, int],
 ) -> None:
     size = min(max(font_size, 5), 16)
-    while size >= 5:
-        result = page.insert_textbox(
-            rectangle,
-            text,
-            fontname=font,
-            fontsize=size,
-            color=tuple(channel / 255 for channel in rgb),
-            align=fitz.TEXT_ALIGN_CENTER,
-            lineheight=1.15,
+    result = page.insert_textbox(
+        rectangle,
+        text,
+        fontname=font,
+        fontsize=size,
+        color=tuple(channel / 255 for channel in rgb),
+        align=fitz.TEXT_ALIGN_CENTER,
+        lineheight=1.15,
+    )
+    if result < 0:
+        raise CertificateRenderingError(
+            "Activity paragraph does not fit its dedicated template area at the configured font size"
         )
-        if result >= 0:
-            return
-        size -= 0.5
-    raise CertificateRenderingError("Activity paragraph does not fit its detected template area")
 
 
 def render_certificate(
