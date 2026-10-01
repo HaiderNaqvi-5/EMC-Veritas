@@ -1,0 +1,4 @@
+## 2024-05-18 - CORS Regex Bypass Vulnerability
+**Vulnerability:** The CORS `allow_origin_regex` for Cloudflare Pages subdomains in `backend/app/main.py` was not properly anchored (`r"https://(?:[a-z0-9-]+\.)?emc-veritas\.pages\.dev"`). This allowed malicious domains like `https://emc-veritas.pages.dev.attacker.com` to bypass CORS checks and potentially exfiltrate data, especially since `allow_credentials=True` is enabled.
+**Learning:** Python's `re.match` (used by FastAPI/Starlette) only matches the beginning of the string by default. When matching domains with regex, always anchor the end of the string with `$` to prevent subdomain or domain suffix hijacking.
+**Prevention:** Always use exact matching for origins when possible. If regex is necessary, ensure it is strictly anchored with `^` and `$` and carefully escape all dots (`.`).
