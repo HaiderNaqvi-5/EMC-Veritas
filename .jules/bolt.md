@@ -1,0 +1,3 @@
+## 2024-10-01 - Avoid O(N) calculations on every keystroke in form components
+**Learning:** Forms in this codebase update local state on every keystroke. Performing heavy list operations (like filtering large lists or creating Sets/Maps from API data) directly in the render function causes O(N) recalculations for every single character typed, leading to significant main thread blocking and input lag.
+**Action:** Always wrap heavy list operations (like filtering or creating Maps/Sets) in `useMemo` when they depend on API data in form components to prevent O(N) recalculations on every keystroke.
