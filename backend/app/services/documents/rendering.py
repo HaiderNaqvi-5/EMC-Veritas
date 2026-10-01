@@ -312,21 +312,39 @@ def _paragraph_from_tagged_block(page: fitz.Page, values: Mapping[str, str]) -> 
         for block in page.get_text("dict").get("blocks", [])
         if "lines" in block
     ]
-    for index, (first_rectangle, first_text) in enumerate(blocks):
-        names = {name for name in token_pattern.findall(first_text) if name in values}
-        # A flowing paragraph can be exported as one block per line. Its first
-        # line contains at least two fields, which distinguishes it from the
-        # standalone student-name marker above the paragraph.
-        if len(names) < 2:
+    activity_names = {"roll_number", "activity_name", "activity_date"}
+    for index, (anchor_rectangle, anchor_text) in enumerate(blocks):
+        names = {name for name in token_pattern.findall(anchor_text) if name in values}
+        # A student-name marker is commonly positioned above the certificate
+        # paragraph. Start only from a field that belongs to the paragraph.
+        if not names.intersection(activity_names):
             continue
-        rectangles = [first_rectangle]
-        texts = [first_text]
-        last_bottom = first_rectangle.y1
+        rectangles = [anchor_rectangle]
+        texts = [anchor_text]
+        # Canva can export the roll-number clause and the activity/date clause
+        # as adjacent blocks. Include preceding activity-field blocks as well;
+        # otherwise removing the roll-number token wipes the first sentence
+        # while only the later sentence is redrawn.
+        first_top = anchor_rectangle.y0
+        for rectangle, text in reversed(blocks[:index]):
+            if first_top > rectangle.y1 + 24:
+                break
+            line_names = {name for name in token_pattern.findall(text) if name in values}
+            if not line_names.intersection(activity_names):
+                break
+            rectangles.insert(0, rectangle)
+            texts.insert(0, text)
+            names.update(line_names)
+            first_top = min(first_top, rectangle.y0)
+        last_bottom = anchor_rectangle.y1
         for rectangle, text in blocks[index + 1 :]:
             if rectangle.y0 > last_bottom + 24:
                 break
             line_names = {name for name in token_pattern.findall(text) if name in values}
-            if not line_names:
+            # A paragraph's final wrapped line often has no tag. Retain it
+            # when it follows the tagged activity text, but never absorb a
+            # neighbouring non-paragraph block before any continuation starts.
+            if not line_names and not names.intersection(activity_names):
                 break
             rectangles.append(rectangle)
             texts.append(text)

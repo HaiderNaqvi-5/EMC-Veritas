@@ -79,10 +79,47 @@ def test_rendering_replaces_a_complete_tagged_paragraph_without_old_text() -> No
     )
 
     rendered = fitz.open(stream=output, filetype="pdf")
-    text = rendered[0].get_text().replace("\u00a0", " ")
+    text = rendered[0].get_text().replace("\u00a0", " ").replace("\n", " ")
     rendered.close()
     assert "{{student_name}}" not in text
     assert "Awais Khan (2K22-340) for Plantation Drive on 2026-09-25." in text
+
+
+def test_rendering_keeps_the_roll_number_clause_when_canva_exports_it_as_a_separate_block() -> None:
+    document = fitz.open()
+    page = document.new_page(width=842, height=596)
+    page.insert_text(
+        (103, 320),
+        "Bearing roll number {{roll_number}}, in recoginzition of outstanding participation.",
+        fontsize=12,
+    )
+    page.insert_textbox(
+        fitz.Rect(115, 330, 728, 385),
+        "In organizing {{activity_name}} held on {{activity_date}} under the EMC. Their participation, "
+        "coordination, and commitment significantly contributed to the successful execution of the activity.",
+        fontsize=12,
+    )
+    template = document.tobytes()
+    document.close()
+    fields = [
+        SimpleNamespace(field_name=name, page_number=1, x=120 + index * 110, y=315, width=100, height=18,
+                        font_family="helv", custom_font_storage_key=None, font_size=12, text_color="#000000")
+        for index, name in enumerate(("roll_number", "activity_name", "activity_date"))
+    ]
+
+    output = render_certificate(
+        template,
+        fields,
+        {"roll_number": "2K23-BSCS-104", "activity_name": "Orientation 2K25", "activity_date": "2025-09-01"},
+        verification_url="https://example.test/verify/x",
+        required_field_names=frozenset({"roll_number", "activity_name", "activity_date"}),
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    text = rendered[0].get_text().replace("\u00a0", " ").replace("\n", " ")
+    rendered.close()
+    assert "Bearing roll number 2K23-BSCS-104" in text
+    assert "Orientation 2K25 held on 2025-09-01" in text
 
 
 def test_rendering_preserves_word_boundaries_when_pdf_splits_a_tagged_paragraph() -> None:
