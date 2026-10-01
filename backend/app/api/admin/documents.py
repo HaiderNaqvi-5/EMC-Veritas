@@ -302,14 +302,31 @@ def pre_generate_activity_documents(
     generated = 0
     failed_document_ids: list[UUID] = []
     storage = SupabaseStorage()
+
+    # ⚡ Bolt Optimization: Batch fetch related entities before the loop to prevent N+1 queries.
+    # Without this, pre-generating 20 certificates executes 60 individual DB queries.
+    pending_student_ids = list({doc.student_id for doc in pending})
+    pending_template_ids = list({doc.template_id or activity.template_id for doc in pending if (doc.template_id or activity.template_id) is not None})
+
+    students_by_id = {s.id: s for s in db.scalars(select(Student).where(Student.id.in_(pending_student_ids))).all()}
+    templates_by_id = {t.id: t for t in db.scalars(select(Template).where(Template.id.in_(pending_template_ids))).all()}
+
+    template_fields_by_template_id = {}
+    if pending_template_ids:
+        all_fields = list(db.scalars(select(TemplateField).where(TemplateField.template_id.in_(pending_template_ids))).all())
+        for field in all_fields:
+            template_fields_by_template_id.setdefault(field.template_id, []).append(field)
+
     for document in pending:
         document_id = document.id
         try:
-            student = db.get(Student, document.student_id)
-            template = db.get(Template, document.template_id or activity.template_id)
+            student = students_by_id.get(document.student_id)
+            template_id_to_use = document.template_id or activity.template_id
+            template = templates_by_id.get(template_id_to_use) if template_id_to_use else None
+
             if student is None or template is None:
                 raise DocumentLifecycleError("The issued document is missing its student or template")
-            fields = list(db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all())
+            fields = template_fields_by_template_id.get(template.id, [])
             try:
                 values = json.loads(document.render_payload_json or "")
             except json.JSONDecodeError as error:

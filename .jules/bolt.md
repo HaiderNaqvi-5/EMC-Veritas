@@ -1,0 +1,3 @@
+## 2024-03-24 - Pre-generate N+1 Query Fix
+**Learning:** `admin/documents.py` had an N+1 query vulnerability in `pre_generate` where `db.get(Student)` and `db.scalars(select(TemplateField))` were executed in a loop over `pending` documents. Even though the batch limit is capped at 20, executing 20 separate DB roundtrips for related entities degrades backend performance noticeably compared to fetching them in bulk with `.in_()` before the loop.
+**Action:** Always fetch related rows in a single query outside the loop using `in_` clauses and dict mappings instead of doing `db.get` or `db.scalars(select(...))` inside a loop.
