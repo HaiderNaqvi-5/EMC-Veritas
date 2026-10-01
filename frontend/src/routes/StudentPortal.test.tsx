@@ -3,8 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, expect, test, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ login: vi.fn(), getStudentDocuments: vi.fn() }));
-vi.mock("../features/auth/contracts", () => ({ authApi: { login: mocks.login } }));
+const mocks = vi.hoisted(() => ({ getStudentDocuments: vi.fn() }));
 vi.mock("../api/documents/public", () => ({ getStudentDocuments: mocks.getStudentDocuments, documentDownloadUrl: (id: string) => `/download/${id}` }));
 import { StudentPortal } from "./StudentPortal";
 
@@ -27,18 +26,7 @@ test("submitting a roll number loads the student's documents without an admin lo
   renderPortal();
   submitRollNumber("22-cs-1");
   await waitFor(() => expect(mocks.getStudentDocuments).toHaveBeenCalledWith("22-CS-1"));
-  expect(mocks.login).not.toHaveBeenCalled();
-  expect(screen.queryByRole("dialog", { name: "Admin sign in" })).not.toBeInTheDocument();
+  expect(screen.queryByText("Admin sign in")).not.toBeInTheDocument();
+  expect(screen.queryByText("Student sign in")).not.toBeInTheDocument();
   expect(await screen.findByText("Student")).toBeInTheDocument();
-});
-
-test("admin sign in opens a modal that logs in with roll number and password", async () => {
-  mocks.login.mockResolvedValueOnce({ authenticated: true });
-  renderPortal();
-  fireEvent.click(screen.getByRole("button", { name: "Admin sign in" }));
-  const dialog = await screen.findByRole("dialog", { name: "Admin sign in" });
-  fireEvent.change(within(dialog).getByLabelText("Roll number"), { target: { value: "22-cs-9" } });
-  fireEvent.change(within(dialog).getByLabelText("Password"), { target: { value: "s3cret" } });
-  fireEvent.click(within(dialog).getByRole("button", { name: "Sign in" }));
-  await waitFor(() => expect(mocks.login).toHaveBeenCalledWith("22-CS-9", "s3cret"));
 });

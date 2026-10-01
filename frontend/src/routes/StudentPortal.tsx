@@ -1,14 +1,12 @@
 import { FormEvent, type ReactNode, useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   documentDownloadUrl,
   getStudentDocuments,
   type PublicDocument,
 } from "../api/documents/public";
-import { AdminLoginModal } from "../features/auth/AdminLoginModal";
-import { authApi } from "../features/auth/contracts";
 import { Button } from "../components/ui/Button";
 import { Skeleton } from "../components/ui/Skeleton";
 import { canonicalRollNumber } from "../lib/utils";
@@ -264,8 +262,6 @@ export function StudentPortal() {
     null,
   );
   const [rollNumber, setRollNumber] = useState("");
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const navigate = useNavigate();
   const query = useQuery({
     queryKey: ["student-documents", submittedRollNumber],
     queryFn: () => getStudentDocuments(submittedRollNumber!),
@@ -277,12 +273,6 @@ export function StudentPortal() {
     const normalized = rollNumber.trim();
     if (!normalized || query.isFetching) return;
     setSubmittedRollNumber(normalized);
-  }
-  async function login(loginRollNumber: string, password: string) {
-    const session = await authApi.login(loginRollNumber, password);
-    if (!session.authenticated) throw new Error("Unable to sign in.");
-    setShowAdminLogin(false);
-    navigate("/admin");
   }
   const scrollToLookup = () =>
     document
@@ -367,19 +357,6 @@ export function StudentPortal() {
                 <Arrow />
               </Button>
             </form>
-            <button
-              type="button"
-              onClick={() => setShowAdminLogin(true)}
-              className="mt-4 text-sm font-medium text-slate-300 underline-offset-4 hover:underline"
-            >
-              Admin sign in
-            </button>
-            <Link
-              to="/student-login"
-              className="ml-4 text-sm font-medium text-slate-300 underline-offset-4 hover:underline"
-            >
-              Student sign in
-            </Link>
             <div className="hero-principles mt-7"><span>Find</span><span>Keep</span><span>Verify</span></div>
             {query.isFetching && (
               <>
@@ -525,12 +502,6 @@ export function StudentPortal() {
           <div className="landing-nfc-mark"><img src="/assets/logos/nfc-iet-logo.png" alt="NFC-IET Multan" className="h-12 w-12 object-contain" /><span>NFC-IET<br />MULTAN</span></div>
         </div>
       </footer>
-      {showAdminLogin && (
-        <AdminLoginModal
-          onSubmit={login}
-          onClose={() => setShowAdminLogin(false)}
-        />
-      )}
     </main>
   );
 }
