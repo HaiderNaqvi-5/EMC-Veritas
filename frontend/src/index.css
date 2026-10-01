@@ -106,3 +106,12 @@
 .verification-v2 :is(a,button,input):focus-visible { outline:3px solid #f2c971; outline-offset:4px; }
 .verification-v2__form-error { color:#ffe0a0 !important; font-weight:700; }
 @media (prefers-reduced-motion: reduce) { .verification-v2 *, .verification-v2 *::before, .verification-v2 *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; transition-duration:.01ms !important; } }
+
+/* The record lookup is one control, not a pale container around two unrelated blocks. */
+.landing-page--dark .landing-lookup { gap:.25rem; border:1px solid rgb(232 193 114 / 52%); border-radius:.85rem; padding:.24rem; background:rgb(13 18 30 / 92%); box-shadow:0 16px 34px rgb(0 0 0 / 24%); }
+.landing-page--dark .landing-lookup input { min-height:3.1rem; border-radius:.6rem 0 0 .6rem; color:#fff9ee; background:transparent; }
+.landing-page--dark .landing-lookup input::placeholder { color:#aab5c7; opacity:1; }
+.landing-page--dark .landing-lookup button { min-height:3.1rem; border:1px solid rgb(255 249 238 / 14%); border-radius:.6rem !important; padding-inline:1.5rem; background:#9b273f; box-shadow:none !important; }
+.landing-page--dark .landing-lookup button:hover { background:#b3314c; }
+.landing-page--dark .landing-lookup:focus-within { border-color:#f0ca7a; box-shadow:0 0 0 3px rgb(240 202 122 / 16%),0 16px 34px rgb(0 0 0 / 24%); }
+@media(max-width:640px){.landing-page--dark .landing-lookup{gap:.6rem;border:0;padding:0;background:transparent;box-shadow:none}.landing-page--dark .landing-lookup input{border:1px solid rgb(232 193 114 / 52%) !important;border-radius:.8rem;background:rgb(13 18 30 / 92%)}.landing-page--dark .landing-lookup button{border-radius:.8rem!important}.landing-page--dark .landing-lookup:focus-within{box-shadow:none}}
