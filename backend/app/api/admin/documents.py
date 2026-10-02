@@ -302,14 +302,26 @@ def pre_generate_activity_documents(
     generated = 0
     failed_document_ids: list[UUID] = []
     storage = SupabaseStorage()
+
+    pending_student_ids = {doc.student_id for doc in pending}
+    students = {s.id: s for s in db.scalars(select(Student).where(Student.id.in_(pending_student_ids))).all()} if pending_student_ids else {}
+
+    pending_template_ids = {doc.template_id or activity.template_id for doc in pending if doc.template_id or activity.template_id}
+    templates = {t.id: t for t in db.scalars(select(Template).where(Template.id.in_(pending_template_ids))).all()} if pending_template_ids else {}
+
+    all_fields = list(db.scalars(select(TemplateField).where(TemplateField.template_id.in_(pending_template_ids))).all()) if pending_template_ids else []
+    fields_by_template_id = {}
+    for field in all_fields:
+        fields_by_template_id.setdefault(field.template_id, []).append(field)
+
     for document in pending:
         document_id = document.id
         try:
-            student = db.get(Student, document.student_id)
-            template = db.get(Template, document.template_id or activity.template_id)
+            student = students.get(document.student_id)
+            template = templates.get(document.template_id or activity.template_id)
             if student is None or template is None:
                 raise DocumentLifecycleError("The issued document is missing its student or template")
-            fields = list(db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all())
+            fields = fields_by_template_id.get(template.id, [])
             try:
                 values = json.loads(document.render_payload_json or "")
             except json.JSONDecodeError as error:
