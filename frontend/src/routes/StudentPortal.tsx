@@ -247,8 +247,8 @@ function ArchiveStory() {
             >
               <span>{chapter.number}</span>
               <p>{chapter.kicker}</p>
-              <h3>{chapter.title}</h3>
-              <div className="archive-story__record"><div><small>RECORD TYPE</small><strong>{chapter.type}</strong><em>{chapter.detail}</em></div><VerificationMark /></div>
+              <h3>{chapter.type}</h3>
+              <div className="archive-story__record"><div><small>CONTEXT</small><strong>{chapter.detail}</strong></div><VerificationMark /></div>
             </motion.article>
           ))}
         </div>
