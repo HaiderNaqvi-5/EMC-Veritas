@@ -1,0 +1,4 @@
+## 2026-10-02 - Starlette CORS Regex Domain Suffix Hijacking
+**Vulnerability:** The CORS `allow_origin_regex` in FastAPI/Starlette lacked a trailing `$` anchor (e.g., `r"https://(?:[a-z0-9-]+\.)?emc-veritas\.pages\.dev"`). This allowed malicious domains matching the prefix (e.g., `https://emc-veritas.pages.dev.malicious.com`) to bypass CORS restrictions.
+**Learning:** Starlette's `CORSMiddleware` uses `re.match` under the hood, which only enforces matching at the beginning of the string. Without a `$` anchor, any suffix is permitted.
+**Prevention:** Always ensure `allow_origin_regex` patterns in Starlette/FastAPI are anchored with `$` to explicitly define the end of the allowed domain and prevent domain suffix hijacking.
