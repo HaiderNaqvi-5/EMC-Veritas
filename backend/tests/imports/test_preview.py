@@ -9,14 +9,27 @@ class EmptyDatabase:
     def scalar(self, _query):
         return None
 
+    def scalars(self, _query):
+        class MockResult:
+            def all(self):
+                return []
+        return MockResult()
+
 
 class ConflictingDatabase:
     class StudentRecord:
         full_name = "Different name"
         email = None
+        roll_number = "A1"
 
     def scalar(self, _query):
         return self.StudentRecord()
+
+    def scalars(self, _query):
+        class MockResult:
+            def all(self):
+                return [ConflictingDatabase.StudentRecord()]
+        return MockResult()
 
 
 def workbook(headers, rows):
