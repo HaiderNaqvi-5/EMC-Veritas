@@ -302,14 +302,34 @@ def pre_generate_activity_documents(
     generated = 0
     failed_document_ids: list[UUID] = []
     storage = SupabaseStorage()
+
+    # ⚡ Bolt: Fix N+1 query problem by bulk fetching students, templates, and fields outside the loop.
+    student_ids = {doc.student_id for doc in pending}
+    students_by_id = {
+        student.id: student
+        for student in db.scalars(select(Student).where(Student.id.in_(student_ids))).all()
+    } if student_ids else {}
+
+    template_ids = {doc.template_id or activity.template_id for doc in pending}
+    templates_by_id = {
+        template.id: template
+        for template in db.scalars(select(Template).where(Template.id.in_(template_ids))).all()
+    } if template_ids else {}
+
+    template_fields_by_template_id = {}
+    if template_ids:
+        all_fields = db.scalars(select(TemplateField).where(TemplateField.template_id.in_(template_ids))).all()
+        for field in all_fields:
+            template_fields_by_template_id.setdefault(field.template_id, []).append(field)
+
     for document in pending:
         document_id = document.id
         try:
-            student = db.get(Student, document.student_id)
-            template = db.get(Template, document.template_id or activity.template_id)
+            student = students_by_id.get(document.student_id)
+            template = templates_by_id.get(document.template_id or activity.template_id)
             if student is None or template is None:
                 raise DocumentLifecycleError("The issued document is missing its student or template")
-            fields = list(db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all())
+            fields = template_fields_by_template_id.get(template.id, [])
             try:
                 values = json.loads(document.render_payload_json or "")
             except json.JSONDecodeError as error:
