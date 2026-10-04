@@ -39,7 +39,8 @@ def create_app() -> FastAPI:
         allow_origins=settings.frontend_origins,
         # Cloudflare Pages serves branch and preview deployments on project
         # subdomains.  They need the same credentialled API access as prod.
-        allow_origin_regex=r"https://(?:[a-z0-9-]+\.)?emc-veritas\.pages\.dev",
+        # Ensure the regex is anchored with `$` to prevent domain suffix hijacking
+        allow_origin_regex=r"https://(?:[a-z0-9-]+\.)?emc-veritas\.pages\.dev$",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
