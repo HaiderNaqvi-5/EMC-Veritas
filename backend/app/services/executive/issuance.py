@@ -69,38 +69,61 @@ def _preflight_session_recognition(db: Session, session: EmcSession) -> list[_Re
         )
         .order_by(ExecutiveMembership.role, ExecutiveMembership.id)
     ).all()
+
+    # Pre-fetch existing issued documents for this session to avoid N+1
+    membership_ids = [m.id for m, _, _ in rows]
+    existing_docs = set()
+    if membership_ids:
+        for doc_mem_id, doc_type in db.execute(
+            select(IssuedDocument.executive_membership_id, IssuedDocument.document_type).where(
+                IssuedDocument.executive_membership_id.in_(membership_ids),
+                IssuedDocument.document_type.in_(RECOGNITION_DOCUMENT_TYPES),
+            )
+        ).all():
+            existing_docs.add((doc_mem_id, doc_type))
+
+    # Pre-fetch required templates to avoid N+1
+    roles = list({m.role for m, _, _ in rows})
+    templates_by_role_type: dict[tuple[str, DocumentType], LeadershipTemplate] = {}
+    if roles:
+        templates = db.scalars(
+            select(LeadershipTemplate).where(
+                LeadershipTemplate.role.in_(roles),
+                LeadershipTemplate.document_type.in_(RECOGNITION_DOCUMENT_TYPES),
+                LeadershipTemplate.active.is_(True),
+                LeadershipTemplate.archived.is_(False),
+            )
+        ).all()
+        for t in templates:
+            templates_by_role_type[(t.role, t.document_type)] = t
+
+    # Pre-fetch template fields
+    template_ids = [t.id for t in templates_by_role_type.values()]
+    fields_by_template_id: dict[UUID, list[LeadershipTemplateField]] = defaultdict(list)
+    if template_ids:
+        all_fields = db.scalars(
+            select(LeadershipTemplateField).where(
+                LeadershipTemplateField.leadership_template_id.in_(template_ids)
+            )
+        ).all()
+        for f in all_fields:
+            fields_by_template_id[f.leadership_template_id].append(f)
+
     signatories, availability = _active_signatories(db)
     plans: list[_RecognitionPlan] = []
     for membership, student, society_name in rows:
         role_end_date = membership.end_date or session.end_date
         for document_type in RECOGNITION_DOCUMENT_TYPES:
-            existing = db.scalar(
-                select(IssuedDocument.id).where(
-                    IssuedDocument.executive_membership_id == membership.id,
-                    IssuedDocument.document_type == document_type,
-                )
-            )
-            if existing is not None:
+            if (membership.id, document_type) in existing_docs:
                 continue
-            template = db.scalar(
-                select(LeadershipTemplate).where(
-                    LeadershipTemplate.role == membership.role,
-                    LeadershipTemplate.document_type == document_type,
-                    LeadershipTemplate.active.is_(True),
-                    LeadershipTemplate.archived.is_(False),
-                )
-            )
+
+            template = templates_by_role_type.get((membership.role, document_type))
             if template is None:
                 raise RecognitionPrerequisiteError(
                     f"No active {document_type.value} template is configured for {membership.role}"
                 )
-            fields = list(
-                db.scalars(
-                    select(LeadershipTemplateField).where(
-                        LeadershipTemplateField.leadership_template_id == template.id
-                    )
-                ).all()
-            )
+
+            fields = fields_by_template_id[template.id]
             missing_fields = missing_leadership_template_fields({field.field_name for field in fields})
             if missing_fields:
                 raise RecognitionPrerequisiteError(
