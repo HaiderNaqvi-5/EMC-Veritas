@@ -14,6 +14,9 @@ class _Scalars:
     def all(self) -> list[object]:
         return self.values
 
+    def __iter__(self):
+        return iter(self.values)
+
 
 class _Rows:
     def __init__(self, values: list[object]) -> None:
@@ -28,9 +31,14 @@ class _RecognitionDb:
         self.scalar_values = scalar_values
         self.scalar_lists = scalar_lists
         self.rows = rows
+        self._execute_count = 0
 
     def execute(self, query: object) -> _Rows:
-        return _Rows(self.rows)
+        if self._execute_count == 0:
+            self._execute_count += 1
+            return _Rows(self.rows)
+        else:
+            return _Rows(self.scalar_lists.pop(0))
 
     def scalar(self, query: object) -> object:
         return self.scalar_values.pop(0)
@@ -70,10 +78,16 @@ def test_session_recognition_preflight_reserves_two_fixed_template_plans() -> No
         id=uuid4(), role="President", document_type=DocumentType.END_OF_TENURE_APPRECIATION,
         signature_handling="retain", active=True, archived=False,
     )
-    fields = [_field(name) for name in REQUIRED_LEADERSHIP_TEMPLATE_FIELDS]
+    fields_rec = [_field(name) for name in REQUIRED_LEADERSHIP_TEMPLATE_FIELDS]
+    for f in fields_rec:
+        f.leadership_template_id = recognition.id
+    fields_app = [_field(name) for name in REQUIRED_LEADERSHIP_TEMPLATE_FIELDS]
+    for f in fields_app:
+        f.leadership_template_id = appreciation.id
+
     db = _RecognitionDb(
-        scalar_values=[None, recognition, None, appreciation],
-        scalar_lists=[[dsa, hod], fields, fields],
+        scalar_values=[],
+        scalar_lists=[[], [recognition, appreciation], fields_rec + fields_app, [dsa, hod]],
         rows=[(membership, student, None)],
     )
 
@@ -95,8 +109,16 @@ def test_session_recognition_preflight_skips_existing_membership_letters() -> No
         end_date=date(2026, 8, 31), status=MembershipStatus.COMPLETED,
     )
     db = _RecognitionDb(
-        scalar_values=[uuid4(), uuid4()],
-        scalar_lists=[[]],
+        scalar_values=[],
+        scalar_lists=[
+            [
+                (membership.id, DocumentType.LEADERSHIP_RECOGNITION),
+                (membership.id, DocumentType.END_OF_TENURE_APPRECIATION)
+            ],
+            [],
+            [],
+            []
+        ],
         rows=[(membership, SimpleNamespace(), None)],
     )
 
