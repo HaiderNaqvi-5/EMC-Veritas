@@ -70,7 +70,7 @@ def _admin_document_response(
 
 
 def _signature_images_for_reserved_document(
-    db: Session, document: IssuedDocument, storage: SupabaseStorage
+    db: Session, document: IssuedDocument, storage: SupabaseStorage, signature_cache: dict[str, bytes] | None = None
 ) -> dict[str, bytes]:
     rows = db.execute(
         select(DocumentSignatory, Signatory)
@@ -79,10 +79,18 @@ def _signature_images_for_reserved_document(
     ).all()
     if not rows:
         raise DocumentLifecycleError("The document has no reserved signature snapshot")
-    return {
-        signature_field_name(snapshot.official_title): storage.download(signatory.signature_storage_key)
-        for snapshot, signatory in rows
-    }
+    result = {}
+    for snapshot, signatory in rows:
+        field_name = signature_field_name(snapshot.official_title)
+        storage_key = signatory.signature_storage_key
+        if signature_cache is not None and storage_key in signature_cache:
+            result[field_name] = signature_cache[storage_key]
+        else:
+            image_bytes = storage.download(storage_key)
+            if signature_cache is not None:
+                signature_cache[storage_key] = image_bytes
+            result[field_name] = image_bytes
+    return result
 
 
 @router.get("", response_model=list[AdminDocumentResponse])
@@ -302,14 +310,39 @@ def pre_generate_activity_documents(
     generated = 0
     failed_document_ids: list[UUID] = []
     storage = SupabaseStorage()
+
+    # Pre-fetch data outside the loop to prevent N+1 queries
+    student_ids = {doc.student_id for doc in pending}
+    students = {
+        student.id: student
+        for student in db.scalars(select(Student).where(Student.id.in_(student_ids))).all()
+    } if student_ids else {}
+
+    template_ids = {doc.template_id for doc in pending if doc.template_id}
+    if activity.template_id:
+        template_ids.add(activity.template_id)
+
+    templates = {
+        template.id: template
+        for template in db.scalars(select(Template).where(Template.id.in_(template_ids))).all()
+    } if template_ids else {}
+
+    fields_by_template = {
+        template_id: list(db.scalars(select(TemplateField).where(TemplateField.template_id == template_id)).all())
+        for template_id in template_ids
+    }
+
+    template_pdf_cache: dict[str, bytes] = {}
+    signature_cache: dict[str, bytes] = {}
+
     for document in pending:
         document_id = document.id
         try:
-            student = db.get(Student, document.student_id)
-            template = db.get(Template, document.template_id or activity.template_id)
+            student = students.get(document.student_id)
+            template = templates.get(document.template_id or activity.template_id)
             if student is None or template is None:
                 raise DocumentLifecycleError("The issued document is missing its student or template")
-            fields = list(db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all())
+            fields = fields_by_template.get(template.id, [])
             try:
                 values = json.loads(document.render_payload_json or "")
             except json.JSONDecodeError as error:
@@ -323,9 +356,13 @@ def pre_generate_activity_documents(
                     "issue_date": document.issue_date.isoformat(),
                 }
             values["verification_id"] = document.verification_id
-            template_pdf = storage.download(template.storage_key)
+
+            if template.storage_key not in template_pdf_cache:
+                template_pdf_cache[template.storage_key] = storage.download(template.storage_key)
+            template_pdf = template_pdf_cache[template.storage_key]
+
             image_values = (
-                _signature_images_for_reserved_document(db, document, storage)
+                _signature_images_for_reserved_document(db, document, storage, signature_cache)
                 if should_replace_signatures(template.signature_handling, fields)
                 else None
             )
