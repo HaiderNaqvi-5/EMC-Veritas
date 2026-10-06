@@ -40,6 +40,7 @@ def _insert_text(
     custom_fonts: Mapping[str, bytes],
     *,
     alignment: str = "center",
+    emphasize: bool = True,
 ) -> None:
     if field.width <= 0 or field.height < 6:
         raise CertificateRenderingError(f"Template field '{field.field_name}' has an invalid box")
@@ -89,6 +90,11 @@ def _insert_text(
     if font_size <= 4:
         raise CertificateRenderingError(f"Value for template field '{field.field_name}' does not fit")
     baseline_y = field.y + (field.height + font_size) / 2
+    if field.field_name == "issue_date":
+        # A date token sits inline after the fixed "Issue Date:" label. Its
+        # source bbox starts at the glyph top, so centring in the saved box
+        # moves its baseline visibly below the label.
+        baseline_y = field.y + font_size
     if field.field_name == "student_name":
         # A recipient name is normally placed immediately above an underline.
         # Reserve a bottom margin so the visible glyphs remain above it.
@@ -101,8 +107,8 @@ def _insert_text(
         fontname=font_name,
         fontsize=font_size,
         color=_color(getattr(field, "text_color", "#000000")),
-        render_mode=2,
-        border_width=0.04,
+        render_mode=2 if emphasize else 0,
+        border_width=0.04 if emphasize else 1,
     )
 
 
@@ -649,6 +655,7 @@ def _render_tagged_paragraph(
     lineheight: float,
     font_name: str,
     font_bytes: bytes | None,
+    bold_values: bool = True,
 ) -> None:
     """Render prose while bolding only values substituted for template tags."""
     if font_bytes is None:
@@ -663,6 +670,9 @@ def _render_tagged_paragraph(
     # not used anywhere in the template subset. Keep the template font for all
     # existing prose and use the normal EMC font only for those missing tag
     # glyphs instead of silently dropping characters.
+    # The original template font is often a subset. Use the complete EMC sans
+    # file only for characters absent from it, but render it at the same point
+    # size and without a stroke so values do not look pasted on afterwards.
     fallback_bytes = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
     fallback_name = f"{font_name}Fallback"
     try:
@@ -717,8 +727,8 @@ def _render_tagged_paragraph(
                 fontname=word_font_name,
                 fontsize=size,
                 color=color,
-                render_mode=2 if bold else 0,
-                border_width=0.04 if bold else 1,
+                render_mode=2 if bold and bold_values else 0,
+                border_width=0.04 if bold and bold_values else 1,
             )
             x += word_width
         baseline += size * lineheight
@@ -755,7 +765,7 @@ def _render_leadership_paragraph(
     # redaction. The prose region is intentionally blank in this template, so
     # an opaque cover guarantees no legacy glyph fragments can show through.
     page.draw_rect(rectangle, color=None, fill=(1, 1, 1), overlay=True)
-    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_LEFT, lineheight=1.20, font_name="EMCLeadershipBody", font_bytes=font_bytes)
+    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_LEFT, lineheight=1.20, font_name="EMCLeadershipBody", font_bytes=font_bytes, bold_values=False)
 
 
 def render_certificate(
@@ -918,6 +928,7 @@ def render_certificate(
                     normalized_values[field.field_name],
                     fonts,
                     alignment="left" if is_leadership_template and field.field_name == "roll_number" else "center",
+                    emphasize=not is_leadership_template,
                 )
         if watermark:
             for page in document:
