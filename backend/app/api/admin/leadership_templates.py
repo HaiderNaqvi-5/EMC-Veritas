@@ -80,6 +80,43 @@ def _document_type(value: LeadershipDocumentType) -> DocumentType:
     return document_type
 
 
+def _restore_detected_fields_for_empty_template(
+    db: Session, template: LeadershipTemplate, template_pdf: bytes
+) -> list[LeadershipTemplateField]:
+    """Recover tag positions for legacy drafts that have no saved fields.
+
+    Older leadership-template uploads could show detected boxes in the editor
+    without persisting them. A preview should recover those exact visible tags
+    instead of incorrectly reporting that every field is missing.
+    """
+    detected = [field for field in detect_leadership_placeholders(template_pdf) if _is_allowed_field_name(field.field_name)]
+    names = {field.field_name for field in detected}
+    missing = missing_leadership_template_fields(names)
+    if missing:
+        raise HTTPException(status_code=422, detail="Template is missing fields: " + ", ".join(sorted(missing)))
+    for field in detected:
+        db.add(
+            LeadershipTemplateField(
+                leadership_template_id=template.id,
+                field_name=field.field_name,
+                page_number=field.page_number,
+                x=field.x,
+                y=field.y,
+                width=field.width,
+                height=field.height,
+            )
+        )
+    # Templates without explicit signature tags keep the signatures embedded
+    # in their PDF, which is the safe default for a recovered draft.
+    template.signature_handling = template.signature_handling or "retain"
+    db.commit()
+    return list(
+        db.scalars(
+            select(LeadershipTemplateField).where(LeadershipTemplateField.leadership_template_id == template.id)
+        ).all()
+    )
+
+
 @router.get("", response_model=list[LeadershipTemplateResponse])
 def list_leadership_templates(
     db: Session = Depends(get_db), admin: Admin = Depends(super_admin_required)
@@ -262,6 +299,14 @@ def preview_leadership_template(
         ).all()
     )
     missing = missing_leadership_template_fields({field.field_name for field in fields})
+    template_pdf: bytes | None = None
+    if missing and not fields:
+        try:
+            template_pdf = SupabaseStorage().download(template.storage_key)
+        except RuntimeError as error:
+            raise HTTPException(status_code=503, detail="Template storage is temporarily unavailable") from error
+        fields = _restore_detected_fields_for_empty_template(db, template, template_pdf)
+        missing = missing_leadership_template_fields({field.field_name for field in fields})
     if missing:
         raise HTTPException(status_code=422, detail="Template is missing fields: " + ", ".join(sorted(missing)))
     end_date = membership.end_date or session.end_date
@@ -282,7 +327,7 @@ def preview_leadership_template(
     image_values: dict[str, bytes] | None = None
     try:
         storage = SupabaseStorage()
-        template_pdf = storage.download(template.storage_key)
+        template_pdf = template_pdf or storage.download(template.storage_key)
         if template.signature_handling == "replace":
             signatories = list(db.scalars(select(Signatory).where(Signatory.active.is_(True))).all())
             # A preview must reflect the fields that this particular PDF
