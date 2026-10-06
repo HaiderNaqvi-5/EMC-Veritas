@@ -42,7 +42,7 @@ from app.services.signatures.rendering import (
     should_replace_signatures,
     signature_field_name,
 )
-from app.services.storage.supabase import SupabaseStorage
+from app.services.storage.supabase import CachedSupabaseStorage, SupabaseStorage
 from app.services.templates.fields import missing_required_fields
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -301,7 +301,7 @@ def pre_generate_activity_documents(
     ready_before = len(valid_documents) - sum(1 for document in valid_documents if not document.storage_key)
     generated = 0
     failed_document_ids: list[UUID] = []
-    storage = SupabaseStorage()
+    storage = CachedSupabaseStorage()
     for document in pending:
         document_id = document.id
         try:

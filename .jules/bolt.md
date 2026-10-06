@@ -1,0 +1,3 @@
+## 2024-05-18 - [Optimized Batch Downloads]
+**Learning:** External storage downloads (e.g., Supabase `storage.download` for template PDFs and signature images) during batch document rendering operations were causing redundant network I/O, as the same assets were fetched multiple times across the loop iterations.
+**Action:** Implemented a short-lived, request-scoped `CachedSupabaseStorage` wrapper that caches downloaded bytes in an in-memory dictionary. This prevents redundant network requests for identical templates, signatures, or fonts during the same batch operation, significantly improving performance.

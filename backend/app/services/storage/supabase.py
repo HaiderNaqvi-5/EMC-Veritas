@@ -35,3 +35,20 @@ class SupabaseStorage:
             return response.content
         except httpx.HTTPError as error:
             raise RuntimeError("Supabase Storage download failed") from error
+
+
+class CachedSupabaseStorage(SupabaseStorage):
+    """
+    A Supabase storage wrapper that caches downloaded bytes in memory.
+    Useful for batch operations where identical templates, signatures, or fonts
+    are requested multiple times during the same request lifecycle.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._cache: dict[str, bytes] = {}
+
+    def download(self, key: str) -> bytes:
+        if key not in self._cache:
+            self._cache[key] = super().download(key)
+        return self._cache[key]
