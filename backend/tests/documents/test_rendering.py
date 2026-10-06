@@ -499,3 +499,44 @@ def test_rendering_rebuilds_a_tagged_leadership_letter_body_without_floating_val
     assert "Ayesha Khan for serving as Society Head" in text
     assert "Media & Graphics during Session 2025-26" in text
     assert role_span["bbox"][1] >= 150
+
+
+def test_leadership_renderer_keeps_title_and_footer_when_issue_date_is_above_body() -> None:
+    document = fitz.open()
+    page = document.new_page(width=600, height=700)
+    page.insert_text((60, 50), "Issue Date: {{issue_date}}", fontsize=10)
+    page.insert_text((120, 100), "LETTER OF RECOGNITION", fontsize=18)
+    page.insert_textbox(
+        fitz.Rect(60, 150, 540, 270),
+        "The Club recognizes {{student_name}} as {{role}} during {{session_name}}, from "
+        "{{role_start_date}} to {{role_end_date}}. Their service is appreciated.",
+        fontsize=10,
+    )
+    page.insert_text((60, 600), "Original signature block", fontsize=10)
+    page.draw_rect(fitz.Rect(260, 570, 320, 630))
+    template = document.tobytes()
+    document.close()
+    names = ("student_name", "role", "society_name", "role_start_date", "role_end_date", "session_name", "issue_date")
+    fields = [
+        SimpleNamespace(field_name=name, page_number=1, x=60, y=40, width=140, height=18,
+                        font_family="helv", custom_font_storage_key=None, font_size=10, text_color="#000000")
+        for name in names
+    ]
+    values = {
+        "student_name": "Ayesha Khan", "role": "Society Head", "society_name": "",
+        "role_start_date": "2025-05-01", "role_end_date": "2026-07-31",
+        "session_name": "2K22", "issue_date": "2026-10-07",
+    }
+
+    output = render_certificate(
+        template, fields, values, verification_url="https://example.test/verify/x",
+        required_field_names=frozenset(names),
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    text = rendered[0].get_text()
+    drawings = rendered[0].get_drawings()
+    rendered.close()
+    assert "LETTER OF RECOGNITION" in text
+    assert "Original signature block" in text
+    assert any(drawing["rect"].intersects(fitz.Rect(260, 570, 320, 630)) for drawing in drawings)

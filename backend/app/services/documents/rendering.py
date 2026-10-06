@@ -274,6 +274,37 @@ def _source_text_style(page: fitz.Page, rectangle: fitz.Rect) -> tuple[str, floa
     return "helv", 10, (14, 135, 204)
 
 
+def _source_font_bytes(page: fitz.Page, rectangle: fitz.Rect) -> bytes | None:
+    """Return the embedded font used by text at ``rectangle`` when available.
+
+    A template preview must keep the source typography.  Reconstructing a
+    paragraph with a bundled fallback font subtly changes its word widths and
+    line breaks, even when the point size is the same.  PDF subset names are
+    prefixed (for example ``DAAAAA+Calibri``), so compare their family suffix.
+    """
+    source_name: str | None = None
+    for block in page.get_text("dict").get("blocks", []):
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                if fitz.Rect(span["bbox"]).intersects(rectangle):
+                    source_name = str(span.get("font", "")).split("+")[-1].lower()
+                    break
+            if source_name:
+                break
+        if source_name:
+            break
+    if not source_name:
+        return None
+    for font in page.get_fonts(full=True):
+        base_name = str(font[3]).split("+")[-1].lower()
+        if base_name != source_name:
+            continue
+        extracted = page.parent.extract_font(font[0])
+        font_bytes = extracted[3]
+        return font_bytes or None
+    return None
+
+
 def _paragraph_rectangle(page: fitz.Page, rectangle: fitz.Rect) -> fitz.Rect:
     """Provide enough room to redraw a paragraph, without touching nearby content."""
     return fitz.Rect(
@@ -304,7 +335,7 @@ def _block_text_from_words(page: fitz.Page, rectangle: fitz.Rect) -> str:
     )
 
 
-def _paragraph_from_tagged_block(page: fitz.Page, values: Mapping[str, str]) -> tuple[fitz.Rect, str, set[str], str, float, tuple[float, float, float]] | None:
+def _paragraph_from_tagged_block(page: fitz.Page, values: Mapping[str, str]) -> tuple[fitz.Rect, str, set[str], float, tuple[float, float, float], bytes | None] | None:
     """Find a paragraph authored with field tags and make it one clean block.
 
     The author writes normal prose such as ``... {{roll_number}} ...`` in the
@@ -368,9 +399,10 @@ def _paragraph_from_tagged_block(page: fitz.Page, values: Mapping[str, str]) -> 
         content = token_pattern.sub(
             lambda match: values.get(match.group(1), match.group(0)), " ".join(texts)
         ).strip()
-        font, size, rgb = _source_text_style(page, rectangle)
+        _font, size, rgb = _source_text_style(page, rectangle)
+        font_bytes = _source_font_bytes(page, rectangle)
         _remove_text_in_rectangle(page, rectangle)
-        return rectangle, content, names, font, size, rgb
+        return rectangle, content, names, size, rgb, font_bytes
     return None
 
 
@@ -398,7 +430,7 @@ def _leadership_content(template_text: str, values: Mapping[str, str]) -> str:
 
 def _leadership_paragraph_from_tagged_blocks(
     page: fitz.Page, values: Mapping[str, str]
-) -> tuple[fitz.Rect, str, set[str], str, float, tuple[int, int, int]] | None:
+) -> tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None] | None:
     """Replace the full prose area of a tagged leadership letter.
 
     Leadership letters use several deterministic fields in a normal flowing
@@ -417,7 +449,9 @@ def _leadership_paragraph_from_tagged_blocks(
     )
     for index, (anchor, anchor_text) in enumerate(blocks):
         names = {name for name in token_pattern.findall(anchor_text) if name in values}
-        if not names.intersection(_LEADERSHIP_BODY_FIELDS - {"student_name"}):
+        # ``issue_date`` belongs in the letter's upper metadata line, above
+        # the title.  It must never be permitted to become the body anchor.
+        if not names.intersection(_LEADERSHIP_BODY_FIELDS - {"student_name", "issue_date"}):
             continue
         rectangles = [anchor]
         texts = [anchor_text]
@@ -446,16 +480,17 @@ def _leadership_paragraph_from_tagged_blocks(
             combined.x0,
             combined.y0,
             combined.x1,
-            min(page.rect.height - 72, combined.y1 + 96),
+            min(page.rect.height - 72, combined.y1 + 20),
         )
         content = _leadership_content("\n\n".join(texts), values)
-        font, size, rgb = _source_text_style(page, anchor)
+        _font, size, rgb = _source_text_style(page, anchor)
+        font_bytes = _source_font_bytes(page, anchor)
         # Leadership letters reserve a plain white prose area.  Remove that
         # entire area before drawing its fresh paragraph; partial span
         # redactions can leave fragments of Canva's separately-drawn glyphs
         # underneath the replacement text.
         page.add_redact_annot(rectangle, fill=(1, 1, 1))
-        return rectangle, content, names, font, size, rgb
+        return rectangle, content, names, size, rgb, font_bytes
     return None
 
 
@@ -482,7 +517,7 @@ def _remove_leadership_recipient_heading(page: fitz.Page) -> None:
         page.add_redact_annot(rectangle, fill=None)
 
 
-def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tuple[fitz.Rect, str, set[str], str, float, tuple[int, int, int]] | None:
+def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None] | None:
     """Replace a flowing certificate sentence as one typographic block.
 
     A PDF stores the words of a paragraph as independent drawing operations.
@@ -530,9 +565,10 @@ def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tu
         "Their leadership, coordination, and commitment significantly contributed to the "
         "successful execution of the activity."
     )
-    font, size, rgb = _source_text_style(page, first)
+    _font, size, rgb = _source_text_style(page, first)
+    font_bytes = _source_font_bytes(page, first)
     _remove_text_in_rectangle(page, rectangle)
-    return rectangle, text, needed, font, size, rgb
+    return rectangle, text, needed, size, rgb, font_bytes
 
 
 def _activity_paragraph_from_field_cluster(
@@ -540,7 +576,7 @@ def _activity_paragraph_from_field_cluster(
     page_number: int,
     fields: Iterable[TemplateField],
     values: Mapping[str, str],
-) -> tuple[fitz.Rect, str, set[str], str, float, tuple[int, int, int]] | None:
+) -> tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None] | None:
     """Replace a recognition paragraph from its saved activity-field cluster.
 
     This is deliberately independent of PDF text extraction. A valid template
@@ -571,7 +607,7 @@ def _activity_paragraph_from_field_cluster(
         "successful execution of the activity."
     )
     _remove_text_in_rectangle(page, rectangle)
-    return rectangle, text, needed, "helv", 10, (14, 135, 204)
+    return rectangle, text, needed, 10, (14, 135, 204), None
 
 
 def _paragraph_words(text: str, values: Mapping[str, str], tagged_names: set[str]) -> list[tuple[str | None, bool]]:
@@ -612,18 +648,32 @@ def _render_tagged_paragraph(
     align: int,
     lineheight: float,
     font_name: str,
+    font_bytes: bytes | None,
 ) -> None:
     """Render prose while bolding only values substituted for template tags."""
-    font_bytes = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
+    if font_bytes is None:
+        font_bytes = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
     try:
         page.insert_font(fontname=font_name, fontbuffer=font_bytes)
     except (RuntimeError, ValueError) as error:
         raise CertificateRenderingError("Certificate paragraph font is unreadable") from error
     font = fitz.Font(fontbuffer=font_bytes)
+    # PDF templates embed subsetted fonts. The source paragraph can be drawn
+    # back exactly, but a new roll number or name may contain glyphs that were
+    # not used anywhere in the template subset. Keep the template font for all
+    # existing prose and use the normal EMC font only for those missing tag
+    # glyphs instead of silently dropping characters.
+    fallback_bytes = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
+    fallback_name = f"{font_name}Fallback"
+    try:
+        page.insert_font(fontname=fallback_name, fontbuffer=fallback_bytes)
+    except (RuntimeError, ValueError) as error:
+        raise CertificateRenderingError("Certificate paragraph fallback font is unreadable") from error
+    fallback_font = fitz.Font(fontbuffer=fallback_bytes)
     size = min(max(font_size, 5), 16)
     space = font.text_length(" ", fontsize=size)
-    lines: list[list[tuple[str, bool, float, float]] | None] = []
-    line: list[tuple[str, bool, float, float]] = []
+    lines: list[list[tuple[str, bool, float, float, str]] | None] = []
+    line: list[tuple[str, bool, float, float, str]] = []
     width = 0.0
     for word, bold in _paragraph_words(text, values, tagged_names):
         if word is None:
@@ -632,13 +682,18 @@ def _render_tagged_paragraph(
                 line, width = [], 0.0
             lines.append(None)
             continue
-        word_width = font.text_length(word, fontsize=size)
+        word_font = font
+        word_font_name = font_name
+        if not all(font.has_glyph(ord(character)) for character in word):
+            word_font = fallback_font
+            word_font_name = fallback_name
+        word_width = word_font.text_length(word, fontsize=size)
         gap = 0.0 if not line or word[0] in ",.;:)]}" or line[-1][0][-1] in "([{" else space
         required = gap + word_width
         if line and width + required > rectangle.width:
             lines.append(line)
             line, width, gap, required = [], 0.0, 0.0, word_width
-        line.append((word, bold, word_width, gap))
+        line.append((word, bold, word_width, gap, word_font_name))
         width += required
     if line:
         lines.append(line)
@@ -653,13 +708,13 @@ def _render_tagged_paragraph(
             continue
         line_width = sum(item[2] + item[3] for item in items)
         x = rectangle.x0 + ((rectangle.width - line_width) / 2 if align == fitz.TEXT_ALIGN_CENTER else 0)
-        for word, bold, word_width, gap in items:
+        for word, bold, word_width, gap, word_font_name in items:
             x += gap
             point = fitz.Point(x, baseline)
             page.insert_text(
                 point,
                 word,
-                fontname=font_name,
+                fontname=word_font_name,
                 fontsize=size,
                 color=color,
                 render_mode=2 if bold else 0,
@@ -677,11 +732,12 @@ def _render_activity_paragraph(
     rgb: tuple[int, int, int],
     values: Mapping[str, str],
     tagged_names: set[str],
+    font_bytes: bytes | None,
 ) -> None:
     # Use a uniquely embedded font instead of a built-in PDF font alias.
     # Canva templates can already bind aliases such as "helv" to incompatible
     # font resources, which makes newly drawn characters appear fragmented.
-    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_CENTER, lineheight=1.15, font_name="EMCActivityBody")
+    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_CENTER, lineheight=1.15, font_name="EMCActivityBody", font_bytes=font_bytes)
 
 
 def _render_leadership_paragraph(
@@ -692,13 +748,14 @@ def _render_leadership_paragraph(
     rgb: tuple[int, int, int],
     values: Mapping[str, str],
     tagged_names: set[str],
+    font_bytes: bytes | None,
 ) -> None:
     """Render a letter body at its original left-aligned typography."""
     # Some Canva exports retain visual outline paths even after text
     # redaction. The prose region is intentionally blank in this template, so
     # an opaque cover guarantees no legacy glyph fragments can show through.
     page.draw_rect(rectangle, color=None, fill=(1, 1, 1), overlay=True)
-    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_LEFT, lineheight=1.28, font_name="EMCLeadershipBody")
+    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_LEFT, lineheight=1.20, font_name="EMCLeadershipBody", font_bytes=font_bytes)
 
 
 def render_certificate(
@@ -752,7 +809,7 @@ def render_certificate(
         raise CertificateRenderingError("Template is not a readable PDF") from error
 
     try:
-        paragraph_jobs: dict[int, tuple[fitz.Rect, str, set[str], str, float, tuple[int, int, int]]] = {}
+        paragraph_jobs: dict[int, tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None]] = {}
         paragraph_fields: set[tuple[int, str]] = set()
         leadership_paragraph_pages: set[int] = set()
         is_leadership_template = bool(
@@ -782,8 +839,8 @@ def render_certificate(
                         page, page_number, field_list, normalized_values
                     )
             if job:
-                rectangle, text, replaced_names, font, size, rgb = job
-                paragraph_jobs[page_number] = rectangle, text, replaced_names, font, size, rgb
+                rectangle, text, replaced_names, size, rgb, font_bytes = job
+                paragraph_jobs[page_number] = rectangle, text, replaced_names, size, rgb, font_bytes
                 if is_leadership_template:
                     leadership_paragraph_pages.add(page_number)
                     paragraph_fields.update((page_number, name) for name in replaced_names)
@@ -811,20 +868,26 @@ def render_certificate(
                 # label, so redact only the configured placeholder box.
                 _remove_placeholder_from_field(document[field.page_number - 1], field)
                 continue
-            _remove_inline_placeholder(document[field.page_number - 1], field.field_name)
+            if is_leadership_template:
+                # Fields such as ``issue_date`` share a text span with their
+                # fixed label ("Issue Date:").  A broad span redaction would
+                # erase that original template text as well.
+                _remove_placeholder_from_field(document[field.page_number - 1], field)
+            else:
+                _remove_inline_placeholder(document[field.page_number - 1], field.field_name)
         for page in document:
             # Preserve vector artwork. Canva commonly stores the decorative
             # frame and the QR holder as large grouped drawings, so removing
             # intersecting graphics would erase those template elements.
             page.apply_redactions(images=0, graphics=0, text=0)
-        for page_number, (rectangle, text, replaced_names, _font, size, rgb) in paragraph_jobs.items():
+        for page_number, (rectangle, text, replaced_names, size, rgb, font_bytes) in paragraph_jobs.items():
             if page_number in leadership_paragraph_pages:
                 _render_leadership_paragraph(
-                    document[page_number - 1], rectangle, text, size, rgb, normalized_values, replaced_names
+                    document[page_number - 1], rectangle, text, size, rgb, normalized_values, replaced_names, font_bytes
                 )
             else:
                 _render_activity_paragraph(
-                    document[page_number - 1], rectangle, text, size, rgb, normalized_values, replaced_names
+                    document[page_number - 1], rectangle, text, size, rgb, normalized_values, replaced_names, font_bytes
                 )
         qr_fields = {
             field.page_number: _effective_qr_field(document[field.page_number - 1], field)
