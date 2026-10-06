@@ -41,11 +41,14 @@ def leadership_letter_values(
     issue_date: date,
 ) -> Mapping[str, str | date]:
     """Return the complete fixed-record substitution set for V1 letters."""
+    # Only a Society Head has a society assignment. Keep the value blank for
+    # all overall EC offices even if a legacy record happens to carry one.
+    rendered_society_name = society_name if role == "Society Head" else ""
     return {
         "student_name": student_name,
         "roll_number": roll_number,
         "role": role,
-        "society_name": society_name or "",
+        "society_name": rendered_society_name or "",
         "role_start_date": role_start_date,
         "role_end_date": role_end_date,
         "session_name": session_name,

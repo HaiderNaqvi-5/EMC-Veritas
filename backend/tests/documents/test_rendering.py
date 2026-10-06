@@ -2,7 +2,16 @@ from types import SimpleNamespace
 
 import fitz
 
-from app.services.documents.rendering import render_certificate
+from app.services.documents.rendering import _leadership_content, render_certificate
+
+
+def test_leadership_content_omits_the_society_clause_for_an_overall_ec_role() -> None:
+    text = _leadership_content(
+        "The Club recognizes {{student_name}} for serving as {{role}} of {{society_name}} during {{session_name}}.",
+        {"student_name": "Ayesha Khan", "role": "President", "society_name": "", "session_name": "2K22"},
+    )
+
+    assert text == "The Club recognizes Ayesha Khan for serving as President during 2K22."
 
 
 def test_rendering_replaces_an_inline_pdf_token_without_leaving_it_visible() -> None:

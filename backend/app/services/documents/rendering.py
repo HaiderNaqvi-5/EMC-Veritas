@@ -377,6 +377,23 @@ _LEADERSHIP_BODY_FIELDS = frozenset(
 )
 
 
+def _leadership_content(template_text: str, values: Mapping[str, str]) -> str:
+    """Fill a leadership body without leaving a dangling society phrase.
+
+    Overall EC roles do not belong to one society. Their data intentionally
+    contains an empty ``society_name``, so remove the complete optional
+    ``of {{society_name}}`` clause before replacing the remaining tags.
+    """
+    if not values.get("society_name", "").strip():
+        template_text = re.sub(
+            r"\s+of\s+\{\{society_name\}\}", "", template_text, flags=re.IGNORECASE
+        )
+    token_pattern = re.compile(r"\{\{([a-z][a-z0-9_]*)\}\}")
+    content = token_pattern.sub(lambda match: values.get(match.group(1), match.group(0)), template_text)
+    content = re.sub(r"[ \t]+([,.;:])", r"\1", content)
+    return re.sub(r"[ \t]{2,}", " ", content).strip()
+
+
 def _leadership_paragraph_from_tagged_blocks(
     page: fitz.Page, values: Mapping[str, str]
 ) -> tuple[fitz.Rect, str, set[str], str, float, tuple[int, int, int]] | None:
@@ -429,9 +446,7 @@ def _leadership_paragraph_from_tagged_blocks(
             combined.x1,
             min(page.rect.height - 72, combined.y1 + 48),
         )
-        content = token_pattern.sub(
-            lambda match: values.get(match.group(1), match.group(0)), "\n\n".join(texts)
-        ).strip()
+        content = _leadership_content("\n\n".join(texts), values)
         font, size, rgb = _source_text_style(page, anchor)
         # Leadership letters reserve a plain white prose area.  Remove that
         # entire area before drawing its fresh paragraph; partial span
