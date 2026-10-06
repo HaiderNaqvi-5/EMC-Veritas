@@ -38,6 +38,8 @@ def _insert_text(
     field: TemplateField,
     value: str,
     custom_fonts: Mapping[str, bytes],
+    *,
+    alignment: str = "center",
 ) -> None:
     if field.width <= 0 or field.height < 6:
         raise CertificateRenderingError(f"Template field '{field.field_name}' has an invalid box")
@@ -91,7 +93,8 @@ def _insert_text(
         # A recipient name is normally placed immediately above an underline.
         # Reserve a bottom margin so the visible glyphs remain above it.
         baseline_y = field.y + max(4, field.height - font_size * 0.35)
-    point = fitz.Point(field.x + max((field.width - text_width) / 2, 0), baseline_y)
+    x = field.x if alignment == "left" else field.x + max((field.width - text_width) / 2, 0)
+    point = fitz.Point(x, baseline_y)
     page.insert_text(
         point,
         value,
@@ -369,6 +372,99 @@ def _paragraph_from_tagged_block(page: fitz.Page, values: Mapping[str, str]) -> 
     return None
 
 
+_LEADERSHIP_BODY_FIELDS = frozenset(
+    {"student_name", "role", "society_name", "role_start_date", "role_end_date", "session_name", "issue_date"}
+)
+
+
+def _leadership_paragraph_from_tagged_blocks(
+    page: fitz.Page, values: Mapping[str, str]
+) -> tuple[fitz.Rect, str, set[str], str, float, tuple[int, int, int]] | None:
+    """Replace the full prose area of a tagged leadership letter.
+
+    Leadership letters use several deterministic fields in a normal flowing
+    letter body. Rendering each narrow tag box independently makes the values
+    overlap and deletes the source prose. Rebuild that one body at the source
+    position and source font size instead.
+    """
+    token_pattern = re.compile(r"\{\{([a-z][a-z0-9_]*)\}\}")
+    blocks = sorted(
+        [
+            (fitz.Rect(block["bbox"]), _block_text_from_words(page, fitz.Rect(block["bbox"])))
+            for block in page.get_text("dict").get("blocks", [])
+            if "lines" in block
+        ],
+        key=lambda item: (item[0].y0, item[0].x0),
+    )
+    for index, (anchor, anchor_text) in enumerate(blocks):
+        names = {name for name in token_pattern.findall(anchor_text) if name in values}
+        if not names.intersection(_LEADERSHIP_BODY_FIELDS - {"student_name"}):
+            continue
+        rectangles = [anchor]
+        texts = [anchor_text]
+        last_bottom = anchor.y1
+        for rectangle, text in blocks[index + 1 :]:
+            if rectangle.y1 <= last_bottom:
+                continue
+            if rectangle.y0 > last_bottom + 30:
+                break
+            # Stay inside the letter body; side elements and signature blocks
+            # must never be absorbed into the prose replacement rectangle.
+            if rectangle.x1 < anchor.x0 - 24 or rectangle.x0 > anchor.x1 + 24:
+                continue
+            rectangles.append(rectangle)
+            texts.append(text)
+            names.update(name for name in token_pattern.findall(text) if name in values)
+            last_bottom = max(last_bottom, rectangle.y1)
+        combined = fitz.Rect(rectangles[0])
+        for rectangle in rectangles[1:]:
+            combined.include_rect(rectangle)
+        # Keep the body anchored at its authored top edge and use only the
+        # intentional blank space directly beneath it. This accommodates a
+        # real name or society that wraps to one more line without shifting
+        # the letter into the recipient heading or signature area.
+        rectangle = fitz.Rect(
+            combined.x0,
+            combined.y0,
+            combined.x1,
+            min(page.rect.height - 72, combined.y1 + 48),
+        )
+        content = token_pattern.sub(
+            lambda match: values.get(match.group(1), match.group(0)), "\n\n".join(texts)
+        ).strip()
+        font, size, rgb = _source_text_style(page, anchor)
+        # Leadership letters reserve a plain white prose area.  Remove that
+        # entire area before drawing its fresh paragraph; partial span
+        # redactions can leave fragments of Canva's separately-drawn glyphs
+        # underneath the replacement text.
+        page.add_redact_annot(rectangle, fill=(1, 1, 1))
+        return rectangle, content, names, font, size, rgb
+    return None
+
+
+def _remove_placeholder_from_field(page: fitz.Page, field: TemplateField) -> None:
+    """Erase the placeholder at one saved field box, not every matching tag."""
+    rectangle = fitz.Rect(field.x, field.y, field.x + field.width, field.y + field.height)
+    token = "{{" + field.field_name + "}}"
+    matches = [match for match in page.search_for(token) if match.intersects(rectangle)]
+    if not matches:
+        return
+    combined = fitz.Rect(matches[0])
+    for match in matches[1:]:
+        combined.include_rect(match)
+    # This is intentionally more precise than `_remove_text_in_rectangle`.
+    # A saved field may be only the placeholder portion of a single source
+    # span, such as "Roll Number: {{roll_number}}".  Redacting the full span
+    # would remove the fixed label as well.
+    page.add_redact_annot(combined, fill=None)
+
+
+def _remove_leadership_recipient_heading(page: fitz.Page) -> None:
+    """Remove certificate-style recipient copy from a prose letter."""
+    for rectangle in page.search_for("Presented with appreciation to"):
+        page.add_redact_annot(rectangle, fill=None)
+
+
 def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tuple[fitz.Rect, str, set[str], str, float, tuple[int, int, int]] | None:
     """Replace a flowing certificate sentence as one typographic block.
 
@@ -485,6 +581,40 @@ def _render_activity_paragraph(
         )
 
 
+def _render_leadership_paragraph(
+    page: fitz.Page,
+    rectangle: fitz.Rect,
+    text: str,
+    font: str,
+    font_size: float,
+    rgb: tuple[int, int, int],
+) -> None:
+    """Render a letter body at its original left-aligned typography."""
+    # Some Canva exports retain visual outline paths even after text
+    # redaction. The prose region is intentionally blank in this template, so
+    # an opaque cover guarantees no legacy glyph fragments can show through.
+    page.draw_rect(rectangle, color=None, fill=(1, 1, 1), overlay=True)
+    body_font = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
+    body_font_name = "EMCLeadershipBody"
+    try:
+        page.insert_font(fontname=body_font_name, fontbuffer=body_font)
+    except (RuntimeError, ValueError) as error:
+        raise CertificateRenderingError("Leadership letter font is unreadable") from error
+    result = page.insert_textbox(
+        rectangle,
+        text,
+        fontname=body_font_name,
+        fontsize=font_size,
+        color=tuple(channel / 255 for channel in rgb),
+        align=fitz.TEXT_ALIGN_LEFT,
+        lineheight=1.28,
+    )
+    if result < 0:
+        raise CertificateRenderingError(
+            "Leadership letter body does not fit its dedicated template area at the configured font size"
+        )
+
+
 def render_certificate(
     template_pdf: bytes,
     fields: Iterable[TemplateField],
@@ -538,49 +668,75 @@ def render_certificate(
     try:
         paragraph_jobs: dict[int, tuple[fitz.Rect, str, str, float, tuple[int, int, int]]] = {}
         paragraph_fields: set[tuple[int, str]] = set()
+        leadership_paragraph_pages: set[int] = set()
+        is_leadership_template = bool(
+            (_LEADERSHIP_BODY_FIELDS - {"student_name"}).issubset(configured_names)
+        )
         # Paragraph replacement is derived from the PDF itself, not from the
         # saved box configuration. Older templates can carry imperfect field
         # records, but their visible certificate paragraph must still be
         # removed completely before the fresh paragraph is drawn.
         for page_number in range(1, document.page_count + 1):
             page = document[page_number - 1]
-            # Prefer the standard recognition renderer only for the standard
-            # EMC wording. Generic tagged prose must retain its own wording.
-            is_standard_recognition = bool(
-                page.search_for("In recognition") and page.search_for("under the EMC")
-            )
-            job = (
-                _inline_activity_paragraph(page, normalized_values)
-                if is_standard_recognition
-                else _paragraph_from_tagged_block(page, normalized_values)
-            )
-            if job is None:
-                job = _activity_paragraph_from_field_cluster(
-                    page, page_number, field_list, normalized_values
+            if is_leadership_template:
+                job = _leadership_paragraph_from_tagged_blocks(page, normalized_values)
+            else:
+                # Prefer the standard recognition renderer only for the
+                # standard EMC wording. Generic tagged prose keeps its text.
+                is_standard_recognition = bool(
+                    page.search_for("In recognition") and page.search_for("under the EMC")
                 )
+                job = (
+                    _inline_activity_paragraph(page, normalized_values)
+                    if is_standard_recognition
+                    else _paragraph_from_tagged_block(page, normalized_values)
+                )
+                if job is None:
+                    job = _activity_paragraph_from_field_cluster(
+                        page, page_number, field_list, normalized_values
+                    )
             if job:
                 rectangle, text, replaced_names, font, size, rgb = job
                 paragraph_jobs[page_number] = rectangle, text, font, size, rgb
-                # Student names frequently occur twice: once as the prominent
-                # recipient line and once in the body paragraph. Keep the
-                # dedicated recipient field so the visible name is still
-                # replaced with its intended certificate styling.
-                paragraph_fields.update(
-                    (page_number, name) for name in replaced_names - {"student_name"}
-                )
+                if is_leadership_template:
+                    leadership_paragraph_pages.add(page_number)
+                    paragraph_fields.update((page_number, name) for name in replaced_names)
+                else:
+                    # Student names frequently occur twice: once as the
+                    # prominent recipient line and once in the body paragraph.
+                    paragraph_fields.update(
+                        (page_number, name) for name in replaced_names - {"student_name"}
+                    )
         for field in field_list:
             if field.page_number < 1 or field.page_number > document.page_count:
                 raise CertificateRenderingError(
                     f"Template field '{field.field_name}' references an invalid page"
                 )
-            if (field.page_number, field.field_name) not in paragraph_fields:
-                _remove_inline_placeholder(document[field.page_number - 1], field.field_name)
+            if (field.page_number, field.field_name) in paragraph_fields:
+                if is_leadership_template and field.field_name == "student_name":
+                    # The letter body already includes the student's name; do
+                    # not render a duplicate recipient name above it.
+                    _remove_placeholder_from_field(document[field.page_number - 1], field)
+                    _remove_leadership_recipient_heading(document[field.page_number - 1])
+                continue
+            if is_leadership_template and field.field_name == "roll_number":
+                # The roll number normally follows a fixed "Roll Number:"
+                # label.  Removing the entire source span would erase that
+                # label, so redact only the configured placeholder box.
+                _remove_placeholder_from_field(document[field.page_number - 1], field)
+                continue
+            _remove_inline_placeholder(document[field.page_number - 1], field.field_name)
         for page in document:
-            # Remove text only. The template's underline, watermark, and
-            # decorative vector/image background must survive unchanged.
-            page.apply_redactions(images=0, graphics=0, text=0)
+            # Canva sometimes represents visible glyphs as vector outlines in
+            # addition to extractable text.  Remove graphics intersecting the
+            # tightly-scoped redaction areas as well, otherwise remnants of
+            # the source paragraph show through the replacement letters.
+            page.apply_redactions(images=0, graphics=2, text=0)
         for page_number, (rectangle, text, font, size, rgb) in paragraph_jobs.items():
-            _render_activity_paragraph(document[page_number - 1], rectangle, text, font, size, rgb)
+            if page_number in leadership_paragraph_pages:
+                _render_leadership_paragraph(document[page_number - 1], rectangle, text, font, size, rgb)
+            else:
+                _render_activity_paragraph(document[page_number - 1], rectangle, text, font, size, rgb)
         qr_fields = {
             field.page_number: _effective_qr_field(document[field.page_number - 1], field)
             for field in field_list
@@ -604,7 +760,13 @@ def render_certificate(
                     if field.field_name == "verification_id"
                     else field
                 )
-                _insert_text(page, text_field, normalized_values[field.field_name], fonts)
+                _insert_text(
+                    page,
+                    text_field,
+                    normalized_values[field.field_name],
+                    fonts,
+                    alignment="left" if is_leadership_template and field.field_name == "roll_number" else "center",
+                )
         if watermark:
             for page in document:
                 center = fitz.Point(page.rect.width / 2 - 110, page.rect.height / 2)

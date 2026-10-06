@@ -409,3 +409,61 @@ def test_rendering_keeps_verification_id_inside_a_tall_qr_panel() -> None:
     rendered.close()
     assert panel.x0 <= serial["bbox"][0] < serial["bbox"][2] <= panel.x1
     assert panel.y0 <= serial["bbox"][1] < serial["bbox"][3] <= panel.y1
+
+
+def test_rendering_rebuilds_a_tagged_leadership_letter_body_without_floating_values() -> None:
+    document = fitz.open()
+    page = document.new_page(width=600, height=700)
+    page.insert_text((220, 100), "{{student_name}}", fontsize=16)
+    page.insert_text((220, 120), "Roll Number: {{roll_number}}", fontsize=10)
+    page.insert_textbox(
+        fitz.Rect(80, 160, 520, 310),
+        "The Club recognizes {{student_name}} for serving as {{role}} of {{society_name}} during "
+        "{{session_name}}, from {{role_start_date}} to {{role_end_date}}.\n\n"
+        "Their leadership and commitment strengthened our community.\n\n"
+        "Issued on {{issue_date}}.",
+        fontsize=10,
+    )
+    template = document.tobytes()
+    document.close()
+    names = (
+        "student_name", "roll_number", "role", "society_name", "role_start_date",
+        "role_end_date", "session_name", "issue_date",
+    )
+    fields = [
+        SimpleNamespace(
+            field_name=name, page_number=1, x=290 if name == "roll_number" else 220 if name == "student_name" else 80,
+            y=88 if name == "student_name" else 108 if name == "roll_number" else 160,
+            width=220, height=26, font_family="helv", custom_font_storage_key=None,
+            font_size=10, text_color="#000000",
+        )
+        for name in names
+    ]
+    values = {
+        "student_name": "Ayesha Khan", "roll_number": "2K22-BSCS-404", "role": "Society Head",
+        "society_name": "Media & Graphics", "role_start_date": "2025-05-01",
+        "role_end_date": "2026-07-31", "session_name": "Session 2025-26", "issue_date": "2026-10-07",
+    }
+
+    output = render_certificate(
+        template, fields, values, verification_url="https://example.test/verify/x",
+        required_field_names=frozenset(names),
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    text = rendered[0].get_text().replace("\u00a0", " ").replace("\n", " ")
+    role_span = next(
+        span
+        for block in rendered[0].get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for span in line["spans"]
+        if "Society Head" in span["text"]
+    )
+    rendered.close()
+    assert "{{role}}" not in text
+    assert text.count("Ayesha Khan") == 1
+    assert "Roll Number:" in text
+    assert "2K22-BSCS-404" in text
+    assert "Ayesha Khan for serving as Society Head" in text
+    assert "Media & Graphics during Session 2025-26" in text
+    assert role_span["bbox"][1] >= 150
