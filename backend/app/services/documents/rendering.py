@@ -101,6 +101,8 @@ def _insert_text(
         fontname=font_name,
         fontsize=font_size,
         color=_color(getattr(field, "text_color", "#000000")),
+        render_mode=2,
+        border_width=0.04,
     )
 
 
@@ -444,7 +446,7 @@ def _leadership_paragraph_from_tagged_blocks(
             combined.x0,
             combined.y0,
             combined.x1,
-            min(page.rect.height - 72, combined.y1 + 48),
+            min(page.rect.height - 72, combined.y1 + 96),
         )
         content = _leadership_content("\n\n".join(texts), values)
         font, size, rgb = _source_text_style(page, anchor)
@@ -572,71 +574,131 @@ def _activity_paragraph_from_field_cluster(
     return rectangle, text, needed, "helv", 10, (14, 135, 204)
 
 
+def _paragraph_words(text: str, values: Mapping[str, str], tagged_names: set[str]) -> list[tuple[str | None, bool]]:
+    """Split a paragraph into words, retaining which substituted values are bold."""
+    dynamic_values = sorted(
+        {values[name] for name in tagged_names if values.get(name)}, key=len, reverse=True
+    )
+    parts: list[tuple[str, bool]] = [(text, False)]
+    for value in dynamic_values:
+        next_parts: list[tuple[str, bool]] = []
+        for part, bold in parts:
+            if bold:
+                next_parts.append((part, True))
+                continue
+            fragments = part.split(value)
+            for index, fragment in enumerate(fragments):
+                if fragment:
+                    next_parts.append((fragment, False))
+                if index < len(fragments) - 1:
+                    next_parts.append((value, True))
+        parts = next_parts
+    words: list[tuple[str | None, bool]] = []
+    for part, bold in parts:
+        for item in re.findall(r"\S+|\n", part):
+            words.append((None, False) if item == "\n" else (item, bold))
+    return words
+
+
+def _render_tagged_paragraph(
+    page: fitz.Page,
+    rectangle: fitz.Rect,
+    text: str,
+    values: Mapping[str, str],
+    tagged_names: set[str],
+    font_size: float,
+    rgb: tuple[int, int, int],
+    *,
+    align: int,
+    lineheight: float,
+    font_name: str,
+) -> None:
+    """Render prose while bolding only values substituted for template tags."""
+    font_bytes = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
+    try:
+        page.insert_font(fontname=font_name, fontbuffer=font_bytes)
+    except (RuntimeError, ValueError) as error:
+        raise CertificateRenderingError("Certificate paragraph font is unreadable") from error
+    font = fitz.Font(fontbuffer=font_bytes)
+    size = min(max(font_size, 5), 16)
+    space = font.text_length(" ", fontsize=size)
+    lines: list[list[tuple[str, bool, float, float]] | None] = []
+    line: list[tuple[str, bool, float, float]] = []
+    width = 0.0
+    for word, bold in _paragraph_words(text, values, tagged_names):
+        if word is None:
+            if line:
+                lines.append(line)
+                line, width = [], 0.0
+            lines.append(None)
+            continue
+        word_width = font.text_length(word, fontsize=size)
+        gap = 0.0 if not line or word[0] in ",.;:)]}" or line[-1][0][-1] in "([{" else space
+        required = gap + word_width
+        if line and width + required > rectangle.width:
+            lines.append(line)
+            line, width, gap, required = [], 0.0, 0.0, word_width
+        line.append((word, bold, word_width, gap))
+        width += required
+    if line:
+        lines.append(line)
+    total_height = len(lines) * size * lineheight
+    if total_height > rectangle.height + 0.5:
+        raise CertificateRenderingError("Certificate paragraph does not fit its dedicated template area at the configured font size")
+    color = tuple(channel / 255 for channel in rgb)
+    baseline = rectangle.y0 + size
+    for items in lines:
+        if items is None:
+            baseline += size * lineheight
+            continue
+        line_width = sum(item[2] + item[3] for item in items)
+        x = rectangle.x0 + ((rectangle.width - line_width) / 2 if align == fitz.TEXT_ALIGN_CENTER else 0)
+        for word, bold, word_width, gap in items:
+            x += gap
+            point = fitz.Point(x, baseline)
+            page.insert_text(
+                point,
+                word,
+                fontname=font_name,
+                fontsize=size,
+                color=color,
+                render_mode=2 if bold else 0,
+                border_width=0.04 if bold else 1,
+            )
+            x += word_width
+        baseline += size * lineheight
+
+
 def _render_activity_paragraph(
     page: fitz.Page,
     rectangle: fitz.Rect,
     text: str,
-    font: str,
     font_size: float,
     rgb: tuple[int, int, int],
+    values: Mapping[str, str],
+    tagged_names: set[str],
 ) -> None:
     # Use a uniquely embedded font instead of a built-in PDF font alias.
     # Canva templates can already bind aliases such as "helv" to incompatible
     # font resources, which makes newly drawn characters appear fragmented.
-    body_font = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
-    body_font_name = "EMCActivityBody"
-    try:
-        page.insert_font(fontname=body_font_name, fontbuffer=body_font)
-    except (RuntimeError, ValueError) as error:
-        raise CertificateRenderingError("Certificate paragraph font is unreadable") from error
-    size = min(max(font_size, 5), 16)
-    result = page.insert_textbox(
-        rectangle,
-        text,
-        fontname=body_font_name,
-        fontsize=size,
-        color=tuple(channel / 255 for channel in rgb),
-        align=fitz.TEXT_ALIGN_CENTER,
-        lineheight=1.15,
-    )
-    if result < 0:
-        raise CertificateRenderingError(
-            "Activity paragraph does not fit its dedicated template area at the configured font size"
-        )
+    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_CENTER, lineheight=1.15, font_name="EMCActivityBody")
 
 
 def _render_leadership_paragraph(
     page: fitz.Page,
     rectangle: fitz.Rect,
     text: str,
-    font: str,
     font_size: float,
     rgb: tuple[int, int, int],
+    values: Mapping[str, str],
+    tagged_names: set[str],
 ) -> None:
     """Render a letter body at its original left-aligned typography."""
     # Some Canva exports retain visual outline paths even after text
     # redaction. The prose region is intentionally blank in this template, so
     # an opaque cover guarantees no legacy glyph fragments can show through.
     page.draw_rect(rectangle, color=None, fill=(1, 1, 1), overlay=True)
-    body_font = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
-    body_font_name = "EMCLeadershipBody"
-    try:
-        page.insert_font(fontname=body_font_name, fontbuffer=body_font)
-    except (RuntimeError, ValueError) as error:
-        raise CertificateRenderingError("Leadership letter font is unreadable") from error
-    result = page.insert_textbox(
-        rectangle,
-        text,
-        fontname=body_font_name,
-        fontsize=font_size,
-        color=tuple(channel / 255 for channel in rgb),
-        align=fitz.TEXT_ALIGN_LEFT,
-        lineheight=1.28,
-    )
-    if result < 0:
-        raise CertificateRenderingError(
-            "Leadership letter body does not fit its dedicated template area at the configured font size"
-        )
+    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_LEFT, lineheight=1.28, font_name="EMCLeadershipBody")
 
 
 def render_certificate(
@@ -690,7 +752,7 @@ def render_certificate(
         raise CertificateRenderingError("Template is not a readable PDF") from error
 
     try:
-        paragraph_jobs: dict[int, tuple[fitz.Rect, str, str, float, tuple[int, int, int]]] = {}
+        paragraph_jobs: dict[int, tuple[fitz.Rect, str, set[str], str, float, tuple[int, int, int]]] = {}
         paragraph_fields: set[tuple[int, str]] = set()
         leadership_paragraph_pages: set[int] = set()
         is_leadership_template = bool(
@@ -721,7 +783,7 @@ def render_certificate(
                     )
             if job:
                 rectangle, text, replaced_names, font, size, rgb = job
-                paragraph_jobs[page_number] = rectangle, text, font, size, rgb
+                paragraph_jobs[page_number] = rectangle, text, replaced_names, font, size, rgb
                 if is_leadership_template:
                     leadership_paragraph_pages.add(page_number)
                     paragraph_fields.update((page_number, name) for name in replaced_names)
@@ -755,11 +817,15 @@ def render_certificate(
             # frame and the QR holder as large grouped drawings, so removing
             # intersecting graphics would erase those template elements.
             page.apply_redactions(images=0, graphics=0, text=0)
-        for page_number, (rectangle, text, font, size, rgb) in paragraph_jobs.items():
+        for page_number, (rectangle, text, replaced_names, _font, size, rgb) in paragraph_jobs.items():
             if page_number in leadership_paragraph_pages:
-                _render_leadership_paragraph(document[page_number - 1], rectangle, text, font, size, rgb)
+                _render_leadership_paragraph(
+                    document[page_number - 1], rectangle, text, size, rgb, normalized_values, replaced_names
+                )
             else:
-                _render_activity_paragraph(document[page_number - 1], rectangle, text, font, size, rgb)
+                _render_activity_paragraph(
+                    document[page_number - 1], rectangle, text, size, rgb, normalized_values, replaced_names
+                )
         qr_fields = {
             field.page_number: _effective_qr_field(document[field.page_number - 1], field)
             for field in field_list
