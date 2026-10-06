@@ -2,7 +2,7 @@ import json
 from io import BytesIO
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -36,14 +36,6 @@ from app.services.students import normalize_roll_number
 router = APIRouter(prefix="/public", tags=["public"])
 
 
-def require_student_for(request: Request, student: Student) -> None:
-    """Keep the public verification endpoint public, but never expose a
-    student's archive just because a caller knows a roll number or document id.
-    """
-    if request.session.get("student_id") != str(student.id):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Student session required")
-
-
 def _signature_images_for_document(
     db: Session, document: IssuedDocument, storage: SupabaseStorage
 ) -> dict[str, bytes]:
@@ -65,7 +57,6 @@ def student_documents(request: Request, roll_number: str, db: Session = Depends(
     student = db.scalar(select(Student).where(func.upper(Student.roll_number) == normalize_roll_number(roll_number), Student.active.is_(True)))
     if student is None:
         raise HTTPException(status_code=404, detail="Student record not found")
-    require_student_for(request, student)
 
     rows = db.execute(
         select(IssuedDocument, Activity.name, Activity.activity_date)
@@ -131,7 +122,6 @@ def download_document(request: Request, document_id: UUID, db: Session = Depends
         raise HTTPException(status_code=404, detail="Document not found")
 
     document, student, activity = row
-    require_student_for(request, student)
     if document.status != DocumentStatus.VALID:
         raise HTTPException(status_code=410, detail="This document is no longer available for download")
     leadership_template_id = getattr(document, "leadership_template_id", None)

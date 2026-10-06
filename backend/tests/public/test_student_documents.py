@@ -1,13 +1,9 @@
-import base64
-import json
 from datetime import date
 from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from itsdangerous import TimestampSigner
 
-from app.core.settings import settings
 from app.db.session import get_db
 from app.main import app
 from app.models.domain import DocumentStatus, DocumentType
@@ -46,17 +42,10 @@ def _document(document_type: DocumentType) -> SimpleNamespace:
     )
 
 
-def _session_cookie(student: SimpleNamespace) -> str:
-    payload = base64.b64encode(json.dumps({"student_id": str(student.id)}).encode())
-    return TimestampSigner(settings.session_secret).sign(payload).decode()
-
-
 def _get(roll_number: str, student: object | None, rows: list):
     app.dependency_overrides[get_db] = lambda: _Db(student, rows)
     try:
         client = TestClient(app)
-        if student is not None:
-            client.cookies.set("session", _session_cookie(student))
         return client.get(f"/api/public/students/{roll_number}/documents")
     finally:
         app.dependency_overrides.clear()

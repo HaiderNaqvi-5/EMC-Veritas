@@ -1,13 +1,10 @@
-import base64
 import json
 from datetime import date
 from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from itsdangerous import TimestampSigner
 
-from app.core.settings import settings
 from app.db.session import get_db
 from app.main import app
 from app.models.domain import DocumentStatus
@@ -52,11 +49,8 @@ class _Db:
         raise AssertionError("A valid download should not roll back")
 
 
-def _client_for(student: SimpleNamespace) -> TestClient:
-    client = TestClient(app)
-    payload = base64.b64encode(json.dumps({"student_id": str(student.id)}).encode())
-    client.cookies.set("session", TimestampSigner(settings.session_secret).sign(payload).decode())
-    return client
+def _client_for() -> TestClient:
+    return TestClient(app)
 
 
 def test_public_download_uses_approved_template_and_commits_cache(monkeypatch) -> None:
@@ -91,7 +85,7 @@ def test_public_download_uses_approved_template_and_commits_cache(monkeypatch) -
     monkeypatch.setattr(public_router, "generate_on_first_download", generate)
     app.dependency_overrides[get_db] = lambda: db
     try:
-        response = _client_for(student).get(f"/api/public/documents/{document_id}/download")
+        response = _client_for().get(f"/api/public/documents/{document_id}/download")
     finally:
         app.dependency_overrides.clear()
 
@@ -117,7 +111,7 @@ def test_public_download_rejects_revoked_document(monkeypatch) -> None:
     db = _Db((document, student, object()), object(), [])
     app.dependency_overrides[get_db] = lambda: db
     try:
-        response = _client_for(student).get(f"/api/public/documents/{document.id}/download")
+        response = _client_for().get(f"/api/public/documents/{document.id}/download")
     finally:
         app.dependency_overrides.clear()
 
@@ -182,7 +176,7 @@ def test_public_download_renders_reserved_leadership_template(monkeypatch) -> No
     monkeypatch.setattr(public_router, "generate_on_first_download", generate)
     app.dependency_overrides[get_db] = lambda: db
     try:
-        response = _client_for(student).get(f"/api/public/documents/{document_id}/download")
+        response = _client_for().get(f"/api/public/documents/{document_id}/download")
     finally:
         app.dependency_overrides.clear()
 
