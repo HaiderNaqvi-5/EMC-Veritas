@@ -565,11 +565,20 @@ def _render_activity_paragraph(
     font_size: float,
     rgb: tuple[int, int, int],
 ) -> None:
+    # Use a uniquely embedded font instead of a built-in PDF font alias.
+    # Canva templates can already bind aliases such as "helv" to incompatible
+    # font resources, which makes newly drawn characters appear fragmented.
+    body_font = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
+    body_font_name = "EMCActivityBody"
+    try:
+        page.insert_font(fontname=body_font_name, fontbuffer=body_font)
+    except (RuntimeError, ValueError) as error:
+        raise CertificateRenderingError("Certificate paragraph font is unreadable") from error
     size = min(max(font_size, 5), 16)
     result = page.insert_textbox(
         rectangle,
         text,
-        fontname=font,
+        fontname=body_font_name,
         fontsize=size,
         color=tuple(channel / 255 for channel in rgb),
         align=fitz.TEXT_ALIGN_CENTER,
@@ -727,11 +736,10 @@ def render_certificate(
                 continue
             _remove_inline_placeholder(document[field.page_number - 1], field.field_name)
         for page in document:
-            # Canva sometimes represents visible glyphs as vector outlines in
-            # addition to extractable text.  Remove graphics intersecting the
-            # tightly-scoped redaction areas as well, otherwise remnants of
-            # the source paragraph show through the replacement letters.
-            page.apply_redactions(images=0, graphics=2, text=0)
+            # Preserve vector artwork. Canva commonly stores the decorative
+            # frame and the QR holder as large grouped drawings, so removing
+            # intersecting graphics would erase those template elements.
+            page.apply_redactions(images=0, graphics=0, text=0)
         for page_number, (rectangle, text, font, size, rgb) in paragraph_jobs.items():
             if page_number in leadership_paragraph_pages:
                 _render_leadership_paragraph(document[page_number - 1], rectangle, text, font, size, rgb)

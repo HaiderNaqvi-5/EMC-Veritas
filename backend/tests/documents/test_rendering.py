@@ -355,6 +355,29 @@ def test_rendering_expands_a_saved_tiny_qr_tag_box_to_its_panel() -> None:
     assert rectangle.height >= 50
 
 
+def test_rendering_keeps_the_qr_frame_when_removing_its_placeholder() -> None:
+    document = fitz.open()
+    page = document.new_page(width=600, height=600)
+    panel = fitz.Rect(50, 420, 110, 490)
+    page.draw_rect(panel, radius=0.2)
+    page.insert_text((58, 455), "{{qr_code}}", fontsize=10)
+    template = document.tobytes()
+    document.close()
+    field = SimpleNamespace(
+        field_name="qr_code", page_number=1, x=58, y=442, width=48, height=16,
+        font_family="helv", custom_font_storage_key=None, font_size=10, text_color="#000000",
+    )
+
+    output = render_certificate(
+        template, [field], {}, verification_url="https://example.test/verify/x", required_field_names=frozenset()
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    drawings = rendered[0].get_drawings()
+    rendered.close()
+    assert any(drawing["rect"].contains(panel) or panel.contains(drawing["rect"]) for drawing in drawings)
+
+
 def test_rendering_expands_a_saved_tiny_qr_tag_box_to_a_wide_panel() -> None:
     document = fitz.open()
     page = document.new_page(width=600, height=600)
