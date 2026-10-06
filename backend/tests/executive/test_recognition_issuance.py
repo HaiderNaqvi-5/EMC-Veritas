@@ -24,13 +24,14 @@ class _Rows:
 
 
 class _RecognitionDb:
-    def __init__(self, *, scalar_values: list[object], scalar_lists: list[list[object]], rows: list[object]) -> None:
+    def __init__(self, *, scalar_values: list[object], scalar_lists: list[list[object]], rows: list[object], execute_results: list[list[object]] | None = None) -> None:
         self.scalar_values = scalar_values
         self.scalar_lists = scalar_lists
         self.rows = rows
+        self.execute_results = execute_results if execute_results is not None else [rows, []]
 
     def execute(self, query: object) -> _Rows:
-        return _Rows(self.rows)
+        return _Rows(self.execute_results.pop(0))
 
     def scalar(self, query: object) -> object:
         return self.scalar_values.pop(0)
@@ -39,8 +40,8 @@ class _RecognitionDb:
         return _Scalars(self.scalar_lists.pop(0))
 
 
-def _field(name: str) -> object:
-    return SimpleNamespace(field_name=name)
+def _field(name: str, template_id: object = None) -> object:
+    return SimpleNamespace(field_name=name, leadership_template_id=template_id)
 
 
 def test_session_recognition_preflight_reserves_two_fixed_template_plans() -> None:
@@ -70,10 +71,12 @@ def test_session_recognition_preflight_reserves_two_fixed_template_plans() -> No
         id=uuid4(), role="President", document_type=DocumentType.END_OF_TENURE_APPRECIATION,
         signature_handling="retain", active=True, archived=False,
     )
-    fields = [_field(name) for name in REQUIRED_LEADERSHIP_TEMPLATE_FIELDS]
+    fields_recognition = [_field(name, recognition.id) for name in REQUIRED_LEADERSHIP_TEMPLATE_FIELDS]
+    fields_appreciation = [_field(name, appreciation.id) for name in REQUIRED_LEADERSHIP_TEMPLATE_FIELDS]
+
     db = _RecognitionDb(
-        scalar_values=[None, recognition, None, appreciation],
-        scalar_lists=[[dsa, hod], fields, fields],
+        scalar_values=[],
+        scalar_lists=[[dsa, hod], [recognition, appreciation], fields_recognition + fields_appreciation],
         rows=[(membership, student, None)],
     )
 
@@ -95,9 +98,13 @@ def test_session_recognition_preflight_skips_existing_membership_letters() -> No
         end_date=date(2026, 8, 31), status=MembershipStatus.COMPLETED,
     )
     db = _RecognitionDb(
-        scalar_values=[uuid4(), uuid4()],
-        scalar_lists=[[]],
+        scalar_values=[],
+        scalar_lists=[[], [], []],
         rows=[(membership, SimpleNamespace(), None)],
+        execute_results=[
+            [(membership, SimpleNamespace(), None)],
+            [(membership.id, DocumentType.LEADERSHIP_RECOGNITION), (membership.id, DocumentType.END_OF_TENURE_APPRECIATION)]
+        ]
     )
 
     assert _preflight_session_recognition(db, session) == []
