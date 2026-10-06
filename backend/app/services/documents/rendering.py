@@ -73,6 +73,18 @@ def _insert_text(
         font_name = font_family
     else:
         raise CertificateRenderingError("Template font is invalid")
+    if field.field_name == "issue_date":
+        # Keep the inline metadata date in the same Calibri-compatible face as
+        # the leadership letter, rather than inheriting a generic field font.
+        font_bytes = Path(
+            "/home/ahmad/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/"
+            "libreoffice-headless/libreoffice/share/fonts/truetype/Carlito-Regular.ttf"
+        ).read_bytes()
+        font_name = "EMCIssueDateCalibri"
+        try:
+            page.insert_font(fontname=font_name, fontbuffer=font_bytes)
+        except (RuntimeError, ValueError) as error:
+            raise CertificateRenderingError("Leadership issue-date font is unreadable") from error
     preferred = getattr(field, "font_size", None)
     maximum = min(preferred or 18, field.height - 2)
     try:
@@ -311,6 +323,25 @@ def _source_font_bytes(page: fitz.Page, rectangle: fitz.Rect) -> bytes | None:
     return None
 
 
+def _source_bold_words(page: fitz.Page, rectangle: fitz.Rect) -> set[str]:
+    """Return words which the author already made bold in a prose region."""
+    bold_words: set[str] = set()
+    for block in page.get_text("dict").get("blocks", []):
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                if not fitz.Rect(span["bbox"]).intersects(rectangle):
+                    continue
+                if "bold" not in str(span.get("font", "")).lower():
+                    continue
+                bold_words.update(
+                    word.lower() for word in re.findall(r"[A-Za-z0-9]+", str(span.get("text", "")))
+                )
+    # Individual words such as "the" and "and" may occur both inside a bold
+    # activity title and in ordinary prose.  They cannot safely identify a
+    # bold span after reflowing, so keep only meaningful title words.
+    return bold_words - {"a", "an", "and", "at", "for", "in", "of", "on", "the", "to"}
+
+
 def _paragraph_rectangle(page: fitz.Page, rectangle: fitz.Rect) -> fitz.Rect:
     """Provide enough room to redraw a paragraph, without touching nearby content."""
     return fitz.Rect(
@@ -436,7 +467,7 @@ def _leadership_content(template_text: str, values: Mapping[str, str]) -> str:
 
 def _leadership_paragraph_from_tagged_blocks(
     page: fitz.Page, values: Mapping[str, str]
-) -> tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None] | None:
+) -> tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None, set[str]] | None:
     """Replace the full prose area of a tagged leadership letter.
 
     Leadership letters use several deterministic fields in a normal flowing
@@ -491,12 +522,13 @@ def _leadership_paragraph_from_tagged_blocks(
         content = _leadership_content("\n\n".join(texts), values)
         _font, size, rgb = _source_text_style(page, anchor)
         font_bytes = _source_font_bytes(page, anchor)
+        source_bold_words = _source_bold_words(page, combined)
         # Leadership letters reserve a plain white prose area.  Remove that
         # entire area before drawing its fresh paragraph; partial span
         # redactions can leave fragments of Canva's separately-drawn glyphs
         # underneath the replacement text.
         page.add_redact_annot(rectangle, fill=(1, 1, 1))
-        return rectangle, content, names, size, rgb, font_bytes
+        return rectangle, content, names, size, rgb, font_bytes, source_bold_words
     return None
 
 
@@ -616,7 +648,12 @@ def _activity_paragraph_from_field_cluster(
     return rectangle, text, needed, 10, (14, 135, 204), None
 
 
-def _paragraph_words(text: str, values: Mapping[str, str], tagged_names: set[str]) -> list[tuple[str | None, bool]]:
+def _paragraph_words(
+    text: str,
+    values: Mapping[str, str],
+    tagged_names: set[str],
+    source_bold_words: set[str] | None = None,
+) -> list[tuple[str | None, bool]]:
     """Split a paragraph into words, retaining which substituted values are bold."""
     dynamic_values = sorted(
         {values[name] for name in tagged_names if values.get(name)}, key=len, reverse=True
@@ -635,10 +672,12 @@ def _paragraph_words(text: str, values: Mapping[str, str], tagged_names: set[str
                 if index < len(fragments) - 1:
                     next_parts.append((value, True))
         parts = next_parts
+    bold_source = source_bold_words or set()
     words: list[tuple[str | None, bool]] = []
     for part, bold in parts:
         for item in re.findall(r"\S+|\n", part):
-            words.append((None, False) if item == "\n" else (item, bold))
+            normalized = re.sub(r"[^A-Za-z0-9]", "", item).lower()
+            words.append((None, False) if item == "\n" else (item, bold or normalized in bold_source))
     return words
 
 
@@ -655,16 +694,35 @@ def _render_tagged_paragraph(
     lineheight: float,
     font_name: str,
     font_bytes: bytes | None,
-    bold_values: bool = True,
+    source_bold_words: set[str] | None = None,
+    calibri_compatible: bool = False,
 ) -> None:
     """Render prose while bolding only values substituted for template tags."""
-    if font_bytes is None:
+    if calibri_compatible:
+        font_bytes = Path(
+            "/home/ahmad/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/"
+            "libreoffice-headless/libreoffice/share/fonts/truetype/Carlito-Regular.ttf"
+        ).read_bytes()
+        bold_font_bytes = Path(
+            "/home/ahmad/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/"
+            "libreoffice-headless/libreoffice/share/fonts/truetype/Carlito-Bold.ttf"
+        ).read_bytes()
+    elif font_bytes is None:
         font_bytes = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
+        bold_font_bytes = font_bytes
+    else:
+        bold_font_bytes = font_bytes
     try:
         page.insert_font(fontname=font_name, fontbuffer=font_bytes)
     except (RuntimeError, ValueError) as error:
         raise CertificateRenderingError("Certificate paragraph font is unreadable") from error
     font = fitz.Font(fontbuffer=font_bytes)
+    bold_font_name = f"{font_name}Bold"
+    try:
+        page.insert_font(fontname=bold_font_name, fontbuffer=bold_font_bytes)
+    except (RuntimeError, ValueError) as error:
+        raise CertificateRenderingError("Certificate paragraph bold font is unreadable") from error
+    bold_font = fitz.Font(fontbuffer=bold_font_bytes)
     # PDF templates embed subsetted fonts. The source paragraph can be drawn
     # back exactly, but a new roll number or name may contain glyphs that were
     # not used anywhere in the template subset. Keep the template font for all
@@ -685,16 +743,16 @@ def _render_tagged_paragraph(
     lines: list[list[tuple[str, bool, float, float, str]] | None] = []
     line: list[tuple[str, bool, float, float, str]] = []
     width = 0.0
-    for word, bold in _paragraph_words(text, values, tagged_names):
+    for word, bold in _paragraph_words(text, values, tagged_names, source_bold_words):
         if word is None:
             if line:
                 lines.append(line)
                 line, width = [], 0.0
             lines.append(None)
             continue
-        word_font = font
-        word_font_name = font_name
-        if not all(font.has_glyph(ord(character)) for character in word):
+        word_font = bold_font if bold else font
+        word_font_name = bold_font_name if bold else font_name
+        if not calibri_compatible and not all(word_font.has_glyph(ord(character)) for character in word):
             word_font = fallback_font
             word_font_name = fallback_name
         word_width = word_font.text_length(word, fontsize=size)
@@ -727,8 +785,8 @@ def _render_tagged_paragraph(
                 fontname=word_font_name,
                 fontsize=size,
                 color=color,
-                render_mode=2 if bold and bold_values else 0,
-                border_width=0.04 if bold and bold_values else 1,
+                render_mode=0,
+                border_width=1,
             )
             x += word_width
         baseline += size * lineheight
@@ -759,13 +817,23 @@ def _render_leadership_paragraph(
     values: Mapping[str, str],
     tagged_names: set[str],
     font_bytes: bytes | None,
+    source_bold_words: set[str],
 ) -> None:
     """Render a letter body at its original left-aligned typography."""
     # Some Canva exports retain visual outline paths even after text
     # redaction. The prose region is intentionally blank in this template, so
     # an opaque cover guarantees no legacy glyph fragments can show through.
     page.draw_rect(rectangle, color=None, fill=(1, 1, 1), overlay=True)
-    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_LEFT, lineheight=1.20, font_name="EMCLeadershipBody", font_bytes=font_bytes, bold_values=False)
+    # The uploaded leadership letter uses Calibri 12.5 pt. Keep that exact
+    # size there, while allowing legacy/synthetic templates to retain their
+    # own smaller source size.
+    effective_size = 12.5 if abs(font_size - 12.5) < 0.6 else font_size
+    _render_tagged_paragraph(
+        page, rectangle, text, values, tagged_names, effective_size, rgb,
+        align=fitz.TEXT_ALIGN_LEFT, lineheight=1.20,
+        font_name="EMCLeadershipCalibri", font_bytes=font_bytes,
+        source_bold_words=source_bold_words, calibri_compatible=True,
+    )
 
 
 def render_certificate(
@@ -819,7 +887,7 @@ def render_certificate(
         raise CertificateRenderingError("Template is not a readable PDF") from error
 
     try:
-        paragraph_jobs: dict[int, tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None]] = {}
+        paragraph_jobs: dict[int, tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None, set[str]]] = {}
         paragraph_fields: set[tuple[int, str]] = set()
         leadership_paragraph_pages: set[int] = set()
         is_leadership_template = bool(
@@ -849,8 +917,12 @@ def render_certificate(
                         page, page_number, field_list, normalized_values
                     )
             if job:
-                rectangle, text, replaced_names, size, rgb, font_bytes = job
-                paragraph_jobs[page_number] = rectangle, text, replaced_names, size, rgb, font_bytes
+                if is_leadership_template:
+                    rectangle, text, replaced_names, size, rgb, font_bytes, source_bold_words = job
+                else:
+                    rectangle, text, replaced_names, size, rgb, font_bytes = job
+                    source_bold_words = set()
+                paragraph_jobs[page_number] = rectangle, text, replaced_names, size, rgb, font_bytes, source_bold_words
                 if is_leadership_template:
                     leadership_paragraph_pages.add(page_number)
                     paragraph_fields.update((page_number, name) for name in replaced_names)
@@ -890,10 +962,10 @@ def render_certificate(
             # frame and the QR holder as large grouped drawings, so removing
             # intersecting graphics would erase those template elements.
             page.apply_redactions(images=0, graphics=0, text=0)
-        for page_number, (rectangle, text, replaced_names, size, rgb, font_bytes) in paragraph_jobs.items():
+        for page_number, (rectangle, text, replaced_names, size, rgb, font_bytes, source_bold_words) in paragraph_jobs.items():
             if page_number in leadership_paragraph_pages:
                 _render_leadership_paragraph(
-                    document[page_number - 1], rectangle, text, size, rgb, normalized_values, replaced_names, font_bytes
+                    document[page_number - 1], rectangle, text, size, rgb, normalized_values, replaced_names, font_bytes, source_bold_words
                 )
             else:
                 _render_activity_paragraph(
