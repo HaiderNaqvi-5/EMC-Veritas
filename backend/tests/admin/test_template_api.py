@@ -110,6 +110,14 @@ def test_executive_membership_listing_requires_authenticated_admin() -> None:
     assert response.json() == {"detail": "Admin session required"}
 
 
+def test_executive_membership_deletion_requires_authenticated_admin() -> None:
+    response = TestClient(app).delete(
+        "/api/admin/executive-memberships/00000000-0000-0000-0000-000000000000"
+    )
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}
+
+
 def test_signatory_management_requires_authenticated_admin() -> None:
     response = TestClient(app).post(
         "/api/admin/signatories",

@@ -11,6 +11,7 @@ from app.models.domain import (
     Admin,
     EmcSession,
     ExecutiveMembership,
+    IssuedDocument,
     MembershipStatus,
     SessionStatus,
     Society,
@@ -233,3 +234,27 @@ def remove_membership(
     row = _membership_row(db, membership.id)
     assert row is not None
     return _response(row)
+
+
+@router.delete("/{membership_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_removed_membership(
+    membership_id: UUID,
+    _: Admin = Depends(current_active_admin),
+    db: Session = Depends(get_db),
+) -> None:
+    """Permanently delete an unused appointment that was already removed."""
+    membership = db.get(ExecutiveMembership, membership_id)
+    if membership is None:
+        raise HTTPException(status_code=404, detail="Executive membership not found")
+    if membership.status is not MembershipStatus.REMOVED:
+        raise HTTPException(
+            status_code=409,
+            detail="Remove the membership before permanently deleting it",
+        )
+    if db.scalar(select(IssuedDocument.id).where(IssuedDocument.executive_membership_id == membership.id)):
+        raise HTTPException(
+            status_code=409,
+            detail="This membership has issued leadership documents and cannot be deleted",
+        )
+    db.delete(membership)
+    db.commit()
