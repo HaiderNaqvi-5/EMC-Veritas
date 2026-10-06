@@ -138,8 +138,33 @@ export function ActivitiesPage() {
       apiRequest(`/admin/documents/activities/${id}/issue`, { method: "POST" }),
     onSuccess: () => void refreshActivities(),
   });
-  const remove = useMutation({ mutationFn: (id: string) => apiRequest<void>(`/admin/activities/${id}`, { method: "DELETE" }), onSuccess: () => { setViewId(""); void refreshActivities(); } });
-  const participantImport = useMutation({ mutationFn: async () => { const data = new FormData(); data.set("file", participantFile as File); return apiRequest<{ added: number; already_present: number; unknown_roll_numbers: string[] }>(`/admin/imports/activities/${activityId}/participants/import`, { method: "POST", body: data }); }, onSuccess: () => { setParticipantFile(null); setViewId(activityId); void refreshParticipants(); } });
+  const remove = useMutation({
+    mutationFn: (id: string) =>
+      apiRequest<void>(`/admin/activities/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      setViewId("");
+      void refreshActivities();
+    },
+  });
+  const participantImport = useMutation({
+    mutationFn: async () => {
+      const data = new FormData();
+      data.set("file", participantFile as File);
+      return apiRequest<{
+        added: number;
+        already_present: number;
+        unknown_roll_numbers: string[];
+      }>(`/admin/imports/activities/${activityId}/participants/import`, {
+        method: "POST",
+        body: data,
+      });
+    },
+    onSuccess: () => {
+      setParticipantFile(null);
+      setViewId(activityId);
+      void refreshParticipants();
+    },
+  });
   const error =
     create.error?.message ??
     update.error?.message ??
@@ -247,9 +272,16 @@ export function ActivitiesPage() {
           Create activity
         </button>
       </form>
-      <p className="mt-2 text-sm text-slate-500">Choose an approved template created in Certificate templates. Templates are immutable once approved, so every issued record uses the deliberate design you selected.</p>
+      <p className="mt-2 text-sm text-slate-500">
+        Choose an approved template created in Certificate templates. Templates
+        are immutable once approved, so every issued record uses the deliberate
+        design you selected.
+      </p>
       {templates.isSuccess && !templates.data?.length && (
-        <p className="mt-2 text-sm text-amber-700">Create, configure, and approve a certificate template before creating an activity.</p>
+        <p className="mt-2 text-sm text-amber-700">
+          Create, configure, and approve a certificate template before creating
+          an activity.
+        </p>
       )}
       {sessions.isSuccess && !activeSessions.length && (
         <p className="mt-2 text-sm text-slate-500">
@@ -294,8 +326,51 @@ export function ActivitiesPage() {
           Add eligible participant
         </button>
       </form>
-      <form onSubmit={(event) => { event.preventDefault(); if (participantFile) participantImport.mutate(); }} className="mt-4 grid gap-3 rounded-xl border p-4 md:grid-cols-3"><select required value={activityId} onChange={(e) => setActivityId(e.target.value)} className="rounded border p-2"><option value="">Choose activity for participant Excel</option>{activities.data?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input required accept=".xlsx" type="file" onChange={(event) => setParticipantFile(event.target.files?.[0] ?? null)} className="rounded border p-2"/><button disabled={!participantFile || participantImport.isPending} className="rounded bg-slate-900 p-2 text-white">Import participant Excel</button></form>
-      {participantImport.data && <p role="status" className="mt-2 text-sm text-green-700">Imported {participantImport.data.added} participants; {participantImport.data.already_present} were already linked.{participantImport.data.unknown_roll_numbers.length ? ` Unknown active roll numbers: ${participantImport.data.unknown_roll_numbers.join(", ")}` : ""}</p>}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (participantFile) participantImport.mutate();
+        }}
+        className="mt-4 grid gap-3 rounded-xl border p-4 md:grid-cols-3"
+      >
+        <select
+          required
+          value={activityId}
+          onChange={(e) => setActivityId(e.target.value)}
+          className="rounded border p-2"
+        >
+          <option value="">Choose activity for participant Excel</option>
+          {activities.data?.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+        <input
+          required
+          accept=".xlsx"
+          type="file"
+          onChange={(event) =>
+            setParticipantFile(event.target.files?.[0] ?? null)
+          }
+          className="rounded border p-2"
+        />
+        <button
+          disabled={!participantFile || participantImport.isPending}
+          className="rounded bg-slate-900 p-2 text-white"
+        >
+          Import participant Excel
+        </button>
+      </form>
+      {participantImport.data && (
+        <p role="status" className="mt-2 text-sm text-green-700">
+          Imported {participantImport.data.added} participants;{" "}
+          {participantImport.data.already_present} were already linked.
+          {participantImport.data.unknown_roll_numbers.length
+            ? ` Unknown active roll numbers: ${participantImport.data.unknown_roll_numbers.join(", ")}`
+            : ""}
+        </p>
+      )}
       {error && (
         <p role="alert" className="mt-3 rounded bg-red-50 p-3 text-red-700">
           {error}
@@ -308,7 +383,26 @@ export function ActivitiesPage() {
           <ul className="space-y-3">
             {activities.data?.map((item) => (
               <li key={item.id} className="rounded border p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3"><strong>{item.name}</strong><span>{item.activity_date} — {item.status}</span><button onClick={() => remove.mutate(item.id)} disabled={remove.isPending} className="rounded border border-red-600 bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">Delete activity</button></div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <strong>{item.name}</strong>
+                  <span>
+                    {item.activity_date} — {item.status}
+                  </span>
+                  <button
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Delete activity ${item.name}? This cannot be undone.`,
+                        )
+                      )
+                        remove.mutate(item.id);
+                    }}
+                    disabled={remove.isPending}
+                    className="rounded border border-red-600 bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                  >
+                    Delete activity
+                  </button>
+                </div>
                 <div className="mt-3 flex flex-wrap gap-3">
                   <select
                     aria-label={`Status for ${item.name}`}
@@ -340,7 +434,13 @@ export function ActivitiesPage() {
                     Issue and publish certificates
                   </button>
                 </div>
-                {!item.template_id && <p className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">No certificate template is attached. Use Edit activity below to select an approved template before moving this activity to READY.</p>}
+                {!item.template_id && (
+                  <p className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                    No certificate template is attached. Use Edit activity below
+                    to select an approved template before moving this activity
+                    to READY.
+                  </p>
+                )}
                 <details className="mt-3">
                   <summary className="cursor-pointer text-sm underline">
                     Edit activity
