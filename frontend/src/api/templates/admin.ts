@@ -6,6 +6,7 @@ export type Template = {
   approved: boolean;
   archived: boolean;
   signature_handling: "retain" | "replace" | null;
+  purpose: "PARTICIPANT" | "EXECUTIVE_COUNCIL";
   created_at: string;
 };
 
@@ -38,7 +39,8 @@ export type TemplateAnalysis = {
   detected_fields: Array<TemplateField & { detected_text: string }>;
 };
 
-export const listTemplates = () => apiRequest<Template[]>("/admin/templates");
+export const listTemplates = (purpose: Template["purpose"] = "PARTICIPANT") =>
+  apiRequest<Template[]>(`/admin/templates?purpose=${purpose}`);
 export const deleteTemplate = (templateId: string) =>
   apiRequest<void>(`/admin/templates/${templateId}`, { method: "DELETE" });
 export const listTemplateFields = (templateId: string) =>
@@ -76,10 +78,11 @@ export async function templatePageImage(templateId: string, pageNumber: number):
   return retryConnection(() => apiBlobRequest(`/admin/templates/${templateId}/pages/${pageNumber}`));
 }
 
-export async function uploadTemplate(name: string, file: File): Promise<Template> {
+export async function uploadTemplate(name: string, file: File, purpose: Template["purpose"] = "PARTICIPANT"): Promise<Template> {
   const data = new FormData();
   data.set("name", name);
   data.set("file", file);
+  data.set("purpose", purpose);
   return apiRequest<Template>("/admin/templates/upload", { method: "POST", body: data });
 }
 

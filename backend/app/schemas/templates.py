@@ -45,6 +45,7 @@ class TemplateResponse(BaseModel):
     approved: bool
     archived: bool
     signature_handling: Literal["retain", "replace"] | None
+    purpose: Literal["PARTICIPANT", "EXECUTIVE_COUNCIL"]
     created_at: datetime
 
 

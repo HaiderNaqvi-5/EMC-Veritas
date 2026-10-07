@@ -18,7 +18,8 @@ def test_permanent_membership_deletion_removes_revoked_document_dependencies() -
 
     delete_removed_membership(membership.id, db=db)
 
-    assert db.execute.call_count == 2
+    # Signatory snapshots, revoked documents, and any activity-organizer links.
+    assert db.execute.call_count == 3
     db.delete.assert_called_once_with(membership)
     db.commit.assert_called_once_with()
 

@@ -36,6 +36,7 @@ _CERTIFICATE_PLACEHOLDERS: dict[str, tuple[str, ...]] = {
     "roll_number": ("{{roll_number}}", "roll_number", "student roll number", "roll number"),
     "activity_name": ("{{activity_name}}", "activity_name", "activity name"),
     "activity_date": ("{{activity_date}}", "activity_date", "activity date"),
+    "role": ("{{role}}", "role", "ec role", "executive role"),
     # Keep the original authoring syntax working across every template type.
     # PDFs created for earlier certificate templates commonly use
     # ``{{serial_no.}}`` rather than the internal field name.

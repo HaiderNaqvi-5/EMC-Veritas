@@ -9,6 +9,7 @@ from app.api.admin.admins import router as admin_admins_router
 from app.api.admin.audit import router as admin_audit_router
 from app.api.admin.auth import router as admin_auth_router
 from app.api.admin.documents import router as admin_documents_router
+from app.api.admin.ec_certificates import router as admin_ec_certificates_router
 from app.api.admin.executive import router as admin_executive_router
 from app.api.admin.imports import router as admin_imports_router
 from app.api.admin.leadership_templates import router as admin_leadership_templates_router
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_audit_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_activities_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_documents_router, prefix=f"{settings.api_prefix}/admin")
+    app.include_router(admin_ec_certificates_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_executive_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_imports_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_leadership_templates_router, prefix=f"{settings.api_prefix}/admin")

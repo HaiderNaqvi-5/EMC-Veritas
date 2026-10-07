@@ -10,6 +10,7 @@ from app.api.admin.dependencies import current_active_admin
 from app.db.session import get_db
 from app.models.domain import (
     Activity,
+    ActivityOrganizer,
     ActivityParticipant,
     ActivityStatus,
     Admin,
@@ -61,7 +62,11 @@ def list_approved_templates(
 ) -> list[Template]:
     return list(
         db.query(Template)
-        .filter(Template.approved.is_(True), Template.archived.is_(False))
+        .filter(
+            Template.approved.is_(True),
+            Template.archived.is_(False),
+            Template.purpose == "PARTICIPANT",
+        )
         .order_by(Template.name)
         .all()
     )
@@ -109,6 +114,7 @@ def delete_activity(activity_id: UUID, admin: Admin = Depends(current_active_adm
         db.commit()
         return
     db.query(ActivityParticipant).filter(ActivityParticipant.activity_id == item.id).delete(synchronize_session=False)
+    db.query(ActivityOrganizer).filter(ActivityOrganizer.activity_id == item.id).delete(synchronize_session=False)
     record_audit_event(db, event_type="ACTIVITY_DELETED", entity_type="activity", entity_id=item.id, payload={"name": item.name}, actor_admin_id=admin.id)
     db.delete(item)
     db.commit()

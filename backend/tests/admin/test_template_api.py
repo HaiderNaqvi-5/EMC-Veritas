@@ -98,6 +98,27 @@ def test_individual_leadership_issue_requires_authenticated_super_admin() -> Non
     assert response.json() == {"detail": "Admin session required"}
 
 
+def test_ec_certificate_workflow_requires_authenticated_super_admin() -> None:
+    client = TestClient(app)
+    response = client.get("/api/admin/ec-certificates/activities")
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}
+
+    response = client.put(
+        "/api/admin/ec-certificates/activities/00000000-0000-0000-0000-000000000000/members",
+        json={"membership_ids": []},
+    )
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}
+
+    response = client.post(
+        "/api/admin/ec-certificates/activities/00000000-0000-0000-0000-000000000000/issue",
+        json={"template_id": "00000000-0000-0000-0000-000000000000"},
+    )
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}
+
+
 def test_template_configuration_requires_authenticated_super_admin() -> None:
     response = TestClient(app).post(
         "/api/admin/templates/00000000-0000-0000-0000-000000000000/fields",

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.admin.dependencies import current_active_admin
 from app.db.session import get_db
 from app.models.domain import (
+    ActivityOrganizer,
     Admin,
     DocumentSignatory,
     DocumentStatus,
@@ -279,6 +280,11 @@ def delete_removed_membership(
         delete(IssuedDocument).where(
             IssuedDocument.executive_membership_id == membership.id,
             IssuedDocument.status == DocumentStatus.REVOKED,
+        )
+    )
+    db.execute(
+        delete(ActivityOrganizer).where(
+            ActivityOrganizer.executive_membership_id == membership.id
         )
     )
     db.delete(membership)

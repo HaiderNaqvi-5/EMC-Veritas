@@ -124,7 +124,7 @@ def test_delete_inactive_student_removes_related_draft_links() -> None:
     delete_inactive_student(db, student)
 
     assert db.deleted == [student]
-    assert len(db.executed) == 5
+    assert len(db.executed) == 6
 
 
 def test_delete_inactive_student_detaches_audit_history_from_removed_admin() -> None:
@@ -136,7 +136,7 @@ def test_delete_inactive_student_detaches_audit_history_from_removed_admin() -> 
     delete_inactive_student(db, student, protected_admin_id=uuid4())
 
     assert db.deleted == [student]
-    assert len(db.executed) == 6
+    assert len(db.executed) == 7
 
 
 def test_delete_inactive_student_keeps_active_document_protection() -> None:

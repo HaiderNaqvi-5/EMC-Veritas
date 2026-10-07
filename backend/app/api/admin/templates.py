@@ -15,6 +15,8 @@ from app.db.session import get_db
 from app.models.domain import (
     Activity,
     Admin,
+    ExecutiveMembership,
+    MembershipStatus,
     Signatory,
     Student,
     Template,
@@ -70,14 +72,21 @@ def _font_response(font: TemplateFont) -> TemplateFontResponse:
 
 @router.get("", response_model=list[TemplateResponse])
 def list_templates(
+    purpose: str | None = None,
     db: Session = Depends(get_db), admin: Admin = Depends(super_admin_required)
 ) -> list[Template]:
-    return list(db.scalars(select(Template).where(Template.archived.is_(False)).order_by(Template.created_at.desc())).all())
+    query = select(Template).where(Template.archived.is_(False))
+    if purpose is not None:
+        if purpose not in {"PARTICIPANT", "EXECUTIVE_COUNCIL"}:
+            raise HTTPException(status_code=422, detail="Unsupported template purpose")
+        query = query.where(Template.purpose == purpose)
+    return list(db.scalars(query.order_by(Template.created_at.desc())).all())
 
 
 @router.post("/upload", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
 async def upload_template(
     name: str = Form(..., min_length=1, max_length=255),
+    purpose: str = Form("PARTICIPANT", pattern=r"^(PARTICIPANT|EXECUTIVE_COUNCIL)$"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     admin: Admin = Depends(super_admin_required),
@@ -88,7 +97,12 @@ async def upload_template(
         fitz.open(stream=content, filetype="pdf").close()
     except fitz.FileDataError as error:
         raise HTTPException(status_code=422, detail="Uploaded template is not a readable PDF") from error
-    template = Template(id=uuid4(), name=name.strip(), storage_key=f"templates/{uuid4()}.pdf")
+    template = Template(
+        id=uuid4(),
+        name=name.strip(),
+        storage_key=f"templates/{uuid4()}.pdf",
+        purpose=purpose,
+    )
     try:
         SupabaseStorage().upload(template.storage_key, content, "application/pdf")
     except RuntimeError as error:
@@ -100,7 +114,11 @@ async def upload_template(
         event_type="TEMPLATE_UPLOADED",
         entity_type="template",
         entity_id=template.id,
-        payload={"name": template.name, "storage_key": template.storage_key},
+        payload={
+            "name": template.name,
+            "storage_key": template.storage_key,
+            "purpose": template.purpose,
+        },
     )
     db.commit()
     db.refresh(template)
@@ -332,6 +350,13 @@ def preview_template(
     if activity is None:
         raise HTTPException(status_code=404, detail="Activity not found")
     fields = db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all()
+    membership = db.scalar(
+        select(ExecutiveMembership).where(
+            ExecutiveMembership.student_id == student.id,
+            ExecutiveMembership.session_id == activity.session_id,
+            ExecutiveMembership.status != MembershipStatus.REMOVED,
+        )
+    )
     # Signatory authority follows the date a certificate is issued, not the
     # date an event happened. This lets a newly uploaded office-holder sign a
     # certificate for a past activity when the certificate is created today.
@@ -370,6 +395,7 @@ def preview_template(
                 "roll_number": student.roll_number,
                 "activity_name": activity.name,
                 "activity_date": activity.activity_date,
+                "role": membership.role if membership is not None else "Executive Council Member",
                 "verification_id": "PREVIEW-ONLY",
             },
             verification_url=verification_url(settings.public_app_url, "PREVIEW"),
@@ -397,6 +423,8 @@ def approve_template(
     template = _template_or_404(db, template_id)
     names = set(db.scalars(select(TemplateField.field_name).where(TemplateField.template_id == template.id)).all())
     missing = missing_required_fields(names)
+    if template.purpose == "EXECUTIVE_COUNCIL" and "role" not in names:
+        missing.add("role")
     if missing:
         raise HTTPException(
             status_code=422,

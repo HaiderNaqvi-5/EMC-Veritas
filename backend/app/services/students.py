@@ -4,6 +4,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.models.domain import (
+    ActivityOrganizer,
     ActivityParticipant,
     Admin,
     AuditLog,
@@ -90,6 +91,14 @@ def delete_inactive_student(
     if protected_admin_id in linked_admin_ids:
         raise ValueError("You cannot delete the student record for your own administrator account")
     db.execute(delete(ActivityParticipant).where(ActivityParticipant.student_id == student.id))
+    membership_ids = select(ExecutiveMembership.id).where(
+        ExecutiveMembership.student_id == student.id
+    )
+    db.execute(
+        delete(ActivityOrganizer).where(
+            ActivityOrganizer.executive_membership_id.in_(membership_ids)
+        )
+    )
     db.execute(delete(ExecutiveMembership).where(ExecutiveMembership.student_id == student.id))
     revoked_document_ids = select(IssuedDocument.id).where(
         IssuedDocument.student_id == student.id,

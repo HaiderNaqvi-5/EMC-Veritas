@@ -84,13 +84,26 @@ def student_documents(request: Request, roll_number: str, db: Session = Depends(
         item = PublicDocument(
             id=document.id,
             document_type=document.document_type.value,
-            title=activity_name or document.document_type.value.replace("_", " ").title(),
+            title=(
+                f"{activity_name} — Executive Council Organizer"
+                if activity_name
+                and document.document_type == DocumentType.EXECUTIVE_COUNCIL_CERTIFICATE
+                else activity_name or document.document_type.value.replace("_", " ").title()
+            ),
             activity_date=activity_date,
             issue_date=document.issue_date,
             status=document.status.value,
             download_url=download_url,
         )
-        (activity_certificates if document.document_type == DocumentType.ACTIVITY_CERTIFICATE else leadership_recognition).append(item)
+        (
+            activity_certificates
+            if document.document_type
+            in {
+                DocumentType.ACTIVITY_CERTIFICATE,
+                DocumentType.EXECUTIVE_COUNCIL_CERTIFICATE,
+            }
+            else leadership_recognition
+        ).append(item)
     return StudentDocumentsResponse(
         full_name=student.full_name,
         roll_number=student.roll_number,

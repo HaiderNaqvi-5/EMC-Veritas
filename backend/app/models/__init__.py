@@ -1,5 +1,6 @@
 from app.models.domain import (
     Activity,
+    ActivityOrganizer,
     ActivityParticipant,
     Admin,
     AuditLog,
@@ -20,4 +21,4 @@ from app.models.domain import (
     TemplateFont,
 )
 
-__all__ = ["Activity", "ActivityParticipant", "Admin", "AuditLog", "DocumentSignatory", "EmailChangeRequest", "EmcSession", "ExecutiveMembership", "IssuedDocument", "LeadershipTemplate", "LeadershipTemplateField", "Signatory", "Society", "Student", "StudentAccount", "StudentAccountToken", "Template", "TemplateField", "TemplateFont"]
+__all__ = ["Activity", "ActivityOrganizer", "ActivityParticipant", "Admin", "AuditLog", "DocumentSignatory", "EmailChangeRequest", "EmcSession", "ExecutiveMembership", "IssuedDocument", "LeadershipTemplate", "LeadershipTemplateField", "Signatory", "Society", "Student", "StudentAccount", "StudentAccountToken", "Template", "TemplateField", "TemplateFont"]
