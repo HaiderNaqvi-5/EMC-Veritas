@@ -14,6 +14,7 @@ from app.core.settings import settings
 from app.db.session import get_db
 from app.models.domain import (
     Admin,
+    DocumentStatus,
     DocumentType,
     EmcSession,
     ExecutiveMembership,
@@ -88,6 +89,22 @@ def _document_type(value: LeadershipDocumentType) -> DocumentType:
     if document_type not in _ALLOWED_DOCUMENT_TYPES:
         raise HTTPException(status_code=422, detail="Unsupported leadership document type")
     return document_type
+
+
+def _prepare_corrected_version(
+    latest: IssuedDocument | None,
+) -> tuple[int, IssuedDocument | None]:
+    """Reserve the next immutable version and retire the current one.
+
+    Historical PDFs are never changed or deleted. A currently valid letter is
+    marked superseded so public lookup exposes only its corrected replacement.
+    """
+    if latest is None:
+        return 1, None
+    if latest.status is DocumentStatus.VALID:
+        latest.status = DocumentStatus.SUPERSEDED
+        return latest.version + 1, latest
+    return latest.version + 1, None
 
 
 def _restore_detected_fields_for_empty_template(
@@ -517,14 +534,17 @@ def issue_leadership_letter(
         and membership.status is not MembershipStatus.COMPLETED
     ):
         raise HTTPException(status_code=409, detail="Complete the membership before issuing an end-of-tenure letter")
-    existing = db.scalar(
-        select(IssuedDocument.id).where(
+    latest = db.scalar(
+        select(IssuedDocument)
+        .where(
             IssuedDocument.executive_membership_id == membership.id,
             IssuedDocument.document_type == template.document_type,
         )
+        .order_by(IssuedDocument.version.desc())
+        .limit(1)
+        .with_for_update()
     )
-    if existing is not None:
-        raise HTTPException(status_code=409, detail="This letter has already been issued to this member")
+    version, superseded = _prepare_corrected_version(latest)
     student = db.get(Student, membership.student_id)
     session = db.get(EmcSession, membership.session_id)
     if student is None or not student.active or session is None:
@@ -584,6 +604,7 @@ def issue_leadership_letter(
         issue_date=issue_date,
         render_values=render_values,
         actor_admin_id=admin.id,
+        version=version,
         signatories=signatories,
     )
     # The immutable ID only exists after reservation. Include it in the
@@ -628,14 +649,34 @@ def issue_leadership_letter(
         event_type="INDIVIDUAL_LEADERSHIP_LETTER_ISSUED",
         entity_type="issued_document",
         entity_id=document.id,
-        payload={"template_id": str(template.id), "membership_id": str(membership.id)},
+        payload={
+            "template_id": str(template.id),
+            "membership_id": str(membership.id),
+            "version": version,
+            "superseded_document_id": str(superseded.id) if superseded else None,
+        },
     )
+    if superseded is not None:
+        record_audit_event(
+            db,
+            actor_admin_id=admin.id,
+            event_type="DOCUMENT_SUPERSEDED",
+            entity_type="issued_document",
+            entity_id=superseded.id,
+            payload={
+                "replacement_document_id": str(document.id),
+                "replacement_version": document.version,
+                "reason": "corrected_leadership_template",
+            },
+        )
     db.commit()
     return LeadershipLetterIssueResponse(
         document_id=document.id,
         verification_id=document.verification_id,
         document_type=document.document_type.value,
         issue_date=document.issue_date,
+        version=document.version,
+        superseded_document_id=superseded.id if superseded else None,
     )
 
 

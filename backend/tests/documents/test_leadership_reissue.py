@@ -4,6 +4,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from app.api.admin.documents import _reissue_leadership_document
+from app.api.admin.leadership_templates import _prepare_corrected_version
 from app.models.domain import DocumentStatus, DocumentType
 
 
@@ -66,3 +67,20 @@ def test_leadership_reissue_keeps_reserved_context_and_supersedes_original(monke
     assert reserved["render_values"]["student_name"] == "Ayesha Khan"
     assert result.version == 2
     assert db.committed is True
+
+
+def test_corrected_template_supersedes_valid_letter_and_increments_version() -> None:
+    document = SimpleNamespace(status=DocumentStatus.VALID, version=3)
+
+    version, superseded = _prepare_corrected_version(document)
+
+    assert version == 4
+    assert superseded is document
+    assert document.status is DocumentStatus.SUPERSEDED
+
+
+def test_first_issue_starts_at_version_one() -> None:
+    version, superseded = _prepare_corrected_version(None)
+
+    assert version == 1
+    assert superseded is None

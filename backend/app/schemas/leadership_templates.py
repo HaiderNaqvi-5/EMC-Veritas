@@ -59,3 +59,5 @@ class LeadershipLetterIssueResponse(BaseModel):
     verification_id: str
     document_type: LeadershipDocumentType
     issue_date: date
+    version: int
+    superseded_document_id: UUID | None = None

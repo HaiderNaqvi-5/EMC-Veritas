@@ -3,7 +3,7 @@ import { apiBase, apiBlobRequest, apiRequest } from "../lib/api/client";
 export type LeadershipTemplate = { id: string; name: string; role: string; executive_membership_id: string | null; document_type: "LEADERSHIP_RECOGNITION" | "END_OF_TENURE_APPRECIATION"; signature_handling: "retain" | "replace" | null; active: boolean; archived: boolean };
 export type LeadershipField = { field_name: string; page_number: number; x: number; y: number; width: number; height: number };
 export type LeadershipTemplateAnalysis = { detected_fields: Array<LeadershipField & { detected_text: string }> };
-export type LeadershipIssueResult = { document_id: string; verification_id: string; document_type: LeadershipTemplate["document_type"]; issue_date: string };
+export type LeadershipIssueResult = { document_id: string; verification_id: string; document_type: LeadershipTemplate["document_type"]; issue_date: string; version: number; superseded_document_id: string | null };
 export type ExecutiveMembership = { id: string; student_id: string; student_name: string; roll_number: string; session_id: string; session_name: string; society_id: string | null; society_name: string | null; role: string; start_date: string; end_date: string | null; status: "ACTIVE" | "COMPLETED" | "REMOVED" };
 export const listLeadershipTemplates = () => apiRequest<LeadershipTemplate[]>("/admin/leadership-templates");
 export const analyzeLeadershipTemplate = (id: string) => apiRequest<LeadershipTemplateAnalysis>(`/admin/leadership-templates/${id}/analysis`);
