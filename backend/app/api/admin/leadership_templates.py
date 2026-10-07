@@ -37,6 +37,7 @@ from app.schemas.leadership_templates import (
 from app.schemas.templates import DetectedTemplateFieldResponse
 from app.services.audit import record_audit_event
 from app.services.documents.issuance import reserve_document
+from app.services.documents.lifecycle import DocumentLifecycleError, generate_on_first_download
 from app.services.documents.qr import verification_url
 from app.services.documents.rendering import CertificateRenderingError, render_certificate
 from app.services.executive.constants import EXECUTIVE_ROLES
@@ -564,6 +565,16 @@ def issue_leadership_letter(
                 detail="Required signatories are unavailable: " + ", ".join(sorted(missing_signatures)),
             )
         signatories = tuple(selected.values())
+    render_values = leadership_letter_values(
+        student_name=student.full_name,
+        roll_number=student.roll_number,
+        role=membership.role,
+        society_name=society_name,
+        role_start_date=membership.start_date,
+        role_end_date=role_end_date,
+        session_name=session.name,
+        issue_date=issue_date,
+    )
     document = reserve_document(
         db,
         student_id=student.id,
@@ -571,19 +582,43 @@ def issue_leadership_letter(
         leadership_template_id=template.id,
         document_type=template.document_type,
         issue_date=issue_date,
-        render_values=leadership_letter_values(
-            student_name=student.full_name,
-            roll_number=student.roll_number,
-            role=membership.role,
-            society_name=society_name,
-            role_start_date=membership.start_date,
-            role_end_date=role_end_date,
-            session_name=session.name,
-            issue_date=issue_date,
-        ),
+        render_values=render_values,
         actor_admin_id=admin.id,
         signatories=signatories,
     )
+    # Generate and cache the immutable PDF while the administrator issues it.
+    # Student downloads should retrieve a ready Storage object instead of
+    # paying the PDF-rendering cost on their first click.
+    try:
+        storage = SupabaseStorage()
+        template_pdf = storage.download(template.storage_key)
+        image_values = None
+        if template.signature_handling == "replace":
+            image_values = {
+                field_name: storage.download(signatory.signature_storage_key)
+                for field_name, signatory in selected.items()
+            }
+        generate_on_first_download(
+            db,
+            document=document,
+            template_pdf=template_pdf,
+            template_fields=leadership_fields_for_rendering(fields),
+            values=render_values,
+            storage=storage,
+            public_base_url=settings.public_app_url,
+            actor_admin_id=admin.id,
+            image_values=image_values,
+            required_field_names=required_leadership_template_fields(membership.role),
+        )
+    except RuntimeError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="The letter could not be prepared in document storage. Please try issuing it again.",
+        ) from error
+    except DocumentLifecycleError as error:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(error)) from error
     record_audit_event(
         db,
         actor_admin_id=admin.id,
