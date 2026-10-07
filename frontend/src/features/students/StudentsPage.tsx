@@ -15,6 +15,9 @@ export function StudentsPage() {
   const client = useQueryClient();
   const [rollNumber, setRollNumber] = useState("");
   const [fullName, setFullName] = useState("");
+  const [editingId, setEditingId] = useState("");
+  const [editRollNumber, setEditRollNumber] = useState("");
+  const [editFullName, setEditFullName] = useState("");
   const query = useQuery({
     queryKey: ["admin", "students"],
     queryFn: () => apiRequest<Student[]>("/admin/students"),
@@ -38,6 +41,16 @@ export function StudentsPage() {
       }),
     onSuccess: () =>
       void client.invalidateQueries({ queryKey: ["admin", "students"] }),
+  });
+  const update = useMutation({
+    mutationFn: (id: string) => apiRequest<Student>(`/admin/students/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ roll_number: editRollNumber, full_name: editFullName }),
+    }),
+    onSuccess: () => {
+      setEditingId("");
+      void client.invalidateQueries({ queryKey: ["admin", "students"] });
+    },
   });
   const remove = useMutation({
     mutationFn: (id: string) => retryConnection(
@@ -106,36 +119,34 @@ export function StudentsPage() {
             <tbody>
               {query.data?.map((student) => (
                 <tr key={student.id} className="border-b last:border-0">
-                  <td className="p-4">{student.roll_number}</td>
-                  <td className="p-4">{student.full_name}</td>
+                  <td className="p-4">{editingId === student.id ? <input required aria-label="Edit roll number" value={editRollNumber} onChange={(event) => setEditRollNumber(canonicalRollNumber(event.target.value))} className="w-full rounded border p-2"/> : student.roll_number}</td>
+                  <td className="p-4">{editingId === student.id ? <input required aria-label="Edit student name" value={editFullName} onChange={(event) => setEditFullName(event.target.value)} className="w-full rounded border p-2"/> : student.full_name}</td>
                   <td className="p-4">
                     {student.active ? "Active" : "Deactivated"}
                   </td>
                   <td className="p-4">
-                    {student.active ? (
-                      <button
-                        onClick={() => deactivate.mutate(student.id)}
-                        disabled={deactivate.isPending}
-                        className="underline"
-                      >
-                        Deactivate
-                      </button>
+                    {editingId === student.id ? (
+                      <span className="flex flex-wrap gap-3">
+                        <button onClick={() => update.mutate(student.id)} disabled={update.isPending || !editRollNumber.trim() || !editFullName.trim()} className="font-semibold underline">{update.isPending ? "Saving…" : "Save"}</button>
+                        <button onClick={() => { setEditingId(""); update.reset(); }} disabled={update.isPending} className="underline">Cancel</button>
+                      </span>
+                    ) : student.active ? (
+                      <span className="flex flex-wrap gap-3">
+                        <button onClick={() => { setEditingId(student.id); setEditRollNumber(student.roll_number); setEditFullName(student.full_name); update.reset(); }} className="underline">Edit</button>
+                        <button onClick={() => deactivate.mutate(student.id)} disabled={deactivate.isPending} className="underline">Deactivate</button>
+                      </span>
                     ) : (
-                      <button
-                        onClick={() => {
-                          if (window.confirm(`Delete ${student.full_name}? This cannot be undone.`)) remove.mutate(student.id);
-                        }}
-                        disabled={remove.isPending}
-                        className="text-red-700 underline disabled:opacity-60"
-                      >
-                        Delete
-                      </button>
+                      <span className="flex flex-wrap gap-3">
+                        <button onClick={() => { setEditingId(student.id); setEditRollNumber(student.roll_number); setEditFullName(student.full_name); update.reset(); }} className="underline">Edit</button>
+                        <button onClick={() => { if (window.confirm(`Delete ${student.full_name}? This cannot be undone.`)) remove.mutate(student.id); }} disabled={remove.isPending} className="text-red-700 underline disabled:opacity-60">Delete</button>
+                      </span>
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {update.isError && <p role="alert" className="border-t bg-red-50 p-4 text-red-700">{update.error.message}</p>}
         </div>
       )}
     </section>

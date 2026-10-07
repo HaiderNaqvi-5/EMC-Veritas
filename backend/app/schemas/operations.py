@@ -16,6 +16,11 @@ class StudentCreate(APIModel):
     email: str | None = Field(default=None, max_length=320)
 
 
+class StudentUpdate(APIModel):
+    roll_number: str = Field(min_length=1, max_length=64)
+    full_name: str = Field(min_length=1, max_length=255)
+
+
 class StudentResponse(StudentCreate):
     id: UUID
     active: bool

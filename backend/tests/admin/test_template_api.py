@@ -19,6 +19,15 @@ def test_template_listing_requires_authenticated_super_admin() -> None:
     assert response.json() == {"detail": "Admin session required"}
 
 
+def test_student_edit_requires_authenticated_admin() -> None:
+    response = TestClient(app).put(
+        "/api/admin/students/00000000-0000-0000-0000-000000000000",
+        json={"roll_number": "2K22-BSCS-238", "full_name": "Student"},
+    )
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Admin session required"}
+
+
 def test_template_deletion_requires_authenticated_super_admin() -> None:
     response = TestClient(app).delete(
         "/api/admin/templates/00000000-0000-0000-0000-000000000000"

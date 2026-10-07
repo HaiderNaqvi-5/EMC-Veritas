@@ -13,7 +13,7 @@ from app.models.domain import (
     IssuedDocument,
     Student,
 )
-from app.schemas.operations import StudentCreate
+from app.schemas.operations import StudentCreate, StudentUpdate
 
 
 def normalize_roll_number(roll_number: str) -> str:
@@ -46,6 +46,23 @@ def create_student(db: Session, payload: StudentCreate) -> Student:
         active=True,
     )
     db.add(student)
+    db.flush()
+    return student
+
+
+def update_student(db: Session, student: Student, payload: StudentUpdate) -> Student:
+    """Correct a student's mutable identity fields without replacing its ID."""
+    roll_number = normalize_roll_number(payload.roll_number)
+    full_name = payload.full_name.strip()
+    if not full_name:
+        raise ValueError("Student name cannot be blank")
+    conflicting_student = db.scalar(
+        select(Student).where(Student.roll_number == roll_number, Student.id != student.id)
+    )
+    if conflicting_student is not None:
+        raise ValueError("A student with this roll number already exists")
+    student.roll_number = roll_number
+    student.full_name = full_name
     db.flush()
     return student
 

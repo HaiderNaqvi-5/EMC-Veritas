@@ -2,8 +2,13 @@ from uuid import uuid4
 
 import pytest
 
-from app.schemas.operations import StudentCreate
-from app.services.students import create_student, deactivate_student, delete_inactive_student
+from app.schemas.operations import StudentCreate, StudentUpdate
+from app.services.students import (
+    create_student,
+    deactivate_student,
+    delete_inactive_student,
+    update_student,
+)
 
 
 class FakeDatabase:
@@ -77,6 +82,38 @@ def test_create_student_reactivates_an_inactive_matching_roll_number() -> None:
     assert student.full_name == "Updated Name"
     assert db.added == []
     assert db.flush_count == 1
+
+
+def test_update_student_corrects_and_normalizes_identity_fields() -> None:
+    student = create_student(
+        FakeDatabase(), StudentCreate(roll_number="2K22-BSCS-229", full_name="Wrong Name")
+    )
+    db = FakeDatabase()
+
+    result = update_student(
+        db,
+        student,
+        StudentUpdate(roll_number=" 2k22-bscs-239 ", full_name=" Correct Name "),
+    )
+
+    assert result is student
+    assert student.roll_number == "2K22-BSCS-239"
+    assert student.full_name == "Correct Name"
+    assert db.flush_count == 1
+
+
+def test_update_student_rejects_another_students_roll_number() -> None:
+    student = create_student(
+        FakeDatabase(), StudentCreate(roll_number="2K22-BSCS-229", full_name="Student")
+    )
+    db = FakeDatabase(existing=object())
+
+    with pytest.raises(ValueError, match="already exists"):
+        update_student(
+            db,
+            student,
+            StudentUpdate(roll_number="2K22-BSCS-230", full_name="Student"),
+        )
 
 
 def test_delete_inactive_student_removes_related_draft_links() -> None:
