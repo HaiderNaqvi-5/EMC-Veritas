@@ -2,7 +2,11 @@ from types import SimpleNamespace
 
 import fitz
 
-from app.services.documents.rendering import _leadership_content, render_certificate
+from app.services.documents.rendering import (
+    _leadership_content,
+    _paragraph_words,
+    render_certificate,
+)
 
 
 def test_leadership_content_omits_the_society_clause_for_an_overall_ec_role() -> None:
@@ -12,6 +16,12 @@ def test_leadership_content_omits_the_society_clause_for_an_overall_ec_role() ->
     )
 
     assert text == "The Club recognizes Ayesha Khan for serving as President during 2K22."
+
+
+def test_paragraph_words_merges_a_split_society_heads_suffix() -> None:
+    words = _paragraph_words("actively involved Society Head s, leading", {}, set())
+
+    assert [word for word, _bold in words] == ["actively", "involved", "Society", "Heads,", "leading"]
 
 
 def test_rendering_replaces_an_inline_pdf_token_without_leaving_it_visible() -> None:

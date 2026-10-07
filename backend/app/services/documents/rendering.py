@@ -682,7 +682,23 @@ def _paragraph_words(
     for part, bold in parts:
         for item in re.findall(r"\S+|\n", part):
             normalized = re.sub(r"[^A-Za-z0-9]", "", item).lower()
-            words.append((None, False) if item == "\n" else (item, bold or normalized in bold_source))
+            if item == "\n":
+                words.append((None, False))
+                continue
+            item_bold = bold or normalized in bold_source
+            # Canva can emit the plural suffix as a separate word fragment.
+            # Merge it before measurement so ``Society Heads`` cannot become
+            # visually separated as ``Society Head s``.
+            if (
+                normalized == "s"
+                and words
+                and words[-1][0] is not None
+                and re.sub(r"[^A-Za-z0-9]", "", str(words[-1][0])).lower() == "head"
+            ):
+                previous, previous_bold = words[-1]
+                words[-1] = (str(previous) + item, previous_bold or item_bold)
+                continue
+            words.append((item, item_bold))
     return words
 
 
