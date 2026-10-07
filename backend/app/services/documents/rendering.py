@@ -101,14 +101,19 @@ def _insert_text(
     baseline_y = field.y + (field.height + font_size) / 2
     if field.field_name == "issue_date":
         # A date token sits inline after the fixed "Issue Date:" label. Its
-        # source bbox starts at the glyph top, so centring in the saved box
-        # moves its baseline visibly below the label.
-        baseline_y = field.y + font_size
+        # source bbox starts at the glyph top. Account for Carlito's ascender
+        # instead of centring in the saved box, which moves it below the
+        # original Calibri label baseline.
+        baseline_y = field.y + font_size * 0.78
     if field.field_name == "student_name":
         # A recipient name is normally placed immediately above an underline.
         # Reserve a bottom margin so the visible glyphs remain above it.
         baseline_y = field.y + max(4, field.height - font_size * 0.35)
     x = field.x if alignment == "left" else field.x + max((field.width - text_width) / 2, 0)
+    if field.field_name == "issue_date":
+        # Detected PDF boxes use integer coordinates; this restores the
+        # original tag's visual left edge after the decimal coordinate rounds.
+        x = field.x + 1
     point = fitz.Point(x, baseline_y)
     page.insert_text(
         point,
@@ -458,6 +463,9 @@ def _leadership_content(template_text: str, values: Mapping[str, str]) -> str:
         )
     token_pattern = re.compile(r"\{\{([a-z][a-z0-9_]*)\}\}")
     content = token_pattern.sub(lambda match: values.get(match.group(1), match.group(0)), template_text)
+    # Some Canva PDFs expose a final plural "s" as a separate word. Joining
+    # it here avoids rendering a visible "Head s" split after reflowing.
+    content = re.sub(r"\bHead\s+s\b", "Heads", content)
     content = re.sub(r"[ \t]+([,.;:])", r"\1", content)
     return re.sub(r"[ \t]{2,}", " ", content).strip()
 
@@ -991,7 +999,7 @@ def render_certificate(
                     text_field,
                     normalized_values[field.field_name],
                     fonts,
-                    alignment="left" if is_leadership_template and field.field_name == "roll_number" else "center",
+                    alignment="left" if is_leadership_template and field.field_name in {"roll_number", "issue_date"} else "center",
                     emphasize=not is_leadership_template,
                 )
         if watermark:
