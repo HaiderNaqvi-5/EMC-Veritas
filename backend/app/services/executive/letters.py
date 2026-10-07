@@ -2,31 +2,44 @@ from collections.abc import Iterable, Mapping
 from copy import copy
 from datetime import date
 
-REQUIRED_LEADERSHIP_FIELDS = frozenset(
+BASE_REQUIRED_LEADERSHIP_FIELDS = frozenset(
     {
         "student_name",
         "roll_number",
         "role",
-        "society_name",
         "role_start_date",
         "role_end_date",
         "session_name",
         "issue_date",
     }
 )
+SOCIETY_HEAD_ONLY_FIELDS = frozenset({"society_name"})
+# All supported placeholders, used when validating field names. Whether
+# society_name is required depends on the recipient's role.
+REQUIRED_LEADERSHIP_FIELDS = BASE_REQUIRED_LEADERSHIP_FIELDS | SOCIETY_HEAD_ONLY_FIELDS
 # The verification identifier is rendered directly below the QR code.  The QR
 # code remains the verification link; the printed ID gives recipients a
 # practical fallback for checking a leadership letter manually.
 REQUIRED_LEADERSHIP_TEMPLATE_FIELDS = REQUIRED_LEADERSHIP_FIELDS | {"qr_code", "verification_id"}
 
 
-def missing_leadership_fields(field_names: set[str]) -> set[str]:
-    return REQUIRED_LEADERSHIP_FIELDS - field_names
+def required_leadership_fields(role: str) -> frozenset[str]:
+    return BASE_REQUIRED_LEADERSHIP_FIELDS | (
+        SOCIETY_HEAD_ONLY_FIELDS if role == "Society Head" else frozenset()
+    )
 
 
-def missing_leadership_template_fields(field_names: set[str]) -> set[str]:
+def required_leadership_template_fields(role: str) -> frozenset[str]:
+    return required_leadership_fields(role) | {"qr_code", "verification_id"}
+
+
+def missing_leadership_fields(field_names: set[str], role: str) -> set[str]:
+    return required_leadership_fields(role) - field_names
+
+
+def missing_leadership_template_fields(field_names: set[str], role: str) -> set[str]:
     """Include the required QR placement in addition to fixed record placeholders."""
-    return REQUIRED_LEADERSHIP_TEMPLATE_FIELDS - field_names
+    return required_leadership_template_fields(role) - field_names
 
 
 def leadership_letter_values(

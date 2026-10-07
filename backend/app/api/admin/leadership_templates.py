@@ -39,6 +39,7 @@ from app.services.executive.letters import (
     leadership_fields_for_rendering,
     leadership_letter_values,
     missing_leadership_template_fields,
+    required_leadership_template_fields,
 )
 from app.services.signatures.availability import select_effective_signatories_for_fields
 from app.services.signatures.rendering import configured_signature_field_names
@@ -92,7 +93,7 @@ def _restore_detected_fields_for_empty_template(
     """
     detected = [field for field in detect_leadership_placeholders(template_pdf) if _is_allowed_field_name(field.field_name)]
     names = {field.field_name for field in detected}
-    missing = missing_leadership_template_fields(names)
+    missing = missing_leadership_template_fields(names, template.role)
     if missing:
         raise HTTPException(status_code=422, detail="Template is missing fields: " + ", ".join(sorted(missing)))
     for field in detected:
@@ -311,7 +312,7 @@ def preview_leadership_template(
             select(LeadershipTemplateField).where(LeadershipTemplateField.leadership_template_id == template.id)
         ).all()
     )
-    missing = missing_leadership_template_fields({field.field_name for field in fields})
+    missing = missing_leadership_template_fields({field.field_name for field in fields}, template.role)
     template_pdf: bytes | None = None
     if missing and not fields:
         try:
@@ -319,7 +320,7 @@ def preview_leadership_template(
         except RuntimeError as error:
             raise HTTPException(status_code=503, detail="Template storage is temporarily unavailable") from error
         fields = _restore_detected_fields_for_empty_template(db, template, template_pdf)
-        missing = missing_leadership_template_fields({field.field_name for field in fields})
+        missing = missing_leadership_template_fields({field.field_name for field in fields}, template.role)
     if missing:
         raise HTTPException(status_code=422, detail="Template is missing fields: " + ", ".join(sorted(missing)))
     end_date = membership.end_date or session.end_date
@@ -360,7 +361,7 @@ def preview_leadership_template(
             verification_url=verification_url(settings.public_app_url, "PREVIEW"),
             watermark="PREVIEW",
             image_values=image_values,
-            required_field_names=REQUIRED_LEADERSHIP_TEMPLATE_FIELDS,
+            required_field_names=required_leadership_template_fields(template.role),
         )
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail="Template storage is temporarily unavailable") from error
@@ -387,7 +388,7 @@ def activate_leadership_template(
             )
         ).all()
     )
-    missing = missing_leadership_template_fields(field_names)
+    missing = missing_leadership_template_fields(field_names, template.role)
     if missing:
         raise HTTPException(
             status_code=422,

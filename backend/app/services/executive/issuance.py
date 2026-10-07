@@ -109,7 +109,9 @@ def _preflight_session_recognition(db: Session, session: EmcSession) -> list[_Re
                     )
                 ).all()
             )
-            missing_fields = missing_leadership_template_fields({field.field_name for field in fields})
+            missing_fields = missing_leadership_template_fields(
+                {field.field_name for field in fields}, membership.role
+            )
             if missing_fields:
                 raise RecognitionPrerequisiteError(
                     f"Leadership template for {membership.role} is missing fields: "

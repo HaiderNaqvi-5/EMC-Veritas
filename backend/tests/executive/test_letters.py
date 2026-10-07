@@ -1,7 +1,11 @@
 from datetime import date
 from types import SimpleNamespace
 
-from app.services.executive.letters import leadership_fields_for_rendering, leadership_letter_values
+from app.services.executive.letters import (
+    leadership_fields_for_rendering,
+    leadership_letter_values,
+    missing_leadership_template_fields,
+)
 
 
 def test_leadership_recipient_field_moves_above_its_underline_and_grows() -> None:
@@ -38,3 +42,13 @@ def test_society_head_retains_their_society_name() -> None:
         role_end_date=date(2026, 7, 31), session_name="2K22", issue_date=date(2026, 7, 31),
     )
     assert values["society_name"] == "Media & Graphics"
+
+
+def test_society_name_is_required_only_for_society_heads() -> None:
+    fields_without_society = {
+        "student_name", "roll_number", "role", "role_start_date", "role_end_date",
+        "session_name", "issue_date", "verification_id", "qr_code",
+    }
+
+    assert missing_leadership_template_fields(fields_without_society, "Vice President") == set()
+    assert missing_leadership_template_fields(fields_without_society, "Society Head") == {"society_name"}

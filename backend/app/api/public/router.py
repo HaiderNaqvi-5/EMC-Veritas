@@ -26,8 +26,8 @@ from app.models.domain import (
 from app.schemas.public import PublicDocument, StudentDocumentsResponse, VerificationResponse
 from app.services.documents.lifecycle import DocumentLifecycleError, generate_on_first_download
 from app.services.executive.letters import (
-    REQUIRED_LEADERSHIP_TEMPLATE_FIELDS,
     leadership_fields_for_rendering,
+    required_leadership_template_fields,
 )
 from app.services.signatures.rendering import should_replace_signatures, signature_field_name
 from app.services.storage.supabase import SupabaseStorage
@@ -139,7 +139,7 @@ def download_document(request: Request, document_id: UUID, db: Session = Depends
         except (AttributeError, json.JSONDecodeError) as error:
             raise HTTPException(status_code=409, detail="The reserved leadership document data is unavailable") from error
         values["verification_id"] = document.verification_id
-        required_field_names = REQUIRED_LEADERSHIP_TEMPLATE_FIELDS
+        required_field_names = required_leadership_template_fields(str(values.get("role", "")))
         fields = leadership_fields_for_rendering(fields)
     else:
         template_id = getattr(document, "template_id", None) or (

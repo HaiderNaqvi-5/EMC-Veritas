@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { activateLeadershipTemplate, analyzeLeadershipTemplate, assignLeadershipTemplate, configureLeadershipTemplate, deactivateLeadershipTemplate, deleteLeadershipTemplate, ExecutiveMembership, LeadershipField, leadershipTemplatePageImage, listExecutiveMemberships, listLeadershipTemplates, previewLeadershipTemplate, uploadLeadershipTemplate } from "../../api/leadershipTemplates";
 import { Skeleton } from "../../components/ui/Skeleton";
 
-const requiredNames = ["student_name", "roll_number", "role", "society_name", "role_start_date", "role_end_date", "session_name", "issue_date", "verification_id", "qr_code"];
-const fallbackFields: LeadershipField[] = requiredNames.map((field_name, index) => ({ field_name, page_number: 1, x: 80, y: 100 + index * 32, width: field_name === "qr_code" ? 96 : 260, height: field_name === "qr_code" ? 96 : 24 }));
+const baseRequiredNames = ["student_name", "roll_number", "role", "role_start_date", "role_end_date", "session_name", "issue_date", "verification_id", "qr_code"];
+const requiredNamesForRole = (role?: string) => role === "Society Head" ? [...baseRequiredNames, "society_name"] : baseRequiredNames;
 const membershipLabel = (item: ExecutiveMembership) => `${item.student_name} (${item.roll_number}) — ${item.role}${item.society_name ? ` · ${item.society_name}` : ""} · ${item.session_name}`;
 
 export function LeadershipTemplatesPage() {
@@ -30,6 +30,8 @@ export function LeadershipTemplatesPage() {
   useEffect(() => { setMembershipId(current?.executive_membership_id ?? ""); }, [current?.executive_membership_id]);
   const detected = analysis.data?.detected_fields ?? [];
   const detectedByName = new Map(detected.map((field) => [field.field_name, field]));
+  const requiredNames = requiredNamesForRole(current?.role);
+  const fallbackFields: LeadershipField[] = requiredNames.map((field_name, index) => ({ field_name, page_number: 1, x: 80, y: 100 + index * 32, width: field_name === "qr_code" ? 96 : 260, height: field_name === "qr_code" ? 96 : 24 }));
   const configuredFields = requiredNames.map((field_name) => detectedByName.get(field_name) ?? fallbackFields.find((field) => field.field_name === field_name) as LeadershipField);
   for (const field of detected) if (field.field_name.startsWith("signature_") && !configuredFields.some((item) => item.field_name === field.field_name)) configuredFields.push(field);
   const hasSignatureBoxes = configuredFields.some((field) => field.field_name.startsWith("signature_"));
