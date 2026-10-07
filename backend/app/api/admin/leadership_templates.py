@@ -565,7 +565,7 @@ def issue_leadership_letter(
                 detail="Required signatories are unavailable: " + ", ".join(sorted(missing_signatures)),
             )
         signatories = tuple(selected.values())
-    render_values = leadership_letter_values(
+    render_values = dict(leadership_letter_values(
         student_name=student.full_name,
         roll_number=student.roll_number,
         role=membership.role,
@@ -574,7 +574,7 @@ def issue_leadership_letter(
         role_end_date=role_end_date,
         session_name=session.name,
         issue_date=issue_date,
-    )
+    ))
     document = reserve_document(
         db,
         student_id=student.id,
@@ -586,6 +586,9 @@ def issue_leadership_letter(
         actor_admin_id=admin.id,
         signatories=signatories,
     )
+    # The immutable ID only exists after reservation. Include it in the
+    # issue-time render just as the public lazy-render path does.
+    render_values["verification_id"] = document.verification_id
     # Generate and cache the immutable PDF while the administrator issues it.
     # Student downloads should retrieve a ready Storage object instead of
     # paying the PDF-rendering cost on their first click.

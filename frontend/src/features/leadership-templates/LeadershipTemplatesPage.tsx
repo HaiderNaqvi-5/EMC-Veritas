@@ -46,6 +46,14 @@ export function LeadershipTemplatesPage() {
   const preview = useMutation({ mutationFn: () => previewLeadershipTemplate(selected, membershipId), onSuccess: (blob) => { if (previewUrl) URL.revokeObjectURL(previewUrl); setPreviewUrl(URL.createObjectURL(blob)); } });
   const assign = useMutation({ mutationFn: () => assignLeadershipTemplate(selected, membershipId), onSuccess: () => void refresh() });
   const issue = useMutation({ mutationFn: () => issueLeadershipLetter(selected), onSuccess: () => void cache.invalidateQueries({ queryKey: ["admin", "documents"] }) });
+  useEffect(() => {
+    preview.reset();
+    issue.reset();
+    configure.reset();
+    activate.reset();
+    deactivate.reset();
+    assign.reset();
+  }, [selected]);
   const error = [upload.error, analysis.error, sourcePage.error, configure.error, activate.error, deactivate.error, remove.error, preview.error, assign.error, issue.error].find(Boolean);
   const roleMemberships = memberships.data?.filter((item) => item.role === current?.role) ?? [];
   function submit(event: FormEvent) { event.preventDefault(); if (file && uploadMembership) upload.mutate(); }
