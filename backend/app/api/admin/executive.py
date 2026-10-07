@@ -244,10 +244,14 @@ def delete_removed_membership(
     _: Admin = Depends(current_active_admin),
     db: Session = Depends(get_db),
 ) -> None:
-    """Permanently delete an unused appointment that was already removed."""
+    """Permanently delete an unused appointment that was already removed.
+
+    A repeated DELETE is intentionally a no-op so the browser can safely retry
+    after a connection drops before it receives the successful 204 response.
+    """
     membership = db.get(ExecutiveMembership, membership_id)
     if membership is None:
-        raise HTTPException(status_code=404, detail="Executive membership not found")
+        return
     if membership.status is not MembershipStatus.REMOVED:
         raise HTTPException(
             status_code=409,

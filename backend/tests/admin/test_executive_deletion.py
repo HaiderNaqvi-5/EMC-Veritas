@@ -35,3 +35,15 @@ def test_permanent_membership_deletion_still_blocks_active_documents() -> None:
     assert error.value.status_code == 409
     db.execute.assert_not_called()
     db.delete.assert_not_called()
+
+
+def test_permanent_membership_deletion_is_idempotent_after_a_dropped_response() -> None:
+    db = Mock()
+    db.get.return_value = None
+
+    delete_removed_membership(uuid4(), db=db)
+
+    db.scalar.assert_not_called()
+    db.execute.assert_not_called()
+    db.delete.assert_not_called()
+    db.commit.assert_not_called()
