@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
-  documentDownloadUrl,
+  downloadDocument,
   getStudentDocuments,
   type PublicDocument,
 } from "../api/documents/public";
@@ -160,6 +160,32 @@ function RecognitionCanvas() {
   );
 }
 function DocumentList({ documents }: { documents: PublicDocument[] }) {
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  async function handleDownload(item: PublicDocument) {
+    setDownloadingId(item.id);
+    setDownloadError(null);
+    setDownloadMessage("Downloading your PDF now. Keep this page open for a moment.");
+    try {
+      const blob = await downloadDocument(item);
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = `EMC-${item.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+      setDownloadMessage("Download started. Check your browser’s downloads.");
+    } catch (error) {
+      setDownloadMessage(null);
+      setDownloadError(error instanceof Error ? error.message : "This PDF could not be downloaded.");
+    } finally {
+      setDownloadingId(null);
+    }
+  }
   if (documents.length === 0)
     return (
       <p className="mt-3 text-sm text-slate-600">
@@ -177,15 +203,19 @@ function DocumentList({ documents }: { documents: PublicDocument[] }) {
               <span className="mt-1 block text-xs text-slate-500">Issued {new Date(`${item.issue_date}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} · Official PDF</span>
             </span>
           </div>
-          <a
-            href={documentDownloadUrl(item.id)}
+          <button
+            type="button"
+            onClick={() => void handleDownload(item)}
+            disabled={downloadingId !== null}
             className="mt-3 flex min-h-10 w-full items-center justify-between border-t border-[#a91f35]/10 pt-3 text-xs font-bold uppercase tracking-[.12em] text-[#8d263b]"
             aria-label={`Download ${item.title} PDF`}
           >
-            Download PDF <Arrow />
-          </a>
+            {downloadingId === item.id ? "Downloading…" : "Download PDF"} <Arrow />
+          </button>
         </li>
       ))}
+      {downloadMessage && <li role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">{downloadMessage}</li>}
+      {downloadError && <li role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{downloadError}</li>}
     </ul>
   );
 }

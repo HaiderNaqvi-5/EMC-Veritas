@@ -11,6 +11,7 @@ class PublicDocument(BaseModel):
     activity_date: date | None
     issue_date: date
     status: str
+    download_url: str | None = None
 
 
 class StudentDocumentsResponse(BaseModel):

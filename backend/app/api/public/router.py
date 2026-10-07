@@ -66,7 +66,21 @@ def student_documents(request: Request, roll_number: str, db: Session = Depends(
     ).all()
     activity_certificates: list[PublicDocument] = []
     leadership_recognition: list[PublicDocument] = []
+    storage: SupabaseStorage | None = None
     for document, activity_name, activity_date in rows:
+        download_url = None
+        if getattr(document, "storage_key", None):
+            try:
+                storage = storage or SupabaseStorage()
+                download_url = storage.signed_download_url(
+                    document.storage_key,
+                    f"EMC-{document.verification_id}.pdf",
+                    expires_in=600,
+                )
+            except RuntimeError:
+                # The normal public endpoint remains a safe fallback if a
+                # pre-signed URL cannot be prepared during this lookup.
+                download_url = None
         item = PublicDocument(
             id=document.id,
             document_type=document.document_type.value,
@@ -74,6 +88,7 @@ def student_documents(request: Request, roll_number: str, db: Session = Depends(
             activity_date=activity_date,
             issue_date=document.issue_date,
             status=document.status.value,
+            download_url=download_url,
         )
         (activity_certificates if document.document_type == DocumentType.ACTIVITY_CERTIFICATE else leadership_recognition).append(item)
     return StudentDocumentsResponse(

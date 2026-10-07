@@ -1,4 +1,4 @@
-export type PublicDocument = { id: string; title: string; issue_date: string; status: string };
+export type PublicDocument = { id: string; title: string; issue_date: string; status: string; download_url?: string | null };
 export type StudentDocuments = { full_name: string; roll_number: string; activity_certificates: PublicDocument[]; leadership_recognition: PublicDocument[] };
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "/api";
 export async function getStudentDocuments(rollNumber: string): Promise<StudentDocuments> {
@@ -9,6 +9,15 @@ export async function getStudentDocuments(rollNumber: string): Promise<StudentDo
 
 export function documentDownloadUrl(documentId: string): string {
   return `${apiBase}/public/documents/${encodeURIComponent(documentId)}/download`;
+}
+
+export async function downloadDocument(document: PublicDocument): Promise<Blob> {
+  const response = await fetch(document.download_url ?? documentDownloadUrl(document.id));
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail ?? "This PDF could not be downloaded. Please try again.");
+  }
+  return response.blob();
 }
 export type Verification = { verified: boolean; status: string; verification_id: string; full_name: string; roll_number: string; document_type: string; context: string; activity_date: string | null; issue_date: string };
 export class VerificationError extends Error {
