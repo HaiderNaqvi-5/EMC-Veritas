@@ -1,5 +1,7 @@
+from datetime import datetime
 from io import BytesIO
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import fitz
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -15,14 +17,17 @@ from app.models.domain import (
     DocumentType,
     EmcSession,
     ExecutiveMembership,
+    IssuedDocument,
     LeadershipTemplate,
     LeadershipTemplateField,
+    MembershipStatus,
     Signatory,
     Society,
     Student,
 )
 from app.schemas.leadership_templates import (
     LeadershipDocumentType,
+    LeadershipLetterIssueResponse,
     LeadershipTemplateAnalysisResponse,
     LeadershipTemplateAssignment,
     LeadershipTemplateFieldsCreate,
@@ -31,6 +36,7 @@ from app.schemas.leadership_templates import (
 )
 from app.schemas.templates import DetectedTemplateFieldResponse
 from app.services.audit import record_audit_event
+from app.services.documents.issuance import reserve_document
 from app.services.documents.qr import verification_url
 from app.services.documents.rendering import CertificateRenderingError, render_certificate
 from app.services.executive.constants import EXECUTIVE_ROLES
@@ -53,6 +59,7 @@ from app.services.templates.signature_choice import require_signature_choice
 from app.services.templates.validation import ensure_pdf
 
 router = APIRouter(prefix="/leadership-templates", tags=["leadership templates"])
+EMC_TIMEZONE = ZoneInfo("Asia/Karachi")
 
 _ALLOWED_DOCUMENT_TYPES = frozenset(
     {DocumentType.LEADERSHIP_RECOGNITION, DocumentType.END_OF_TENURE_APPRECIATION}
@@ -488,6 +495,110 @@ def assign_leadership_template(
     db.commit()
     db.refresh(template)
     return template
+
+
+@router.post("/{template_id}/issue", response_model=LeadershipLetterIssueResponse)
+def issue_leadership_letter(
+    template_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> LeadershipLetterIssueResponse:
+    template = _template_or_404(db, template_id)
+    if not template.active:
+        raise HTTPException(status_code=409, detail="Activate this template before issuing its letter")
+    if template.executive_membership_id is None:
+        raise HTTPException(status_code=409, detail="Assign this template to a specific Executive member first")
+    membership = db.get(ExecutiveMembership, template.executive_membership_id)
+    if membership is None or membership.status is MembershipStatus.REMOVED:
+        raise HTTPException(status_code=409, detail="The assigned Executive membership is unavailable")
+    if (
+        template.document_type is DocumentType.END_OF_TENURE_APPRECIATION
+        and membership.status is not MembershipStatus.COMPLETED
+    ):
+        raise HTTPException(status_code=409, detail="Complete the membership before issuing an end-of-tenure letter")
+    existing = db.scalar(
+        select(IssuedDocument.id).where(
+            IssuedDocument.executive_membership_id == membership.id,
+            IssuedDocument.document_type == template.document_type,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="This letter has already been issued to this member")
+    student = db.get(Student, membership.student_id)
+    session = db.get(EmcSession, membership.session_id)
+    if student is None or not student.active or session is None:
+        raise HTTPException(status_code=409, detail="The membership lacks an active student or EMC session")
+    fields = list(
+        db.scalars(
+            select(LeadershipTemplateField).where(
+                LeadershipTemplateField.leadership_template_id == template.id
+            )
+        ).all()
+    )
+    missing = missing_leadership_template_fields(
+        {field.field_name for field in fields}, membership.role
+    )
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail="Required leadership fields are missing: " + ", ".join(sorted(missing)),
+        )
+    issue_date = datetime.now(EMC_TIMEZONE).date()
+    role_end_date = membership.end_date or session.end_date
+    society_name = (
+        db.scalar(select(Society.name).where(Society.id == membership.society_id))
+        if membership.society_id is not None
+        else None
+    )
+    signatories: tuple[Signatory, ...] = ()
+    if template.signature_handling == "replace":
+        available = list(db.scalars(select(Signatory).where(Signatory.active.is_(True))).all())
+        requested_fields = configured_signature_field_names(fields)
+        selected = select_effective_signatories_for_fields(
+            available, requested_fields, role_end_date
+        )
+        missing_signatures = sorted(set(requested_fields) - set(selected))
+        if missing_signatures:
+            raise HTTPException(
+                status_code=409,
+                detail="Required signatories are unavailable: " + ", ".join(sorted(missing_signatures)),
+            )
+        signatories = tuple(selected.values())
+    document = reserve_document(
+        db,
+        student_id=student.id,
+        executive_membership_id=membership.id,
+        leadership_template_id=template.id,
+        document_type=template.document_type,
+        issue_date=issue_date,
+        render_values=leadership_letter_values(
+            student_name=student.full_name,
+            roll_number=student.roll_number,
+            role=membership.role,
+            society_name=society_name,
+            role_start_date=membership.start_date,
+            role_end_date=role_end_date,
+            session_name=session.name,
+            issue_date=issue_date,
+        ),
+        actor_admin_id=admin.id,
+        signatories=signatories,
+    )
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="INDIVIDUAL_LEADERSHIP_LETTER_ISSUED",
+        entity_type="issued_document",
+        entity_id=document.id,
+        payload={"template_id": str(template.id), "membership_id": str(membership.id)},
+    )
+    db.commit()
+    return LeadershipLetterIssueResponse(
+        document_id=document.id,
+        verification_id=document.verification_id,
+        document_type=document.document_type.value,
+        issue_date=document.issue_date,
+    )
 
 
 @router.post("/{template_id}/deactivate", response_model=LeadershipTemplateResponse)

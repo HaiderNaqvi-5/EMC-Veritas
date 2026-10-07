@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -52,3 +52,10 @@ class LeadershipTemplatePreviewRequest(BaseModel):
 
 class LeadershipTemplateAssignment(BaseModel):
     membership_id: UUID
+
+
+class LeadershipLetterIssueResponse(BaseModel):
+    document_id: UUID
+    verification_id: str
+    document_type: LeadershipDocumentType
+    issue_date: date
