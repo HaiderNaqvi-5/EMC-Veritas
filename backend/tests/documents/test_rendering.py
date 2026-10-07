@@ -374,7 +374,7 @@ def test_rendering_expands_a_saved_tiny_qr_tag_box_to_its_panel() -> None:
     assert rectangle.height >= 50
 
 
-def test_rendering_keeps_the_qr_frame_when_removing_its_placeholder() -> None:
+def test_rendering_removes_the_qr_frame_when_rendering_the_final_code() -> None:
     document = fitz.open()
     page = document.new_page(width=600, height=600)
     panel = fitz.Rect(50, 420, 110, 490)
@@ -392,9 +392,12 @@ def test_rendering_keeps_the_qr_frame_when_removing_its_placeholder() -> None:
     )
 
     rendered = fitz.open(stream=output, filetype="pdf")
-    drawings = rendered[0].get_drawings()
+    pixmap = rendered[0].get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+    # The original black rounded frame is covered in the final output; only
+    # the QR itself and its plain white scanning area remain.
+    top_border_pixel = pixmap.pixel(100, 840)
     rendered.close()
-    assert any(drawing["rect"].contains(panel) or panel.contains(drawing["rect"]) for drawing in drawings)
+    assert min(top_border_pixel) > 245
 
 
 def test_rendering_expands_a_saved_tiny_qr_tag_box_to_a_wide_panel() -> None:

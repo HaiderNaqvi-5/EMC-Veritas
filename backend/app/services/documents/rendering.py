@@ -165,9 +165,16 @@ def _qr_panel_for_field(page: fitz.Page, field: TemplateField) -> fitz.Rect | No
 
 
 def _insert_qr(page: fitz.Page, field: TemplateField, verification_url: str) -> None:
+    panel = _qr_panel_for_field(page, field)
     field = _effective_qr_field(page, field)
     if field.width <= 0 or field.height <= 0:
         raise CertificateRenderingError("Template QR field has an invalid box")
+    if panel is not None:
+        # The template's holder is useful for detecting and sizing a QR field,
+        # but it is not part of the issued document. Cover the decorative
+        # outline while retaining a plain white scanning area around the QR.
+        clean_panel = fitz.Rect(panel.x0 - 1, panel.y0 - 1, panel.x1 + 1, panel.y1 + 1)
+        page.draw_rect(clean_panel, color=None, fill=(1, 1, 1), overlay=True)
     rectangle = fitz.Rect(field.x, field.y, field.x + field.width, field.y + field.height)
     page.insert_image(rectangle, stream=qr_png(verification_url), keep_proportion=True)
 
