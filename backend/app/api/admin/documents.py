@@ -28,6 +28,7 @@ from app.models.domain import (
     TemplateField,
 )
 from app.schemas.documents import (
+    ActivityCertificateRevokeResponse,
     ActivityIssueResponse,
     ActivityPreGenerationResponse,
     AdminDocumentResponse,
@@ -59,6 +60,7 @@ def _admin_document_response(
         student_id=student.id,
         student_name=student.full_name,
         roll_number=student.roll_number,
+        activity_id=document.activity_id,
         document_type=document.document_type.value,
         context=activity_name or template_name or document.document_type.value.replace("_", " ").title(),
         issue_date=document.issue_date,
@@ -363,6 +365,102 @@ def pre_generate_activity_documents(
         generated_documents=generated,
         remaining_documents=max(total - ready, 0),
         failed_document_ids=failed_document_ids,
+    )
+
+
+def _revoke_activity_certificates(
+    db: Session,
+    *,
+    activity: Activity,
+    admin: Admin,
+    student_id: UUID | None = None,
+) -> list[UUID]:
+    """Revoke only currently valid certificates belonging to an activity."""
+    query = select(IssuedDocument).where(
+        IssuedDocument.activity_id == activity.id,
+        IssuedDocument.document_type == DocumentType.ACTIVITY_CERTIFICATE,
+        IssuedDocument.status == DocumentStatus.VALID,
+    )
+    if student_id is not None:
+        query = query.where(IssuedDocument.student_id == student_id)
+    documents = list(db.scalars(query).all())
+    for document in documents:
+        document.status = DocumentStatus.REVOKED
+        record_audit_event(
+            db,
+            actor_admin_id=admin.id,
+            event_type="DOCUMENT_REVOKED",
+            entity_type="issued_document",
+            entity_id=document.id,
+            payload={
+                "reason": "activity_certificate_revocation",
+                "activity_id": str(activity.id),
+                "verification_id": document.verification_id,
+                "version": document.version,
+            },
+        )
+    return [document.id for document in documents]
+
+
+@router.post("/activities/{activity_id}/revoke", response_model=ActivityCertificateRevokeResponse)
+def revoke_activity_certificates(
+    activity_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(current_active_admin),
+) -> ActivityCertificateRevokeResponse:
+    """Revoke every currently valid activity certificate for one activity."""
+    activity = db.get(Activity, activity_id)
+    if activity is None:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    revoked_document_ids = _revoke_activity_certificates(db, activity=activity, admin=admin)
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="ACTIVITY_CERTIFICATES_REVOKED",
+        entity_type="activity",
+        entity_id=activity.id,
+        payload={"revoked_count": len(revoked_document_ids), "student_id": None},
+    )
+    db.commit()
+    return ActivityCertificateRevokeResponse(
+        activity_id=activity.id,
+        revoked_document_ids=revoked_document_ids,
+    )
+
+
+@router.post(
+    "/activities/{activity_id}/students/{student_id}/revoke",
+    response_model=ActivityCertificateRevokeResponse,
+)
+def revoke_student_activity_certificates(
+    activity_id: UUID,
+    student_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(current_active_admin),
+) -> ActivityCertificateRevokeResponse:
+    """Revoke one student's currently valid certificate for one activity."""
+    activity = db.get(Activity, activity_id)
+    if activity is None:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    revoked_document_ids = _revoke_activity_certificates(
+        db,
+        activity=activity,
+        admin=admin,
+        student_id=student_id,
+    )
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="ACTIVITY_CERTIFICATES_REVOKED",
+        entity_type="activity",
+        entity_id=activity.id,
+        payload={"revoked_count": len(revoked_document_ids), "student_id": str(student_id)},
+    )
+    db.commit()
+    return ActivityCertificateRevokeResponse(
+        activity_id=activity.id,
+        student_id=student_id,
+        revoked_document_ids=revoked_document_ids,
     )
 
 

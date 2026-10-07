@@ -20,6 +20,12 @@ class ActivityPreGenerationResponse(BaseModel):
     failed_document_ids: list[UUID]
 
 
+class ActivityCertificateRevokeResponse(BaseModel):
+    activity_id: UUID
+    student_id: UUID | None = None
+    revoked_document_ids: list[UUID]
+
+
 class DocumentReissueResponse(BaseModel):
     superseded_document_id: UUID
     replacement_document_id: UUID
@@ -33,6 +39,7 @@ class AdminDocumentResponse(BaseModel):
     student_id: UUID
     student_name: str
     roll_number: str
+    activity_id: UUID | None
     document_type: str
     context: str
     issue_date: date
