@@ -76,10 +76,7 @@ def _insert_text(
     if field.field_name == "issue_date":
         # Keep the inline metadata date in the same Calibri-compatible face as
         # the leadership letter, rather than inheriting a generic field font.
-        font_bytes = Path(
-            "/home/ahmad/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/"
-            "libreoffice-headless/libreoffice/share/fonts/truetype/Carlito-Regular.ttf"
-        ).read_bytes()
+        font_bytes = (Path(__file__).resolve().parents[2] / "assets" / "Carlito-Regular.ttf").read_bytes()
         font_name = "EMCIssueDateCalibri"
         try:
             page.insert_font(fontname=font_name, fontbuffer=font_bytes)
@@ -699,14 +696,9 @@ def _render_tagged_paragraph(
 ) -> None:
     """Render prose while bolding only values substituted for template tags."""
     if calibri_compatible:
-        font_bytes = Path(
-            "/home/ahmad/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/"
-            "libreoffice-headless/libreoffice/share/fonts/truetype/Carlito-Regular.ttf"
-        ).read_bytes()
-        bold_font_bytes = Path(
-            "/home/ahmad/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/"
-            "libreoffice-headless/libreoffice/share/fonts/truetype/Carlito-Bold.ttf"
-        ).read_bytes()
+        asset_directory = Path(__file__).resolve().parents[2] / "assets"
+        font_bytes = (asset_directory / "Carlito-Regular.ttf").read_bytes()
+        bold_font_bytes = (asset_directory / "Carlito-Bold.ttf").read_bytes()
     elif font_bytes is None:
         font_bytes = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
         bold_font_bytes = font_bytes
