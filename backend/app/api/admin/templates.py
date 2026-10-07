@@ -423,8 +423,6 @@ def approve_template(
     template = _template_or_404(db, template_id)
     names = set(db.scalars(select(TemplateField.field_name).where(TemplateField.template_id == template.id)).all())
     missing = missing_required_fields(names)
-    if template.purpose == "EXECUTIVE_COUNCIL" and "role" not in names:
-        missing.add("role")
     if missing:
         raise HTTPException(
             status_code=422,

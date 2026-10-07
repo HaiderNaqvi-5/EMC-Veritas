@@ -1,4 +1,7 @@
+from io import BytesIO
+
 import fitz
+from reportlab.pdfgen import canvas
 
 from app.services.templates import analysis
 
@@ -64,6 +67,26 @@ def test_analysis_combines_split_placeholder_fragments() -> None:
     second = fitz.Rect(40, 20, 90, 35)
 
     assert analysis._combined_placeholder_rect([first, second]) == fitz.Rect(10, 20, 90, 35)
+
+
+def test_analysis_detects_tracked_placeholders_exported_as_split_glyphs() -> None:
+    output = BytesIO()
+    pdf = canvas.Canvas(output)
+    text = pdf.beginText(72, 720)
+    text.setCharSpace(2)
+    for placeholder in (
+        "{{roll_number}}",
+        "{{activity_name}}",
+        "{{activity_date}}",
+    ):
+        text.textLine(placeholder)
+    pdf.drawText(text)
+    pdf.save()
+
+    fields = analysis.detect_certificate_placeholders(output.getvalue())
+    names = {field.field_name for field in fields}
+
+    assert {"roll_number", "activity_name", "activity_date"} <= names
 
 
 def test_detected_fields_stay_in_bounds_without_adjacent_line_overlap() -> None:

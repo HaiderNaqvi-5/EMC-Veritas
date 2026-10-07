@@ -127,7 +127,7 @@ def detect_certificate_placeholders(
             match: tuple[int, fitz.Rect, str] | None = None
             for page_index, page in enumerate(document):
                 for alias in aliases:
-                    rectangles = page.search_for(alias)
+                    rectangles = _search_for_placeholder(page, alias)
                     if rectangles:
                         match = (page_index, _combined_placeholder_rect(rectangles), alias)
                         break
@@ -218,6 +218,43 @@ def detect_certificate_placeholders(
                     )
                 )
     return detected
+
+
+def _search_for_placeholder(page: fitz.Page, alias: str) -> list[fitz.Rect]:
+    """Find a placeholder even when its PDF glyphs are split across spans.
+
+    Design tools frequently export tracking/letter-spacing as separately
+    positioned glyphs. The text remains readable, but ``Page.search_for`` can
+    no longer match the complete token. Fall back to each raw text line,
+    compare it without whitespace, and rebuild the rectangle from the matched
+    character boxes. Keeping the fallback line-scoped prevents a match from
+    accidentally spanning unrelated parts of the certificate.
+    """
+    rectangles = page.search_for(alias)
+    if rectangles:
+        return rectangles
+
+    normalized_alias = re.sub(r"\s+", "", alias).casefold()
+    if not normalized_alias:
+        return []
+    raw = page.get_text("rawdict")
+    for block in raw.get("blocks", []):
+        for line in block.get("lines", []):
+            characters = [
+                character
+                for span in line.get("spans", [])
+                for character in span.get("chars", [])
+                if not character.get("c", "").isspace()
+            ]
+            normalized_line = "".join(character.get("c", "") for character in characters).casefold()
+            start = normalized_line.find(normalized_alias)
+            if start < 0:
+                continue
+            matched = characters[start:start + len(normalized_alias)]
+            if len(matched) != len(normalized_alias):
+                continue
+            return [fitz.Rect(character["bbox"]) for character in matched]
+    return []
 
 
 def detect_leadership_placeholders(pdf_bytes: bytes) -> list[DetectedTemplateField]:
