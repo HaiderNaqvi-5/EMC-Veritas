@@ -21,8 +21,11 @@ export function ExecutiveMembershipsPage() {
   const remove = useMutation({ mutationFn: (id: string) => apiRequest<Membership>(`/admin/executive-memberships/${id}/remove`, { method: "POST" }), onSuccess: () => void refresh() });
   const permanentlyDelete = useMutation({
     mutationFn: (id: string) => retryConnection(
-      () => apiRequest<void>(`/admin/executive-memberships/${id}`, { method: "DELETE", signal: AbortSignal.timeout(8_000) }),
-      1,
+      // Render can take longer than eight seconds to wake after a deploy or
+      // restart. Keep this destructive operation pending while it reconnects
+      // rather than showing a false connection failure to the admin.
+      () => apiRequest<void>(`/admin/executive-memberships/${id}`, { method: "DELETE", signal: AbortSignal.timeout(30_000) }),
+      4,
     ),
     onSuccess: () => void refresh(),
   });
