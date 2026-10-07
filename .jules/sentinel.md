@@ -1,0 +1,4 @@
+## 2024-06-25 - Prevent CORS Domain Suffix Hijacking
+**Vulnerability:** The FastAPI CORS middleware `allow_origin_regex` was unanchored at the end, allowing domains like `https://emc-veritas.pages.dev.malicious.com` to match `r"https://(?:[a-z0-9-]+\.)?emc-veritas\.pages\.dev"`
+**Learning:** Starlette's `CORSMiddleware` uses `re.match` which only enforces matching at the beginning of the string. An unanchored regex allows domain suffix hijacking.
+**Prevention:** When configuring CORS regexes (`allow_origin_regex`), always ensure patterns are anchored with `$` to prevent domain suffix hijacking.
