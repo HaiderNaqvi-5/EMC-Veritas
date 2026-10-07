@@ -2,8 +2,8 @@ import json
 from io import BytesIO
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -111,7 +111,7 @@ def verify_document(request: Request, verification_id: str, db: Session = Depend
 
 @router.get("/documents/{document_id}/download")
 @limiter.limit("30/minute")
-def download_document(request: Request, document_id: UUID, db: Session = Depends(get_db)) -> StreamingResponse:
+def download_document(request: Request, document_id: UUID, db: Session = Depends(get_db)) -> Response:
     row = db.execute(
         select(IssuedDocument, Student, Activity)
         .join(Student, IssuedDocument.student_id == Student.id)
@@ -124,6 +124,17 @@ def download_document(request: Request, document_id: UUID, db: Session = Depends
     document, student, activity = row
     if document.status != DocumentStatus.VALID:
         raise HTTPException(status_code=410, detail="This document is no longer available for download")
+    filename = f"EMC-{document.verification_id}.pdf"
+    if getattr(document, "storage_key", None):
+        try:
+            signed_url = SupabaseStorage().signed_download_url(
+                document.storage_key, filename
+            )
+        except RuntimeError as error:
+            raise HTTPException(
+                status_code=503, detail="Document storage is temporarily unavailable"
+            ) from error
+        return RedirectResponse(signed_url, status_code=307)
     leadership_template_id = getattr(document, "leadership_template_id", None)
     if leadership_template_id is not None:
         template = db.scalar(select(LeadershipTemplate).where(LeadershipTemplate.id == leadership_template_id))
@@ -194,7 +205,6 @@ def download_document(request: Request, document_id: UUID, db: Session = Depends
         db.rollback()
         raise HTTPException(status_code=409, detail=str(error)) from error
 
-    filename = f"EMC-{document.verification_id}.pdf"
     return StreamingResponse(
         BytesIO(output),
         media_type="application/pdf",

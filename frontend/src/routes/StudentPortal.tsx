@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
-  downloadDocument,
+  documentDownloadUrl,
   getStudentDocuments,
   type PublicDocument,
 } from "../api/documents/public";
@@ -160,27 +160,6 @@ function RecognitionCanvas() {
   );
 }
 function DocumentList({ documents }: { documents: PublicDocument[] }) {
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
-  async function handleDownload(item: PublicDocument) {
-    setDownloadingId(item.id);
-    setDownloadError(null);
-    try {
-      const blob = await downloadDocument(item.id);
-      const objectUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = `EMC-${item.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}.pdf`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(objectUrl);
-    } catch (error) {
-      setDownloadError(error instanceof Error ? error.message : "This document could not be downloaded.");
-    } finally {
-      setDownloadingId(null);
-    }
-  }
   if (documents.length === 0)
     return (
       <p className="mt-3 text-sm text-slate-600">
@@ -190,23 +169,23 @@ function DocumentList({ documents }: { documents: PublicDocument[] }) {
   return (
     <ul className="mt-3 grid gap-2">
       {documents.map((item) => (
-        <li key={item.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
-          <span className="inline-flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-800">
-            <FileIcon />
-            <span className="truncate">{item.title}</span>
-          </span>
-          <button
-            type="button"
-            className="shrink-0 rounded-md bg-[#a91f35] px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-[#7f1228] disabled:cursor-wait disabled:opacity-65"
-            onClick={() => void handleDownload(item)}
-            disabled={downloadingId !== null}
+        <li key={item.id} className="group rounded-xl border border-[#a91f35]/15 bg-[#fffaf1] p-3 shadow-[0_8px_24px_rgba(66,31,35,.06)] transition hover:border-[#a91f35]/35 hover:shadow-[0_12px_30px_rgba(66,31,35,.1)]">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#a91f35]/10 text-[#a91f35]"><FileIcon /></span>
+            <span className="min-w-0 flex-1">
+              <strong className="block truncate text-sm text-slate-900">{item.title}</strong>
+              <span className="mt-1 block text-xs text-slate-500">Issued {new Date(`${item.issue_date}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} · Official PDF</span>
+            </span>
+          </div>
+          <a
+            href={documentDownloadUrl(item.id)}
+            className="mt-3 flex min-h-10 w-full items-center justify-between border-t border-[#a91f35]/10 pt-3 text-xs font-bold uppercase tracking-[.12em] text-[#8d263b]"
             aria-label={`Download ${item.title} PDF`}
           >
-            {downloadingId === item.id ? "Preparing…" : "Download PDF"}
-          </button>
+            Download PDF <Arrow />
+          </a>
         </li>
       ))}
-      {downloadError && <li role="alert" className="text-sm text-red-700">{downloadError}</li>}
     </ul>
   );
 }

@@ -3,8 +3,8 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, expect, test, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ getStudentDocuments: vi.fn(), downloadDocument: vi.fn() }));
-vi.mock("../api/documents/public", () => ({ getStudentDocuments: mocks.getStudentDocuments, downloadDocument: mocks.downloadDocument }));
+const mocks = vi.hoisted(() => ({ getStudentDocuments: vi.fn() }));
+vi.mock("../api/documents/public", () => ({ getStudentDocuments: mocks.getStudentDocuments, documentDownloadUrl: (id: string) => `/download/${id}` }));
 import { StudentPortal } from "./StudentPortal";
 
 function renderPortal() {
@@ -31,25 +31,15 @@ test("submitting a roll number loads the student's documents without an admin lo
   expect(await screen.findByText("Student")).toBeInTheDocument();
 });
 
-test("downloads an issued leadership document with explicit progress", async () => {
-  const createObjectURL = vi.fn(() => "blob:certificate");
-  const revokeObjectURL = vi.fn();
-  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
-  Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+test("exposes an issued leadership document as a native download", async () => {
   mocks.getStudentDocuments.mockResolvedValueOnce({
     full_name: "Student",
     activity_certificates: [],
     leadership_recognition: [{ id: "document-1", title: "Leadership Recognition", issue_date: "2026-10-08", status: "VALID" }],
   });
-  mocks.downloadDocument.mockResolvedValueOnce(new Blob(["pdf"], { type: "application/pdf" }));
-  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
   renderPortal();
   submitRollNumber("2K22-BSCS-210");
-  const button = await screen.findByRole("button", { name: "Download Leadership Recognition PDF" });
-  fireEvent.click(button);
-  await waitFor(() => expect(mocks.downloadDocument).toHaveBeenCalledWith("document-1"));
-  await waitFor(() => expect(click).toHaveBeenCalled());
-  expect(createObjectURL).toHaveBeenCalled();
-  expect(revokeObjectURL).toHaveBeenCalledWith("blob:certificate");
-  click.mockRestore();
+  const link = await screen.findByRole("link", { name: "Download Leadership Recognition PDF" });
+  expect(link).toHaveAttribute("href", "/download/document-1");
+  expect(screen.getByText("Issued 8 Oct 2026 · Official PDF")).toBeInTheDocument();
 });

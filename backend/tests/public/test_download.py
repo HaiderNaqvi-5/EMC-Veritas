@@ -118,6 +118,36 @@ def test_public_download_rejects_revoked_document(monkeypatch) -> None:
     assert response.status_code == 410
 
 
+def test_public_download_redirects_cached_document_to_storage(monkeypatch) -> None:
+    document = SimpleNamespace(
+        id=uuid4(),
+        verification_id="EMC-CACHED01",
+        status=DocumentStatus.VALID,
+        storage_key="issued-documents/cached.pdf",
+    )
+    db = _Db((document, SimpleNamespace(id=uuid4()), None), object(), [])
+
+    class Storage:
+        def signed_download_url(self, key: str, filename: str) -> str:
+            assert key == "issued-documents/cached.pdf"
+            assert filename == "EMC-EMC-CACHED01.pdf"
+            return "https://storage.example.test/signed.pdf?token=secret"
+
+    import app.api.public.router as public_router
+
+    monkeypatch.setattr(public_router, "SupabaseStorage", Storage)
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        response = _client_for().get(
+            f"/api/public/documents/{document.id}/download", follow_redirects=False
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://storage.example.test/signed.pdf?token=secret"
+
+
 def test_replacement_signature_download_uses_document_snapshot_assets() -> None:
     document = SimpleNamespace(id=uuid4())
     president = SimpleNamespace(official_title="President")

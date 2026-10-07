@@ -35,3 +35,26 @@ class SupabaseStorage:
             return response.content
         except httpx.HTTPError as error:
             raise RuntimeError("Supabase Storage download failed") from error
+
+    def signed_download_url(self, key: str, filename: str, expires_in: int = 60) -> str:
+        """Create a short-lived URL so the browser downloads from Storage directly."""
+        try:
+            response = httpx.post(
+                f"{settings.supabase_url.rstrip('/')}/storage/v1/object/sign/{self.bucket}/{quote(key, safe='/')}",
+                headers={**self.headers, "Content-Type": "application/json"},
+                json={"expiresIn": expires_in},
+                timeout=10,
+            )
+            response.raise_for_status()
+            signed_path = response.json().get("signedURL")
+            if not signed_path:
+                raise RuntimeError("Supabase Storage returned no signed URL")
+            signed_url = (
+                signed_path
+                if signed_path.startswith("http")
+                else f"{settings.supabase_url.rstrip('/')}/storage/v1{signed_path}"
+            )
+            separator = "&" if "?" in signed_url else "?"
+            return f"{signed_url}{separator}download={quote(filename)}"
+        except (httpx.HTTPError, ValueError, TypeError) as error:
+            raise RuntimeError("Supabase Storage signed URL creation failed") from error

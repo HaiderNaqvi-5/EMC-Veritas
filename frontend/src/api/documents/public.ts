@@ -10,15 +10,6 @@ export async function getStudentDocuments(rollNumber: string): Promise<StudentDo
 export function documentDownloadUrl(documentId: string): string {
   return `${apiBase}/public/documents/${encodeURIComponent(documentId)}/download`;
 }
-
-export async function downloadDocument(documentId: string): Promise<Blob> {
-  const response = await fetch(documentDownloadUrl(documentId));
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.detail ?? "This document could not be downloaded. Please try again.");
-  }
-  return response.blob();
-}
 export type Verification = { verified: boolean; status: string; verification_id: string; full_name: string; roll_number: string; document_type: string; context: string; activity_date: string | null; issue_date: string };
 export class VerificationError extends Error {
   readonly status: number;
