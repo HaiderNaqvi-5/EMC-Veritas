@@ -913,8 +913,15 @@ def render_certificate(
         paragraph_jobs: dict[int, tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None, set[str]]] = {}
         paragraph_fields: set[tuple[int, str]] = set()
         leadership_paragraph_pages: set[int] = set()
+        # ``society_name`` belongs only to Society Head letters. Club-wide
+        # roles (President, Vice President, Deputy Vice President, etc.) use
+        # the same flowing leadership-letter renderer without that field.
+        # Requiring it here misclassifies those letters as activity
+        # certificates and centers their prose as one oversized block.
         is_leadership_template = bool(
-            (_LEADERSHIP_BODY_FIELDS - {"student_name"}).issubset(configured_names)
+            (_LEADERSHIP_BODY_FIELDS - {"student_name", "society_name"}).issubset(
+                configured_names
+            )
         )
         # Paragraph replacement is derived from the PDF itself, not from the
         # saved box configuration. Older templates can carry imperfect field

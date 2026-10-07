@@ -514,6 +514,63 @@ def test_rendering_rebuilds_a_tagged_leadership_letter_body_without_floating_val
     assert role_span["bbox"][1] >= 150
 
 
+def test_rendering_uses_letter_layout_for_club_role_without_society_name() -> None:
+    document = fitz.open()
+    page = document.new_page(width=600, height=700)
+    page.insert_text((60, 50), "Issue Date: {{issue_date}}", fontsize=10)
+    page.insert_textbox(
+        fitz.Rect(60, 150, 540, 330),
+        "The Event Management Club recognizes {{student_name}} having {{roll_number}} for "
+        "serving as {{role}} during {{session_name}}, from {{role_start_date}} to "
+        "{{role_end_date}}.\n\nTheir leadership and commitment strengthened our community.",
+        fontsize=10,
+    )
+    template = document.tobytes()
+    document.close()
+    names = (
+        "student_name", "roll_number", "role", "role_start_date", "role_end_date",
+        "session_name", "issue_date",
+    )
+    fields = [
+        SimpleNamespace(
+            field_name=name, page_number=1, x=60, y=40 if name == "issue_date" else 150,
+            width=180, height=24, font_family="helv", custom_font_storage_key=None,
+            font_size=10, text_color="#000000",
+        )
+        for name in names
+    ]
+    values = {
+        "student_name": "Syed Shamikh Hassan Zaidi",
+        "roll_number": "2K22-BSCS-229",
+        "role": "Deputy Vice President",
+        "role_start_date": "2025-08-01",
+        "role_end_date": "2026-07-01",
+        "session_name": "2K25-2K26",
+        "issue_date": "2026-10-01",
+    }
+
+    output = render_certificate(
+        template, fields, values, verification_url="https://example.test/verify/x",
+        required_field_names=frozenset(names),
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    text = rendered[0].get_text().replace("\u00a0", " ").replace("\n", " ")
+    first_body_span = next(
+        span
+        for block in rendered[0].get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for span in line["spans"]
+        if "The Event Management Club" in span["text"]
+    )
+    rendered.close()
+
+    assert "{{student_name}}" not in text
+    assert text.count("Syed Shamikh Hassan Zaidi") == 1
+    assert "serving as Deputy Vice President during 2K25-2K26" in text
+    assert first_body_span["bbox"][0] < 80
+
+
 def test_leadership_renderer_keeps_title_and_footer_when_issue_date_is_above_body() -> None:
     document = fitz.open()
     page = document.new_page(width=600, height=700)
