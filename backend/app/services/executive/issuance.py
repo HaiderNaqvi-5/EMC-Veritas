@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.domain import (
@@ -83,12 +83,20 @@ def _preflight_session_recognition(db: Session, session: EmcSession) -> list[_Re
             if existing is not None:
                 continue
             template = db.scalar(
-                select(LeadershipTemplate).where(
+                select(LeadershipTemplate)
+                .where(
                     LeadershipTemplate.role == membership.role,
                     LeadershipTemplate.document_type == document_type,
                     LeadershipTemplate.active.is_(True),
                     LeadershipTemplate.archived.is_(False),
+                    or_(
+                        LeadershipTemplate.executive_membership_id == membership.id,
+                        LeadershipTemplate.executive_membership_id.is_(None),
+                    ),
                 )
+                # A recipient-specific design wins; an older role-wide template
+                # remains a backwards-compatible fallback.
+                .order_by(LeadershipTemplate.executive_membership_id.is_(None))
             )
             if template is None:
                 raise RecognitionPrerequisiteError(

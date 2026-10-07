@@ -200,6 +200,9 @@ class LeadershipTemplate(Timestamped, Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(80), nullable=False)
+    executive_membership_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("executive_memberships.id"), index=True
+    )
     document_type: Mapped[DocumentType] = mapped_column(
         Enum(DocumentType, name="document_type", create_type=False), nullable=False
     )
@@ -210,11 +213,26 @@ class LeadershipTemplate(Timestamped, Base):
     archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     __table_args__ = (
         Index(
-            "uq_active_leadership_template",
+            "uq_active_role_leadership_template",
             "role",
             "document_type",
             unique=True,
-            postgresql_where=(active.is_(True) & archived.is_(False)),
+            postgresql_where=(
+                active.is_(True)
+                & archived.is_(False)
+                & executive_membership_id.is_(None)
+            ),
+        ),
+        Index(
+            "uq_active_membership_leadership_template",
+            "executive_membership_id",
+            "document_type",
+            unique=True,
+            postgresql_where=(
+                active.is_(True)
+                & archived.is_(False)
+                & executive_membership_id.is_not(None)
+            ),
         ),
     )
 

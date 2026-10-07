@@ -29,6 +29,7 @@ class LeadershipTemplateResponse(BaseModel):
     id: UUID
     name: str
     role: str
+    executive_membership_id: UUID | None
     document_type: LeadershipDocumentType
     signature_handling: Literal["retain", "replace"] | None
     active: bool
@@ -46,4 +47,8 @@ class LeadershipTemplateAnalysisResponse(BaseModel):
 
 
 class LeadershipTemplatePreviewRequest(BaseModel):
+    membership_id: UUID
+
+
+class LeadershipTemplateAssignment(BaseModel):
     membership_id: UUID

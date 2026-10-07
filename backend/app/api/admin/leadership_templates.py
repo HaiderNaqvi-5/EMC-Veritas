@@ -24,6 +24,7 @@ from app.models.domain import (
 from app.schemas.leadership_templates import (
     LeadershipDocumentType,
     LeadershipTemplateAnalysisResponse,
+    LeadershipTemplateAssignment,
     LeadershipTemplateFieldsCreate,
     LeadershipTemplatePreviewRequest,
     LeadershipTemplateResponse,
@@ -134,6 +135,7 @@ def list_leadership_templates(
 async def upload_leadership_template(
     name: str = Form(..., min_length=1, max_length=255),
     role: str = Form(..., min_length=1, max_length=80),
+    executive_membership_id: UUID = Form(...),
     document_type: LeadershipDocumentType = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -142,6 +144,11 @@ async def upload_leadership_template(
     normalized_role = role.strip()
     if normalized_role not in EXECUTIVE_ROLES:
         raise HTTPException(status_code=422, detail="Role must be an official EMC executive role")
+    membership = db.get(ExecutiveMembership, executive_membership_id)
+    if membership is None:
+        raise HTTPException(status_code=422, detail="Choose a valid Executive Council membership")
+    if membership.role != normalized_role:
+        raise HTTPException(status_code=422, detail="The selected membership does not match the template role")
     ensure_pdf(file.filename or "", file.content_type)
     content = await file.read()
     try:
@@ -153,6 +160,7 @@ async def upload_leadership_template(
         id=uuid4(),
         name=name.strip(),
         role=normalized_role,
+        executive_membership_id=membership.id,
         document_type=_document_type(document_type),
         storage_key=f"leadership-templates/{uuid4()}.pdf",
     )
@@ -284,6 +292,11 @@ def preview_leadership_template(
         raise HTTPException(status_code=404, detail="Executive membership not found")
     if membership.role != template.role:
         raise HTTPException(status_code=422, detail="The selected membership role does not match this template")
+    if (
+        template.executive_membership_id is not None
+        and membership.id != template.executive_membership_id
+    ):
+        raise HTTPException(status_code=422, detail="This template is assigned to a different Executive member")
     student = db.get(Student, membership.student_id)
     session = db.get(EmcSession, membership.session_id)
     society_name = (
@@ -386,13 +399,15 @@ def activate_leadership_template(
             detail="Choose whether to retain or replace sample signatures before activation",
         )
 
-    # Lock the role/type set so a concurrent replacement cannot leave two active templates.
+    # Lock only this recipient/type slot. Activating one Society Head's letter
+    # must not deactivate another Society Head's independently designed letter.
     replacements = list(
         db.scalars(
             select(LeadershipTemplate)
             .where(
                 LeadershipTemplate.role == template.role,
                 LeadershipTemplate.document_type == template.document_type,
+                LeadershipTemplate.executive_membership_id == template.executive_membership_id,
                 LeadershipTemplate.archived.is_(False),
                 LeadershipTemplate.active.is_(True),
             )
@@ -409,7 +424,65 @@ def activate_leadership_template(
         event_type="LEADERSHIP_TEMPLATE_ACTIVATED",
         entity_type="leadership_template",
         entity_id=template.id,
-        payload={"replaced_template_ids": [str(item.id) for item in replacements if item.id != template.id]},
+        payload={
+            "executive_membership_id": str(template.executive_membership_id),
+            "replaced_template_ids": [str(item.id) for item in replacements if item.id != template.id],
+        },
+    )
+    db.commit()
+    db.refresh(template)
+    return template
+
+
+@router.post("/{template_id}/assignment", response_model=LeadershipTemplateResponse)
+def assign_leadership_template(
+    template_id: UUID,
+    payload: LeadershipTemplateAssignment,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> LeadershipTemplate:
+    template = _template_or_404(db, template_id)
+    membership = db.get(ExecutiveMembership, payload.membership_id)
+    if membership is None:
+        raise HTTPException(status_code=404, detail="Executive membership not found")
+    if membership.role != template.role:
+        raise HTTPException(status_code=422, detail="The selected membership role does not match this template")
+
+    # Preserve the active state while moving a legacy role-wide template into
+    # the recipient's slot. Any previous active template in that exact slot is
+    # safely deactivated first.
+    replacements: list[LeadershipTemplate] = []
+    was_active = template.active
+    if was_active:
+        replacements = list(
+            db.scalars(
+                select(LeadershipTemplate)
+                .where(
+                    LeadershipTemplate.id != template.id,
+                    LeadershipTemplate.executive_membership_id == membership.id,
+                    LeadershipTemplate.document_type == template.document_type,
+                    LeadershipTemplate.archived.is_(False),
+                    LeadershipTemplate.active.is_(True),
+                )
+                .with_for_update()
+            ).all()
+        )
+        for replacement in replacements:
+            replacement.active = False
+        template.active = False
+        db.flush()
+    template.executive_membership_id = membership.id
+    template.active = was_active
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="LEADERSHIP_TEMPLATE_ASSIGNED",
+        entity_type="leadership_template",
+        entity_id=template.id,
+        payload={
+            "executive_membership_id": str(membership.id),
+            "replaced_template_ids": [str(item.id) for item in replacements],
+        },
     )
     db.commit()
     db.refresh(template)
