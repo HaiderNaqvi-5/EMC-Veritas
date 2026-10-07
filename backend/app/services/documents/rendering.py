@@ -872,6 +872,14 @@ def _render_activity_paragraph(
     # Use a uniquely embedded font instead of a built-in PDF font alias.
     # Canva templates can already bind aliases such as "helv" to incompatible
     # font resources, which makes newly drawn characters appear fragmented.
+    if tracking > 0:
+        # Canva's embedded Open Sans is subsetted to the original placeholder
+        # text. Reusing that subset forces replacement values into IBM Plex,
+        # visibly mixing two typefaces in one sentence. The complete Open Sans
+        # asset keeps prose and dynamic values identical to the source design.
+        font_bytes = (
+            Path(__file__).resolve().parents[2] / "assets" / "OpenSans-Variable.ttf"
+        ).read_bytes()
     _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_CENTER, lineheight=1.15, font_name="EMCActivityBody", font_bytes=font_bytes, tracking=tracking)
 
 

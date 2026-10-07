@@ -309,17 +309,18 @@ def test_rendering_preserves_canva_tracked_organizer_certificate_style() -> None
 
     rendered = fitz.open(stream=output, filetype="pdf")
     text = rendered[0].get_text().replace("\n", " ")
-    colors = {
-        span["color"]
+    value_spans = [
+        span
         for block in rendered[0].get_text("dict")["blocks"]
         for line in block.get("lines", [])
         for span in line["spans"]
         if "2K23" in span["text"]
-    }
+    ]
     rendered.close()
     assert "Having Roll Number" in text
     assert "Orientation" in text
-    assert colors == {0x454545}
+    assert {span["color"] for span in value_spans} == {0x454545}
+    assert {span["font"] for span in value_spans} == {"OpenSans-Regular"}
 
 
 def test_rendering_keeps_template_artwork_when_replacing_a_paragraph() -> None:
