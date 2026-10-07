@@ -278,6 +278,50 @@ def test_rendering_uses_saved_activity_fields_when_pdf_recognition_text_is_unsea
     assert "Their leadership, coordination, and commitment" in text
 
 
+def test_rendering_preserves_canva_tracked_organizer_certificate_style() -> None:
+    document = fitz.open()
+    page = document.new_page(width=842, height=596)
+    source_lines = (
+        "H a v i n g R o l l N u m b e r { { r o l l _ n u m b e r } } I n r e c o g n i t i o n o f t h e i r",
+        "o u t s t a n d i n g e f f o r t s i n o r g a n i z i n g a n d m a n a g i n g",
+        "{ { a c t i v i t y _ n a m e } } o n { { a c t i v i t y _ d a t e } } u n d e r t h e E M C . T h e i r",
+        "l e a d e r s h i p , c o o r d i n a t i o n , a n d c o m m i t m e n t s i g n i f i c a n t l y",
+        "c o n t r i b u t e d t o t h e s u c c e s s f u l e x e c u t i o n o f t h e a c t i v i t y .",
+    )
+    for index, line in enumerate(source_lines):
+        page.insert_text((208, 325 + index * 15), line, fontsize=11, color=(0.27, 0.27, 0.27))
+    template = document.tobytes()
+    document.close()
+    fields = [
+        SimpleNamespace(field_name=name, page_number=1, x=250 + index * 90, y=325,
+                        width=80, height=18, font_family="helv",
+                        custom_font_storage_key=None, font_size=11, text_color="#454545")
+        for index, name in enumerate(("roll_number", "activity_name", "activity_date"))
+    ]
+
+    output = render_certificate(
+        template,
+        fields,
+        {"roll_number": "2K23-BSCS-104", "activity_name": "Orientation 2K25", "activity_date": "2025-09-01"},
+        verification_url="https://example.test/verify/x",
+        required_field_names=frozenset({"roll_number", "activity_name", "activity_date"}),
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    text = rendered[0].get_text().replace("\n", " ")
+    colors = {
+        span["color"]
+        for block in rendered[0].get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for span in line["spans"]
+        if "2K23" in span["text"]
+    }
+    rendered.close()
+    assert "Having Roll Number" in text
+    assert "Orientation" in text
+    assert colors == {0x454545}
+
+
 def test_rendering_keeps_template_artwork_when_replacing_a_paragraph() -> None:
     document = fitz.open()
     page = document.new_page()

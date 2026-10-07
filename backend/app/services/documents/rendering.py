@@ -575,8 +575,9 @@ def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tu
     standard EMC recognition sentence, replace the complete paragraph with one
     centred line-wrapped block instead.
     """
-    start = page.search_for("In recognition")
-    end = page.search_for("successful execution of the activity.")
+    having_roll = _search_text_ignoring_spacing(page, "Having Roll Number")
+    start = having_roll or _search_text_ignoring_spacing(page, "In recognition")
+    end = _search_text_ignoring_spacing(page, "successful execution of the activity.")
     needed = {"roll_number", "activity_name", "activity_date"}
     if not start or not needed.issubset(values):
         return None
@@ -610,15 +611,46 @@ def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tu
             min(page.rect.height - 72, first.y0 + 86),
         )
     text = (
-        f"In recognition of {values['roll_number']}, for outstanding efforts in organizing "
-        f"and managing {values['activity_name']} on {values['activity_date']} under the EMC. "
-        "Their leadership, coordination, and commitment significantly contributed to the "
-        "successful execution of the activity."
+        (
+            f"Having Roll Number {values['roll_number']} In recognition of their outstanding "
+            f"efforts in organizing and managing {values['activity_name']} on "
+            f"{values['activity_date']} under the EMC. Their leadership, coordination, and "
+            "commitment significantly contributed to the successful execution of the activity."
+        )
+        if having_roll
+        else (
+            f"In recognition of {values['roll_number']}, for outstanding efforts in organizing "
+            f"and managing {values['activity_name']} on {values['activity_date']} under the EMC. "
+            "Their leadership, coordination, and commitment significantly contributed to the "
+            "successful execution of the activity."
+        )
     )
     _font, size, rgb = _source_text_style(page, first)
     font_bytes = _source_font_bytes(page, first)
     _remove_text_in_rectangle(page, rectangle)
     return rectangle, text, needed, size, rgb, font_bytes
+
+
+def _search_text_ignoring_spacing(page: fitz.Page, phrase: str) -> list[fitz.Rect]:
+    """Locate Canva text whose exported glyphs have literal spaces between them."""
+    direct = page.search_for(phrase)
+    if direct:
+        return direct
+    needle = re.sub(r"\s+", "", phrase).casefold()
+    for block in page.get_text("rawdict").get("blocks", []):
+        for line in block.get("lines", []):
+            characters = [
+                character
+                for span in line.get("spans", [])
+                for character in span.get("chars", [])
+                if not character.get("c", "").isspace()
+            ]
+            text = "".join(character.get("c", "") for character in characters).casefold()
+            start = text.find(needle)
+            if start < 0:
+                continue
+            return [fitz.Rect(character["bbox"]) for character in characters[start:start + len(needle)]]
+    return []
 
 
 def _activity_paragraph_from_field_cluster(
@@ -724,6 +756,7 @@ def _render_tagged_paragraph(
     font_bytes: bytes | None,
     source_bold_words: set[str] | None = None,
     calibri_compatible: bool = False,
+    tracking: float = 0,
 ) -> None:
     """Render prose while bolding only values substituted for template tags."""
     if calibri_compatible:
@@ -778,7 +811,7 @@ def _render_tagged_paragraph(
         if not calibri_compatible and not all(word_font.has_glyph(ord(character)) for character in word):
             word_font = fallback_font
             word_font_name = fallback_name
-        word_width = word_font.text_length(word, fontsize=size)
+        word_width = word_font.text_length(word, fontsize=size) + tracking * max(0, len(word) - 1)
         gap = 0.0 if not line or word[0] in ",.;:)]}" or line[-1][0][-1] in "([{" else space
         required = gap + word_width
         if line and width + required > rectangle.width:
@@ -802,15 +835,25 @@ def _render_tagged_paragraph(
         for word, bold, word_width, gap, word_font_name in items:
             x += gap
             point = fitz.Point(x, baseline)
-            page.insert_text(
-                point,
-                word,
-                fontname=word_font_name,
-                fontsize=size,
-                color=color,
-                render_mode=0,
-                border_width=1,
-            )
+            if tracking > 0:
+                character_x = x
+                for character in word:
+                    page.insert_text(
+                        fitz.Point(character_x, baseline), character,
+                        fontname=word_font_name, fontsize=size, color=color,
+                        render_mode=0, border_width=1,
+                    )
+                    character_x += word_font.text_length(character, fontsize=size) + tracking
+            else:
+                page.insert_text(
+                    point,
+                    word,
+                    fontname=word_font_name,
+                    fontsize=size,
+                    color=color,
+                    render_mode=0,
+                    border_width=1,
+                )
             x += word_width
         baseline += size * lineheight
 
@@ -824,11 +867,12 @@ def _render_activity_paragraph(
     values: Mapping[str, str],
     tagged_names: set[str],
     font_bytes: bytes | None,
+    tracking: float = 0,
 ) -> None:
     # Use a uniquely embedded font instead of a built-in PDF font alias.
     # Canva templates can already bind aliases such as "helv" to incompatible
     # font resources, which makes newly drawn characters appear fragmented.
-    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_CENTER, lineheight=1.15, font_name="EMCActivityBody", font_bytes=font_bytes)
+    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_CENTER, lineheight=1.15, font_name="EMCActivityBody", font_bytes=font_bytes, tracking=tracking)
 
 
 def _render_leadership_paragraph(
@@ -913,6 +957,7 @@ def render_certificate(
         paragraph_jobs: dict[int, tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None, set[str]]] = {}
         paragraph_fields: set[tuple[int, str]] = set()
         leadership_paragraph_pages: set[int] = set()
+        tracked_activity_pages: set[int] = set()
         # ``society_name`` belongs only to Society Head letters. Club-wide
         # roles (President, Vice President, Deputy Vice President, etc.) use
         # the same flowing leadership-letter renderer without that field.
@@ -935,8 +980,11 @@ def render_certificate(
                 # Prefer the standard recognition renderer only for the
                 # standard EMC wording. Generic tagged prose keeps its text.
                 is_standard_recognition = bool(
-                    page.search_for("In recognition") and page.search_for("under the EMC")
+                    _search_text_ignoring_spacing(page, "In recognition")
+                    and _search_text_ignoring_spacing(page, "under the EMC")
                 )
+                if _search_text_ignoring_spacing(page, "Having Roll Number"):
+                    tracked_activity_pages.add(page_number)
                 job = (
                     _inline_activity_paragraph(page, normalized_values)
                     if is_standard_recognition
@@ -999,7 +1047,9 @@ def render_certificate(
                 )
             else:
                 _render_activity_paragraph(
-                    document[page_number - 1], rectangle, text, size, rgb, normalized_values, replaced_names, font_bytes
+                    document[page_number - 1], rectangle, text, size, rgb, normalized_values,
+                    replaced_names, font_bytes,
+                    tracking=1.35 if page_number in tracked_activity_pages else 0,
                 )
         qr_fields = {
             field.page_number: _effective_qr_field(document[field.page_number - 1], field)
