@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,8 @@ from app.api.admin.dependencies import current_active_admin
 from app.db.session import get_db
 from app.models.domain import (
     Admin,
+    DocumentSignatory,
+    DocumentStatus,
     EmcSession,
     ExecutiveMembership,
     IssuedDocument,
@@ -251,10 +253,29 @@ def delete_removed_membership(
             status_code=409,
             detail="Remove the membership before permanently deleting it",
         )
-    if db.scalar(select(IssuedDocument.id).where(IssuedDocument.executive_membership_id == membership.id)):
+    if db.scalar(
+        select(IssuedDocument.id).where(
+            IssuedDocument.executive_membership_id == membership.id,
+            IssuedDocument.status != DocumentStatus.REVOKED,
+        )
+    ):
         raise HTTPException(
             status_code=409,
-            detail="This membership has issued leadership documents and cannot be deleted",
+            detail="This membership has active issued leadership documents and cannot be deleted",
         )
+    revoked_document_ids = select(IssuedDocument.id).where(
+        IssuedDocument.executive_membership_id == membership.id,
+        IssuedDocument.status == DocumentStatus.REVOKED,
+    )
+    # Revoked records are no longer publicly valid. Remove their immutable
+    # signatory snapshots before the document rows, then the unused membership
+    # can be permanently deleted without leaving foreign-key dependencies.
+    db.execute(delete(DocumentSignatory).where(DocumentSignatory.issued_document_id.in_(revoked_document_ids)))
+    db.execute(
+        delete(IssuedDocument).where(
+            IssuedDocument.executive_membership_id == membership.id,
+            IssuedDocument.status == DocumentStatus.REVOKED,
+        )
+    )
     db.delete(membership)
     db.commit()
