@@ -159,7 +159,13 @@ function RecognitionCanvas() {
     </aside>
   );
 }
-function DocumentList({ documents }: { documents: PublicDocument[] }) {
+function DocumentList({
+  documents,
+  columns = 1,
+}: {
+  documents: PublicDocument[];
+  columns?: 1 | 2;
+}) {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -193,21 +199,21 @@ function DocumentList({ documents }: { documents: PublicDocument[] }) {
       </p>
     );
   return (
-    <ul className="mt-3 grid gap-2">
+    <ul className={`mt-3 grid gap-3 ${columns === 2 ? "sm:grid-cols-2" : ""}`}>
       {documents.map((item) => (
-        <li key={item.id} className="group rounded-xl border border-[#a91f35]/15 bg-[#fffaf1] p-3 shadow-[0_8px_24px_rgba(66,31,35,.06)] transition hover:border-[#a91f35]/35 hover:shadow-[0_12px_30px_rgba(66,31,35,.1)]">
+        <li key={item.id} className="group flex min-h-[9rem] flex-col rounded-xl border border-[#a91f35]/15 bg-[#fffaf1] p-4 shadow-[0_8px_24px_rgba(66,31,35,.06)] transition hover:-translate-y-0.5 hover:border-[#a91f35]/35 hover:shadow-[0_12px_30px_rgba(66,31,35,.1)] motion-reduce:hover:translate-y-0">
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#a91f35]/10 text-[#a91f35]"><FileIcon /></span>
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#a91f35]/10 text-[#a91f35]"><FileIcon /></span>
             <span className="min-w-0 flex-1">
-              <strong className="block truncate text-sm text-slate-900">{item.title}</strong>
-              <span className="mt-1 block text-xs text-slate-500">Issued {new Date(`${item.issue_date}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} · Official PDF</span>
+              <strong className="block text-[0.92rem] leading-5 text-slate-900">{item.title}</strong>
+              <span className="mt-1.5 block text-xs leading-5 text-slate-500">Issued {new Date(`${item.issue_date}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} · Official PDF</span>
             </span>
           </div>
           <button
             type="button"
             onClick={() => void handleDownload(item)}
             disabled={downloadingId !== null}
-            className="mt-3 flex min-h-10 w-full items-center justify-between border-t border-[#a91f35]/10 pt-3 text-xs font-bold uppercase tracking-[.12em] text-[#8d263b]"
+            className="mt-auto flex min-h-10 w-full items-end justify-between border-t border-[#a91f35]/10 pt-3 text-xs font-bold uppercase tracking-[.12em] text-[#8d263b]"
             aria-label={`Download ${item.title} PDF`}
           >
             {downloadingId === item.id ? "Downloading…" : "Download PDF"} <Arrow />
@@ -420,15 +426,26 @@ export function StudentPortal() {
                 <h2 className="mt-1 font-serif text-2xl">
                   {query.data.full_name}
                 </h2>
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div className="mt-6 space-y-7">
                   <div>
-                    <h3 className="font-semibold">Activity certificates</h3>
+                    <div className="flex items-center justify-between gap-4 border-b border-slate-200 pb-3">
+                      <h3 className="font-semibold text-slate-900">Activity certificates</h3>
+                      <span className="rounded-full bg-[#a91f35]/8 px-2.5 py-1 text-xs font-bold tabular-nums text-[#8d263b]">
+                        {query.data.activity_certificates.length}
+                      </span>
+                    </div>
                     <DocumentList
                       documents={query.data.activity_certificates}
+                      columns={2}
                     />
                   </div>
                   <div>
-                    <h3 className="font-semibold">Leadership & recognition</h3>
+                    <div className="flex items-center justify-between gap-4 border-b border-slate-200 pb-3">
+                      <h3 className="font-semibold text-slate-900">Leadership & recognition</h3>
+                      <span className="rounded-full bg-[#a91f35]/8 px-2.5 py-1 text-xs font-bold tabular-nums text-[#8d263b]">
+                        {query.data.leadership_recognition.length}
+                      </span>
+                    </div>
                     <DocumentList
                       documents={query.data.leadership_recognition}
                     />
