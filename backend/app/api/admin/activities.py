@@ -2,11 +2,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.admin.dependencies import current_active_admin
+from app.api.admin.dependencies import current_active_admin, super_admin_required
 from app.db.session import get_db
 from app.models.domain import (
     Activity,
@@ -14,6 +14,7 @@ from app.models.domain import (
     ActivityParticipant,
     ActivityStatus,
     Admin,
+    DocumentSignatory,
     DocumentStatus,
     DocumentType,
     IssuedDocument,
@@ -34,6 +35,7 @@ from app.services.activities import (
     update_activity,
 )
 from app.services.audit import record_audit_event
+from app.services.storage.supabase import SupabaseStorage
 
 router = APIRouter(prefix="/activities", tags=["admin-activities"])
 
@@ -116,6 +118,41 @@ def delete_activity(activity_id: UUID, admin: Admin = Depends(current_active_adm
     db.query(ActivityParticipant).filter(ActivityParticipant.activity_id == item.id).delete(synchronize_session=False)
     db.query(ActivityOrganizer).filter(ActivityOrganizer.activity_id == item.id).delete(synchronize_session=False)
     record_audit_event(db, event_type="ACTIVITY_DELETED", entity_type="activity", entity_id=item.id, payload={"name": item.name}, actor_admin_id=admin.id)
+    db.delete(item)
+    db.commit()
+
+
+@router.delete("/{activity_id}/permanently", status_code=status.HTTP_204_NO_CONTENT)
+def permanently_delete_archived_activity(
+    activity_id: UUID,
+    admin: Admin = Depends(super_admin_required),
+    db: Session = Depends(get_db),
+) -> None:
+    """Erase an archived activity and every document/file issued for it."""
+    item = db.get(Activity, activity_id)
+    if item is None:
+        return
+    if item.status is not ActivityStatus.ARCHIVED:
+        raise HTTPException(status_code=409, detail="Archive the activity before permanently deleting it")
+    documents = list(db.scalars(select(IssuedDocument).where(IssuedDocument.activity_id == item.id)).all())
+    storage_keys = [document.storage_key for document in documents if document.storage_key]
+    if storage_keys:
+        SupabaseStorage().delete_many(storage_keys)
+    document_ids = [document.id for document in documents]
+    if document_ids:
+        db.execute(delete(DocumentSignatory).where(DocumentSignatory.issued_document_id.in_(document_ids)))
+        for document in documents:
+            db.delete(document)
+    db.execute(delete(ActivityParticipant).where(ActivityParticipant.activity_id == item.id))
+    db.execute(delete(ActivityOrganizer).where(ActivityOrganizer.activity_id == item.id))
+    record_audit_event(
+        db,
+        event_type="ARCHIVED_ACTIVITY_PERMANENTLY_DELETED",
+        entity_type="activity",
+        entity_id=item.id,
+        payload={"name": item.name, "deleted_document_ids": [str(document_id) for document_id in document_ids]},
+        actor_admin_id=admin.id,
+    )
     db.delete(item)
     db.commit()
 

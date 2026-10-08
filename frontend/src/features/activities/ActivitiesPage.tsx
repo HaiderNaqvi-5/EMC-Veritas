@@ -28,7 +28,7 @@ type EmcSession = {
   status: string;
 };
 
-export function ActivitiesPage() {
+export function ActivitiesPage({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
   const client = useQueryClient();
   const [sessionId, setSessionId] = useState("");
   const [name, setName] = useState("");
@@ -139,6 +139,7 @@ export function ActivitiesPage() {
     onSuccess: () => void refreshActivities(),
   });
   const remove = useMutation({ mutationFn: (id: string) => apiRequest<void>(`/admin/activities/${id}`, { method: "DELETE" }), onSuccess: () => { setViewId(""); void refreshActivities(); } });
+  const permanentlyDelete = useMutation({ mutationFn: (id: string) => apiRequest<void>(`/admin/activities/${id}/permanently`, { method: "DELETE" }), onSuccess: () => { setViewId(""); void refreshActivities(); } });
   const participantImport = useMutation({ mutationFn: async () => { const data = new FormData(); data.set("file", participantFile as File); return apiRequest<{ added: number; already_present: number; unknown_roll_numbers: string[] }>(`/admin/imports/activities/${activityId}/participants/import`, { method: "POST", body: data }); }, onSuccess: () => { setParticipantFile(null); setViewId(activityId); void refreshParticipants(); } });
   const error =
     create.error?.message ??
@@ -148,6 +149,7 @@ export function ActivitiesPage() {
     eligibility.error?.message ??
     issue.error?.message ??
     remove.error?.message ??
+    permanentlyDelete.error?.message ??
     participantImport.error?.message ??
     participants.error?.message ??
     sessions.error?.message ??
@@ -396,7 +398,7 @@ export function ActivitiesPage() {
           <section className="mt-6 rounded-xl border border-slate-300 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900">
             <h2 className="font-semibold">Archived activities ({archivedActivities.length})</h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Archived activities remain visible here. Restoring one returns it to PUBLISHED without changing any issued certificates.</p>
-            {!archivedActivities.length ? <p className="mt-3 text-sm text-slate-500">No archived activities.</p> : <ul className="mt-3 space-y-2">{archivedActivities.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded border bg-white p-3 dark:bg-slate-950"><span><strong>{item.name}</strong><br /><span className="text-sm text-slate-500">{item.activity_date} · ARCHIVED</span></span><button type="button" disabled={status.isPending} onClick={() => status.mutate({ id: item.id, value: "PUBLISHED" })} className="rounded border px-3 py-2 text-sm">Restore to PUBLISHED</button></li>)}</ul>}
+            {!archivedActivities.length ? <p className="mt-3 text-sm text-slate-500">No archived activities.</p> : <ul className="mt-3 space-y-2">{archivedActivities.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded border bg-white p-3 dark:bg-slate-950"><span><strong>{item.name}</strong><br /><span className="text-sm text-slate-500">{item.activity_date} · ARCHIVED</span></span><div className="flex flex-wrap gap-2"><button type="button" disabled={status.isPending} onClick={() => status.mutate({ id: item.id, value: "PUBLISHED" })} className="rounded border px-3 py-2 text-sm">Restore to PUBLISHED</button>{role === "SUPER_ADMIN" && <button type="button" disabled={permanentlyDelete.isPending} onClick={() => { if (window.confirm(`Permanently delete ${item.name}, every participant link, and all certificates issued for it? This cannot be undone.`)) permanentlyDelete.mutate(item.id); }} className="rounded border border-red-700 px-3 py-2 text-sm text-red-700 disabled:opacity-60">Delete permanently</button>}</div></li>)}</ul>}
           </section>
           </div>
         )}
