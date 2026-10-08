@@ -1140,20 +1140,30 @@ def _render_ec_farewell_paragraph(
     font_bytes: bytes,
 ) -> None:
     """Render the fixed EC paragraph with the source design's exact rhythm."""
-    _render_tagged_paragraph(
-        page,
-        rectangle,
-        text,
-        {},
-        set(),
-        13.0,
-        (0x45, 0x45, 0x45),
-        align=fitz.TEXT_ALIGN_CENTER,
-        lineheight=2.078,
-        font_name="EMCBostonAngelLight",
-        font_bytes=font_bytes,
-        tracking=2.2,
-    )
+    font = fitz.Font(fontbuffer=font_bytes)
+    size = 13.0
+    tracking = 2.2
+    lines = text.splitlines()
+    line_step = size * 2.078
+    if len(lines) != 4 or len(lines) * line_step > rectangle.height + 0.5:
+        raise CertificateRenderingError(
+            "EC Farewell paragraph does not fit its dedicated template area"
+        )
+    writer = fitz.TextWriter(page.rect)
+    baseline = rectangle.y0 + size
+    for line in lines:
+        width = sum(font.text_length(character, fontsize=size) for character in line)
+        width += tracking * max(0, len(line) - 1)
+        if width > rectangle.width:
+            raise CertificateRenderingError(
+                "EC Farewell paragraph does not fit its dedicated template area"
+            )
+        x = rectangle.x0 + (rectangle.width - width) / 2
+        for character in line:
+            writer.append((x, baseline), character, font=font, fontsize=size)
+            x += font.text_length(character, fontsize=size) + tracking
+        baseline += line_step
+    writer.write_text(page, color=(0x45 / 255, 0x45 / 255, 0x45 / 255))
 
 
 def _render_leadership_paragraph(
@@ -1441,7 +1451,11 @@ def render_certificate(
                     fill_opacity=0.45,
                 )
         output = BytesIO()
-        document.save(output, garbage=4, deflate=True)
+        # Full garbage collection is disproportionately expensive for Canva
+        # PDFs and does not improve the immutable generated document. Level 1
+        # removes unreachable objects without rebuilding every cross-reference
+        # table, keeping previews responsive on the production CPU tier.
+        document.save(output, garbage=1, deflate=True)
         return output.getvalue()
     finally:
         document.close()
