@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 import fitz
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -365,9 +365,12 @@ def list_template_fields(
 def preview_template(
     template_id: UUID,
     payload: TemplatePreviewRequest,
+    preview_format: str = Query("pdf", alias="format"),
     db: Session = Depends(get_db),
     admin: Admin = Depends(current_active_admin),
 ) -> StreamingResponse:
+    if preview_format not in {"pdf", "png"}:
+        raise HTTPException(status_code=422, detail="Preview format must be pdf or png")
     template = _template_or_404(db, template_id)
     student = db.get(Student, payload.student_id)
     activity = db.get(Activity, payload.activity_id)
@@ -445,6 +448,12 @@ def preview_template(
         raise HTTPException(status_code=503, detail="Template storage is temporarily unavailable") from error
     except CertificateRenderingError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    if preview_format == "png":
+        with fitz.open(stream=output, filetype="pdf") as preview_document:
+            preview_bytes = preview_document[0].get_pixmap(
+                matrix=fitz.Matrix(1.5, 1.5), alpha=False
+            ).tobytes("png")
+        return StreamingResponse(BytesIO(preview_bytes), media_type="image/png")
     return StreamingResponse(
         BytesIO(output),
         media_type="application/pdf",

@@ -93,7 +93,7 @@ export async function previewTemplate(
 ): Promise<Blob> {
   // Preview is explicitly non-issuing and has no database side effect, so a
   // retry during a transient hosted-service wake-up is safe.
-  return retryConnection(() => apiBlobRequest(`/admin/templates/${templateId}/preview`, {
+  return retryConnection(() => apiBlobRequest(`/admin/templates/${templateId}/preview?format=png`, {
     method: "POST",
     body: JSON.stringify({ student_id: studentId, activity_id: activityId }),
   }));
