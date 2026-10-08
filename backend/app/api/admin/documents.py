@@ -139,8 +139,11 @@ def issue_activity_documents(
     activity = db.get(Activity, activity_id)
     if activity is None or activity.status == ActivityStatus.ARCHIVED:
         raise HTTPException(status_code=404, detail="Activity not found")
-    if activity.status != ActivityStatus.READY:
-        raise HTTPException(status_code=409, detail="Only READY activities can be issued and published")
+    if activity.status not in {ActivityStatus.READY, ActivityStatus.PUBLISHED}:
+        raise HTTPException(
+            status_code=409,
+            detail="Only READY or PUBLISHED activities can issue participant certificates",
+        )
     if activity.template_id is None:
         raise HTTPException(status_code=409, detail="An approved certificate template is required before issue")
     template = db.scalar(
@@ -244,6 +247,10 @@ def issue_activity_documents(
             )
             issued_document_ids.append(document.id)
         activity.issue_date = issue_date
+        # The first run publishes a READY activity. Later runs are deliberate:
+        # participants may be added after publication, and existing valid
+        # certificates are skipped above while the new participants receive
+        # their first certificate.
         activity.status = ActivityStatus.PUBLISHED
         record_audit_event(
             db,

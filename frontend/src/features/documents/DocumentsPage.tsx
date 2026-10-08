@@ -9,7 +9,7 @@ type ActivityRevokeResult = { activity_id: string; student_id: string | null; re
 type DocumentPurgeResult = { scope: string; activity_id: string | null; student_id: string | null; deleted_document_ids: string[] };
 type DocumentListItem = {
   id: string; student_id: string; student_name: string; roll_number: string; activity_id: string | null;
-  document_type: string; verification_id: string; issue_date: string; status: string; version: number;
+  document_type: string; verification_id: string; context: string; issue_date: string; status: string; version: number;
 };
 type Activity = { id: string; name: string; activity_date: string; status: string };
 
@@ -60,9 +60,12 @@ export function DocumentsPage({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
     [documents.data],
   );
   const purgeableActivities = useMemo(() => {
-    const ids = new Set(allActivityCertificates.map((item) => item.activity_id));
-    return (activities.data ?? []).filter((item) => ids.has(item.id));
-  }, [activities.data, allActivityCertificates]);
+    // Admin activity lists exclude archived activities. Document history does
+    // not: an archived, revoked activity must still be purgeable for cleanup.
+    return Array.from(new Map(allActivityCertificates.map((item) => [item.activity_id, {
+      id: item.activity_id!, name: item.context, activity_date: item.issue_date,
+    }])).values());
+  }, [allActivityCertificates]);
   const purgeableStudents = useMemo(() => {
     const entries = allActivityCertificates.filter((item) => item.activity_id === purgeActivityId);
     return Array.from(new Map(entries.map((item) => [item.student_id, item])).values());
@@ -91,6 +94,7 @@ export function DocumentsPage({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
   function submitDocument(event: FormEvent, action: "revoke" | "reissue") { event.preventDefault(); setMessage(""); if (action === "revoke") revoke.mutate(); else reissue.mutate(); }
   const error = issue.error?.message ?? preGenerate.error?.message ?? revoke.error?.message ?? revokeActivity.error?.message ?? revokeStudent.error?.message ?? purgeActivity.error?.message ?? purgeStudent.error?.message ?? reissue.error?.message ?? activities.error?.message;
   const readyActivities = activities.data?.filter((item) => item.status === "READY") ?? [];
+  const issuableActivities = activities.data?.filter((item) => item.status === "READY" || item.status === "PUBLISHED") ?? [];
   const publishedActivities = activities.data?.filter((item) => item.status === "PUBLISHED") ?? [];
   const selectedActivity = revocableActivities.find((item) => item.id === revokeActivityId);
 
@@ -98,10 +102,10 @@ export function DocumentsPage({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
     <h1 className="text-3xl font-bold">Document operations</h1>
     <p className="mt-2 text-slate-600 dark:text-slate-400">Issue certificates for an eligible activity, prepare them before sharing, or revoke activity certificates at activity or student level.</p>
     <form onSubmit={submitIssue} className="mt-6 grid gap-3 rounded-xl border p-4 md:grid-cols-2">
-      <select required value={activityId} onChange={(event) => setActivityId(event.target.value)} className="rounded border p-2"><option value="">Choose a READY activity</option>{readyActivities.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.activity_date}</option>)}</select>
-      <button disabled={issue.isPending || !readyActivities.length} className="rounded bg-slate-900 p-2 text-white disabled:cursor-not-allowed disabled:opacity-60">Issue eligible certificates</button>
+      <select required value={activityId} onChange={(event) => setActivityId(event.target.value)} className="rounded border p-2"><option value="">Choose a READY or PUBLISHED activity</option>{issuableActivities.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.activity_date} · {item.status}</option>)}</select>
+      <button disabled={issue.isPending || !issuableActivities.length} className="rounded bg-slate-900 p-2 text-white disabled:cursor-not-allowed disabled:opacity-60">Issue certificates for eligible participants</button>
     </form>
-    {activities.isSuccess && !readyActivities.length && <p className="mt-2 text-sm text-slate-500">No activities are ready to issue. Mark an activity READY first.</p>}
+    {activities.isSuccess && !issuableActivities.length && <p className="mt-2 text-sm text-slate-500">No activities are ready to issue. Mark an activity READY first.</p>}
     <section className="mt-4 rounded-xl border p-4">
       <h2 className="font-semibold">Prepare certificates for sharing</h2>
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Renders five certificates at a time and saves them before students download.</p>
