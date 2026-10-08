@@ -5,11 +5,11 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.api.admin.dependencies import current_active_admin
+from app.api.admin.dependencies import current_active_admin, super_admin_required
 from app.core.settings import settings
 from app.db.session import get_db
 from app.models.domain import (
@@ -32,6 +32,7 @@ from app.schemas.documents import (
     ActivityIssueResponse,
     ActivityPreGenerationResponse,
     AdminDocumentResponse,
+    DocumentPurgeResponse,
     DocumentReissueResponse,
 )
 from app.services.audit import record_audit_event
@@ -402,6 +403,40 @@ def _revoke_activity_certificates(
     return [document.id for document in documents]
 
 
+def _purge_documents(
+    db: Session,
+    *,
+    documents: list[IssuedDocument],
+    admin: Admin,
+    scope: str,
+    activity_id: UUID | None = None,
+    student_id: UUID | None = None,
+) -> list[UUID]:
+    """Erase documents and their generated files after an explicit Super Admin action."""
+    document_ids = [document.id for document in documents]
+    storage_keys = [document.storage_key for document in documents if document.storage_key]
+    if storage_keys:
+        SupabaseStorage().delete_many(storage_keys)
+    if document_ids:
+        db.execute(delete(DocumentSignatory).where(DocumentSignatory.issued_document_id.in_(document_ids)))
+        for document in documents:
+            db.delete(document)
+    record_audit_event(
+        db,
+        actor_admin_id=admin.id,
+        event_type="DOCUMENTS_PERMANENTLY_DELETED",
+        entity_type=scope,
+        entity_id=activity_id or student_id or "documents",
+        payload={
+            "deleted_count": len(document_ids),
+            "deleted_document_ids": [str(document_id) for document_id in document_ids],
+            "activity_id": str(activity_id) if activity_id else None,
+            "student_id": str(student_id) if student_id else None,
+        },
+    )
+    return document_ids
+
+
 @router.post("/activities/{activity_id}/revoke", response_model=ActivityCertificateRevokeResponse)
 def revoke_activity_certificates(
     activity_id: UUID,
@@ -461,6 +496,63 @@ def revoke_student_activity_certificates(
         activity_id=activity.id,
         student_id=student_id,
         revoked_document_ids=revoked_document_ids,
+    )
+
+
+@router.delete("/activities/{activity_id}/documents", response_model=DocumentPurgeResponse)
+def permanently_delete_activity_certificates(
+    activity_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> DocumentPurgeResponse:
+    """Permanently erase every activity certificate, including revoked test records."""
+    activity = db.get(Activity, activity_id)
+    if activity is None:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    documents = list(db.scalars(select(IssuedDocument).where(
+        IssuedDocument.activity_id == activity.id,
+        IssuedDocument.document_type == DocumentType.ACTIVITY_CERTIFICATE,
+    )).all())
+    deleted_document_ids = _purge_documents(
+        db,
+        documents=documents,
+        admin=admin,
+        scope="activity",
+        activity_id=activity.id,
+    )
+    db.commit()
+    return DocumentPurgeResponse(
+        scope="activity",
+        activity_id=activity.id,
+        deleted_document_ids=deleted_document_ids,
+    )
+
+
+@router.delete("/students/{student_id}/documents", response_model=DocumentPurgeResponse)
+def permanently_delete_student_documents(
+    student_id: UUID,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(super_admin_required),
+) -> DocumentPurgeResponse:
+    """Permanently erase all certificate and leadership-document history for one student."""
+    student = db.get(Student, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    documents = list(db.scalars(select(IssuedDocument).where(
+        IssuedDocument.student_id == student.id,
+    )).all())
+    deleted_document_ids = _purge_documents(
+        db,
+        documents=documents,
+        admin=admin,
+        scope="student",
+        student_id=student.id,
+    )
+    db.commit()
+    return DocumentPurgeResponse(
+        scope="student",
+        student_id=student.id,
+        deleted_document_ids=deleted_document_ids,
     )
 
 

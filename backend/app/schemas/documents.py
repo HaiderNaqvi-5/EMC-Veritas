@@ -26,6 +26,13 @@ class ActivityCertificateRevokeResponse(BaseModel):
     revoked_document_ids: list[UUID]
 
 
+class DocumentPurgeResponse(BaseModel):
+    scope: str
+    activity_id: UUID | None = None
+    student_id: UUID | None = None
+    deleted_document_ids: list[UUID]
+
+
 class DocumentReissueResponse(BaseModel):
     superseded_document_id: UUID
     replacement_document_id: UUID

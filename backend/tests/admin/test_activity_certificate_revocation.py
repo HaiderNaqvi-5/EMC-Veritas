@@ -6,6 +6,8 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.admin.documents import (
+    permanently_delete_activity_certificates,
+    permanently_delete_student_documents,
     revoke_activity_certificates,
     revoke_student_activity_certificates,
 )
@@ -18,6 +20,7 @@ def _document() -> SimpleNamespace:
         status=DocumentStatus.VALID,
         verification_id=f"EMC-{uuid4().hex[:8].upper()}",
         version=1,
+        storage_key=None,
     )
 
 
@@ -73,3 +76,37 @@ def test_activity_level_revocation_rejects_an_unknown_activity() -> None:
 
     assert error.value.status_code == 404
     db.scalars.assert_not_called()
+
+
+def test_super_admin_can_permanently_delete_every_document_for_an_activity() -> None:
+    activity = SimpleNamespace(id=uuid4())
+    documents = [_document(), _document()]
+    admin = SimpleNamespace(id=uuid4())
+    db = Mock()
+    db.get.return_value = activity
+    db.scalars.return_value.all.return_value = documents
+
+    result = permanently_delete_activity_certificates(activity.id, db=db, admin=admin)
+
+    assert result.scope == "activity"
+    assert result.activity_id == activity.id
+    assert result.deleted_document_ids == [document.id for document in documents]
+    assert db.delete.call_args_list == [((document,),) for document in documents]
+    db.commit.assert_called_once_with()
+
+
+def test_super_admin_can_permanently_delete_a_students_regular_and_leadership_documents() -> None:
+    student = SimpleNamespace(id=uuid4())
+    documents = [_document(), _document()]
+    admin = SimpleNamespace(id=uuid4())
+    db = Mock()
+    db.get.return_value = student
+    db.scalars.return_value.all.return_value = documents
+
+    result = permanently_delete_student_documents(student.id, db=db, admin=admin)
+
+    assert result.scope == "student"
+    assert result.student_id == student.id
+    assert result.deleted_document_ids == [document.id for document in documents]
+    assert db.delete.call_args_list == [((document,),) for document in documents]
+    db.commit.assert_called_once_with()

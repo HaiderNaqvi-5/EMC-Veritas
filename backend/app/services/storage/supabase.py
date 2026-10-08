@@ -36,6 +36,22 @@ class SupabaseStorage:
         except httpx.HTTPError as error:
             raise RuntimeError("Supabase Storage download failed") from error
 
+    def delete_many(self, keys: list[str]) -> None:
+        """Permanently remove immutable objects that no longer have a record."""
+        prefixes = sorted({key for key in keys if key})
+        if not prefixes:
+            return
+        try:
+            response = httpx.delete(
+                self.base_url,
+                headers={**self.headers, "Content-Type": "application/json"},
+                json={"prefixes": prefixes},
+                timeout=30,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise RuntimeError("Supabase Storage deletion failed") from error
+
     def signed_download_url(self, key: str, filename: str, expires_in: int = 60) -> str:
         """Create a short-lived URL so the browser downloads from Storage directly."""
         try:

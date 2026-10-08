@@ -6,19 +6,22 @@ type IssueResult = { issue_date: string; issued_document_ids: string[]; skipped_
 type ReissueResult = { replacement_document_id: string; issue_date: string; version: number };
 type PreGenerationResult = { total_documents: number; ready_documents: number; generated_documents: number; remaining_documents: number; failed_document_ids: string[] };
 type ActivityRevokeResult = { activity_id: string; student_id: string | null; revoked_document_ids: string[] };
+type DocumentPurgeResult = { scope: string; activity_id: string | null; student_id: string | null; deleted_document_ids: string[] };
 type DocumentListItem = {
   id: string; student_id: string; student_name: string; roll_number: string; activity_id: string | null;
   document_type: string; verification_id: string; issue_date: string; status: string; version: number;
 };
 type Activity = { id: string; name: string; activity_date: string; status: string };
 
-export function DocumentsPage() {
+export function DocumentsPage({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
   const client = useQueryClient();
   const [activityId, setActivityId] = useState("");
   const [preGenerationActivityId, setPreGenerationActivityId] = useState("");
   const [documentId, setDocumentId] = useState("");
   const [revokeActivityId, setRevokeActivityId] = useState("");
   const [studentDocumentId, setStudentDocumentId] = useState("");
+  const [purgeActivityId, setPurgeActivityId] = useState("");
+  const [purgeStudentId, setPurgeStudentId] = useState("");
   const [message, setMessage] = useState("");
   const documents = useQuery({ queryKey: ["admin", "documents"], queryFn: () => apiRequest<DocumentListItem[]>("/admin/documents") });
   const activities = useQuery({ queryKey: ["admin", "activities"], queryFn: () => apiRequest<Activity[]>("/admin/activities") });
@@ -52,6 +55,18 @@ export function DocumentsPage() {
     () => activityCertificates.filter((item) => item.activity_id === revokeActivityId),
     [activityCertificates, revokeActivityId],
   );
+  const allActivityCertificates = useMemo(
+    () => (documents.data ?? []).filter((item) => item.document_type === "ACTIVITY_CERTIFICATE" && item.activity_id),
+    [documents.data],
+  );
+  const purgeableActivities = useMemo(() => {
+    const ids = new Set(allActivityCertificates.map((item) => item.activity_id));
+    return (activities.data ?? []).filter((item) => ids.has(item.id));
+  }, [activities.data, allActivityCertificates]);
+  const purgeableStudents = useMemo(() => {
+    const entries = allActivityCertificates.filter((item) => item.activity_id === purgeActivityId);
+    return Array.from(new Map(entries.map((item) => [item.student_id, item])).values());
+  }, [allActivityCertificates, purgeActivityId]);
   const revokeActivity = useMutation({
     mutationFn: () => apiRequest<ActivityRevokeResult>(`/admin/documents/activities/${revokeActivityId}/revoke`, { method: "POST" }),
     onSuccess: (result) => { setMessage(`${result.revoked_document_ids.length} certificate(s) were revoked for the selected activity.`); setStudentDocumentId(""); refreshDocuments(); },
@@ -64,9 +79,17 @@ export function DocumentsPage() {
     },
     onSuccess: (result) => { setMessage(`${result.revoked_document_ids.length} certificate(s) were revoked for the selected student.`); setStudentDocumentId(""); refreshDocuments(); },
   });
+  const purgeActivity = useMutation({
+    mutationFn: () => apiRequest<DocumentPurgeResult>(`/admin/documents/activities/${purgeActivityId}/documents`, { method: "DELETE" }),
+    onSuccess: (result) => { setMessage(`Permanently deleted ${result.deleted_document_ids.length} activity certificate record(s) and file(s).`); setPurgeStudentId(""); refreshDocuments(); },
+  });
+  const purgeStudent = useMutation({
+    mutationFn: () => apiRequest<DocumentPurgeResult>(`/admin/documents/students/${purgeStudentId}/documents`, { method: "DELETE" }),
+    onSuccess: (result) => { setMessage(`Permanently deleted ${result.deleted_document_ids.length} document record(s) for this student, including leadership documents.`); setPurgeStudentId(""); refreshDocuments(); },
+  });
   function submitIssue(event: FormEvent) { event.preventDefault(); setMessage(""); issue.mutate(); }
   function submitDocument(event: FormEvent, action: "revoke" | "reissue") { event.preventDefault(); setMessage(""); if (action === "revoke") revoke.mutate(); else reissue.mutate(); }
-  const error = issue.error?.message ?? preGenerate.error?.message ?? revoke.error?.message ?? revokeActivity.error?.message ?? revokeStudent.error?.message ?? reissue.error?.message ?? activities.error?.message;
+  const error = issue.error?.message ?? preGenerate.error?.message ?? revoke.error?.message ?? revokeActivity.error?.message ?? revokeStudent.error?.message ?? purgeActivity.error?.message ?? purgeStudent.error?.message ?? reissue.error?.message ?? activities.error?.message;
   const readyActivities = activities.data?.filter((item) => item.status === "READY") ?? [];
   const publishedActivities = activities.data?.filter((item) => item.status === "PUBLISHED") ?? [];
   const selectedActivity = revocableActivities.find((item) => item.id === revokeActivityId);
@@ -98,6 +121,16 @@ export function DocumentsPage() {
         <button type="button" disabled={!studentDocumentId || revokeStudent.isPending} onClick={() => { const document = studentActivityDocuments.find((item) => item.id === studentDocumentId); if (document && window.confirm(`Revoke ${document.student_name}'s certificate for this activity? This cannot be undone.`)) revokeStudent.mutate(); }} className="rounded border border-red-600 p-2 text-red-700 disabled:opacity-60">{revokeStudent.isPending ? "Revoking…" : "Revoke selected student's certificate"}</button>
       </div>
     </section>
+    {role === "SUPER_ADMIN" && <section className="mt-4 rounded-xl border-2 border-red-700 bg-red-50 p-4 dark:bg-red-950/20">
+      <h2 className="font-semibold text-red-800 dark:text-red-200">Permanent document deletion</h2>
+      <p className="mt-1 text-sm text-red-800 dark:text-red-200">This irreversibly removes records and generated files. It includes already revoked documents. Activity deletion removes all certificates for that activity; student deletion removes that student's activity certificates and leadership letters across the system.</p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <select value={purgeActivityId} onChange={(event) => { setPurgeActivityId(event.target.value); setPurgeStudentId(""); }} className="rounded border p-2"><option value="">Choose an activity with certificates</option>{purgeableActivities.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.activity_date}</option>)}</select>
+        <button type="button" disabled={!purgeActivityId || purgeActivity.isPending} onClick={() => { const activity = purgeableActivities.find((item) => item.id === purgeActivityId); if (activity && window.confirm(`Permanently delete every certificate for ${activity.name}? This cannot be undone.`)) purgeActivity.mutate(); }} className="rounded border border-red-700 bg-red-700 p-2 text-white disabled:opacity-60">{purgeActivity.isPending ? "Deleting…" : "Delete all activity certificates permanently"}</button>
+        <select value={purgeStudentId} onChange={(event) => setPurgeStudentId(event.target.value)} disabled={!purgeActivityId} className="rounded border p-2 disabled:opacity-60"><option value="">Choose a student from this activity</option>{purgeableStudents.map((item) => <option key={item.student_id} value={item.student_id}>{item.roll_number} — {item.student_name}</option>)}</select>
+        <button type="button" disabled={!purgeStudentId || purgeStudent.isPending} onClick={() => { const student = purgeableStudents.find((item) => item.student_id === purgeStudentId); if (student && window.confirm(`Permanently delete every document for ${student.student_name}, including leadership letters? This cannot be undone.`)) purgeStudent.mutate(); }} className="rounded border border-red-700 p-2 text-red-800 disabled:opacity-60 dark:text-red-200">{purgeStudent.isPending ? "Deleting…" : "Delete this student's documents permanently"}</button>
+      </div>
+    </section>}
     <form onSubmit={(event) => submitDocument(event, "reissue")} className="mt-4 grid gap-3 rounded-xl border p-4 md:grid-cols-3">
       <select required value={documentId} onChange={(event) => setDocumentId(event.target.value)} className="rounded border p-2 md:col-span-1"><option value="">Choose an issued document</option>{operationalDocuments.map((item) => <option key={item.id} value={item.id}>{item.document_type} · {item.roll_number} · v{item.version} · {item.verification_id}</option>)}</select>
       <button disabled={!documentId || reissue.isPending} className="rounded border p-2">Reissue as new version</button>
