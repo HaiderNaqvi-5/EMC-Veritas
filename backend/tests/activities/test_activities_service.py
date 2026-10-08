@@ -71,6 +71,8 @@ def test_activity_status_must_follow_the_prd_lifecycle() -> None:
     change_activity_status(activity, ActivityStatus.ARCHIVED)
 
     assert activity.status is ActivityStatus.ARCHIVED
+    change_activity_status(activity, ActivityStatus.PUBLISHED)
+    assert activity.status is ActivityStatus.PUBLISHED
     with pytest.raises(ValueError, match="only progress"):
         change_activity_status(activity, ActivityStatus.READY)
 

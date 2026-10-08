@@ -181,6 +181,8 @@ export function ActivitiesPage() {
   }
   const activeSessions =
     sessions.data?.filter((item) => item.status === "ACTIVE") ?? [];
+  const activeActivities = activities.data?.filter((item) => item.status !== "ARCHIVED") ?? [];
+  const archivedActivities = activities.data?.filter((item) => item.status === "ARCHIVED") ?? [];
   return (
     <section>
       <h1 className="text-3xl font-bold">Activities</h1>
@@ -268,7 +270,7 @@ export function ActivitiesPage() {
           className="rounded border p-2"
         >
           <option value="">Choose activity</option>
-          {activities.data?.map((item) => (
+          {activeActivities.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name}
             </option>
@@ -294,7 +296,7 @@ export function ActivitiesPage() {
           Add eligible participant
         </button>
       </form>
-      <form onSubmit={(event) => { event.preventDefault(); if (participantFile) participantImport.mutate(); }} className="mt-4 grid gap-3 rounded-xl border p-4 md:grid-cols-3"><select required value={activityId} onChange={(e) => setActivityId(e.target.value)} className="rounded border p-2"><option value="">Choose activity for participant Excel</option>{activities.data?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input required accept=".xlsx" type="file" onChange={(event) => setParticipantFile(event.target.files?.[0] ?? null)} className="rounded border p-2"/><button disabled={!participantFile || participantImport.isPending} className="rounded bg-slate-900 p-2 text-white">Import participant Excel</button></form>
+      <form onSubmit={(event) => { event.preventDefault(); if (participantFile) participantImport.mutate(); }} className="mt-4 grid gap-3 rounded-xl border p-4 md:grid-cols-3"><select required value={activityId} onChange={(e) => setActivityId(e.target.value)} className="rounded border p-2"><option value="">Choose activity for participant Excel</option>{activeActivities.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input required accept=".xlsx" type="file" onChange={(event) => setParticipantFile(event.target.files?.[0] ?? null)} className="rounded border p-2"/><button disabled={!participantFile || participantImport.isPending} className="rounded bg-slate-900 p-2 text-white">Import participant Excel</button></form>
       {participantImport.data && <p role="status" className="mt-2 text-sm text-green-700">Imported {participantImport.data.added} participants; {participantImport.data.already_present} were already linked.{participantImport.data.unknown_roll_numbers.length ? ` Unknown active roll numbers: ${participantImport.data.unknown_roll_numbers.join(", ")}` : ""}</p>}
       {error && (
         <p role="alert" className="mt-3 rounded bg-red-50 p-3 text-red-700">
@@ -305,8 +307,10 @@ export function ActivitiesPage() {
         {activities.isLoading ? (
           <Skeleton className="h-64 w-full" />
         ) : (
+          <div>
+          <h2 className="mb-3 font-semibold">Active activities</h2>
           <ul className="space-y-3">
-            {activities.data?.map((item) => (
+            {activeActivities.map((item) => (
               <li key={item.id} className="rounded border p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3"><strong>{item.name}</strong><span>{item.activity_date} — {item.status}</span><button onClick={() => remove.mutate(item.id)} disabled={remove.isPending} className="rounded border border-red-600 bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">Delete activity</button></div>
                 <div className="mt-3 flex flex-wrap gap-3">
@@ -334,7 +338,7 @@ export function ActivitiesPage() {
                   </button>
                   <button
                     onClick={() => issue.mutate(item.id)}
-                    disabled={item.status !== "READY"}
+                    disabled={item.status !== "READY" && item.status !== "PUBLISHED"}
                     className="underline"
                   >
                     Issue and publish certificates
@@ -389,6 +393,12 @@ export function ActivitiesPage() {
               </li>
             ))}
           </ul>
+          <section className="mt-6 rounded-xl border border-slate-300 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="font-semibold">Archived activities ({archivedActivities.length})</h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Archived activities remain visible here. Restoring one returns it to PUBLISHED without changing any issued certificates.</p>
+            {!archivedActivities.length ? <p className="mt-3 text-sm text-slate-500">No archived activities.</p> : <ul className="mt-3 space-y-2">{archivedActivities.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded border bg-white p-3 dark:bg-slate-950"><span><strong>{item.name}</strong><br /><span className="text-sm text-slate-500">{item.activity_date} · ARCHIVED</span></span><button type="button" disabled={status.isPending} onClick={() => status.mutate({ id: item.id, value: "PUBLISHED" })} className="rounded border px-3 py-2 text-sm">Restore to PUBLISHED</button></li>)}</ul>}
+          </section>
+          </div>
         )}
         <aside className="rounded-xl border p-4">
           <h2 className="font-semibold">Participant eligibility</h2>
