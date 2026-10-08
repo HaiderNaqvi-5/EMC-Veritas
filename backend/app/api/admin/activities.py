@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -38,6 +39,7 @@ from app.services.audit import record_audit_event
 from app.services.storage.supabase import SupabaseStorage
 
 router = APIRouter(prefix="/activities", tags=["admin-activities"])
+logger = logging.getLogger(__name__)
 
 
 class ParticipantCreate(BaseModel):
@@ -136,8 +138,6 @@ def permanently_delete_archived_activity(
         raise HTTPException(status_code=409, detail="Archive the activity before permanently deleting it")
     documents = list(db.scalars(select(IssuedDocument).where(IssuedDocument.activity_id == item.id)).all())
     storage_keys = [document.storage_key for document in documents if document.storage_key]
-    if storage_keys:
-        SupabaseStorage().delete_many(storage_keys)
     document_ids = [document.id for document in documents]
     if document_ids:
         # Use ordered SQL deletes rather than ORM object deletes.  The latter
@@ -157,6 +157,19 @@ def permanently_delete_archived_activity(
     )
     db.delete(item)
     db.commit()
+    # File cleanup must never make a completed database deletion look like a
+    # failed action.  Documents are no longer reachable once their rows are
+    # gone; if external storage is temporarily unavailable, retain a server
+    # log for cleanup rather than failing the administrator's request.
+    if storage_keys:
+        try:
+            SupabaseStorage().delete_many(storage_keys)
+        except RuntimeError:
+            logger.exception(
+                "Archived activity %s was deleted, but %d storage object(s) need later cleanup",
+                activity_id,
+                len(storage_keys),
+            )
 
 
 @router.get("/{activity_id}/participants")
