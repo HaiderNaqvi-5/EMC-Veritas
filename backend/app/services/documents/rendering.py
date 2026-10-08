@@ -41,15 +41,36 @@ def _insert_text(
     *,
     alignment: str = "center",
     emphasize: bool = True,
+    rendering_profile: str = "default",
 ) -> None:
     if field.width <= 0 or field.height < 6:
         raise CertificateRenderingError(f"Template field '{field.field_name}' has an invalid box")
     font_family = getattr(field, "font_family", "helv")
     custom_font_key = getattr(field, "custom_font_storage_key", None)
-    if field.field_name == "student_name" and font_family != "custom" and custom_font_key is None:
-        # IBM Plex Sans is IBM's corporate typeface and provides a clear,
-        # modern, professional recipient-name treatment in every document type.
-        font_bytes = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
+    if (
+        field.field_name == "student_name"
+        and rendering_profile == "executive_council"
+        and font_family != "custom"
+        and custom_font_key is None
+    ):
+        # A certificate recipient is the visual focal point. Cormorant
+        # Garamond complements the template's ceremonial display face without
+        # the artificial weight and stroke previously applied by IBM Plex.
+        font_bytes = (
+            Path(__file__).resolve().parents[2]
+            / "assets"
+            / "CormorantGaramond-Variable.ttf"
+        ).read_bytes()
+        font_name = "EMCCormorantGaramond"
+        try:
+            page.insert_font(fontname=font_name, fontbuffer=font_bytes)
+        except (RuntimeError, ValueError) as error:
+            raise CertificateRenderingError("Certificate recipient font is unreadable") from error
+        emphasize = False
+    elif field.field_name == "student_name" and font_family != "custom" and custom_font_key is None:
+        font_bytes = (
+            Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf"
+        ).read_bytes()
         font_name = "EMCIBMPlexSansMedium"
         try:
             page.insert_font(fontname=font_name, fontbuffer=font_bytes)
@@ -567,7 +588,12 @@ def _remove_leadership_recipient_heading(page: fitz.Page) -> None:
         page.add_redact_annot(rectangle, fill=None)
 
 
-def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None] | None:
+def _inline_activity_paragraph(
+    page: fitz.Page,
+    values: Mapping[str, str],
+    *,
+    preserve_ec_format: bool = False,
+) -> tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None] | None:
     """Replace a flowing certificate sentence as one typographic block.
 
     A PDF stores the words of a paragraph as independent drawing operations.
@@ -598,26 +624,44 @@ def _inline_activity_paragraph(page: fitz.Page, values: Mapping[str, str]) -> tu
         for block in source_blocks:
             combined.include_rect(block)
         combined.include_rect(last)
-        rectangle = _paragraph_rectangle(page, combined)
+        rectangle = (
+            fitz.Rect(
+                combined.x0,
+                combined.y0,
+                combined.x1,
+                min(page.rect.height - 36, combined.y1 + 16),
+            )
+            if having_roll and preserve_ec_format
+            else _paragraph_rectangle(page, combined)
+        )
     else:
         # Uploaded PDFs often alter the final sentence through line wrapping,
         # punctuation or PDF text extraction. The opening phrase is enough to
         # locate the standard recognition block; reserve a bounded region
         # beneath it rather than falling back to individual box overlays.
-        rectangle = fitz.Rect(
-            72,
-            max(36, first.y0 - 2),
-            page.rect.width - 72,
-            min(page.rect.height - 72, first.y0 + 86),
-        )
+        if having_roll and preserve_ec_format:
+            rectangle = fitz.Rect(
+                max(72, first.x0),
+                max(36, first.y0 - 2),
+                min(page.rect.width - 72, max(72, first.x0) + 626),
+                min(page.rect.height - 72, first.y0 + 120),
+            )
+        else:
+            rectangle = fitz.Rect(
+                72,
+                max(36, first.y0 - 2),
+                page.rect.width - 72,
+                min(page.rect.height - 72, first.y0 + 86),
+            )
     text = (
         (
-            f"Having Roll Number {values['roll_number']} In recognition of their outstanding "
-            f"efforts in organizing and managing {values['activity_name']} on "
-            f"{values['activity_date']} under the EMC. Their leadership, coordination, and "
-            "commitment significantly contributed to the successful execution of the activity."
+            f"Having Roll Number {values['roll_number']}, In recognition of their\n"
+            f"outstanding efforts in organizing and managing {values['activity_name']} on\n"
+            f"{values['activity_date']} under the EMC. their leadership, coordination, and\n"
+            "commitment significantly contributed to the successful execution of\n"
+            "the activity."
         )
-        if having_roll
+        if having_roll and preserve_ec_format
         else (
             f"In recognition of {values['roll_number']}, for outstanding efforts in organizing "
             f"and managing {values['activity_name']} on {values['activity_date']} under the EMC. "
@@ -804,7 +848,10 @@ def _render_tagged_paragraph(
             if line:
                 lines.append(line)
                 line, width = [], 0.0
-            lines.append(None)
+            else:
+                # Consecutive newlines represent a deliberate paragraph gap;
+                # a single newline is only a hard line break.
+                lines.append(None)
             continue
         word_font = bold_font if bold else font
         word_font_name = bold_font_name if bold else font_name
@@ -868,6 +915,7 @@ def _render_activity_paragraph(
     tagged_names: set[str],
     font_bytes: bytes | None,
     tracking: float = 0,
+    lineheight: float = 1.15,
 ) -> None:
     # Use a uniquely embedded font instead of a built-in PDF font alias.
     # Canva templates can already bind aliases such as "helv" to incompatible
@@ -880,7 +928,7 @@ def _render_activity_paragraph(
         font_bytes = (
             Path(__file__).resolve().parents[2] / "assets" / "OpenSans-Variable.ttf"
         ).read_bytes()
-    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_CENTER, lineheight=1.15, font_name="EMCActivityBody", font_bytes=font_bytes, tracking=tracking)
+    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_CENTER, lineheight=lineheight, font_name="EMCActivityBody", font_bytes=font_bytes, tracking=tracking)
 
 
 def _render_leadership_paragraph(
@@ -921,12 +969,15 @@ def render_certificate(
     image_values: Mapping[str, bytes] | None = None,
     custom_fonts: Mapping[str, bytes] | None = None,
     required_field_names: frozenset[str] = REQUIRED_CERTIFICATE_FIELDS,
+    rendering_profile: str = "default",
 ) -> bytes:
     """Overlay configured fields and an optional QR code onto a PDF certificate template.
 
     Field coordinates use one-based PDF page numbers and point units. The template itself is
     never changed in Storage; this returns a new, immutable issued-document byte stream.
     """
+    if rendering_profile not in {"default", "executive_council"}:
+        raise CertificateRenderingError("Unsupported certificate rendering profile")
     field_list = list(fields)
     configured_names = {field.field_name for field in field_list}
     missing = required_field_names - configured_names
@@ -991,10 +1042,17 @@ def render_certificate(
                     _search_text_ignoring_spacing(page, "In recognition")
                     and _search_text_ignoring_spacing(page, "under the EMC")
                 )
-                if _search_text_ignoring_spacing(page, "Having Roll Number"):
+                if (
+                    rendering_profile == "executive_council"
+                    and _search_text_ignoring_spacing(page, "Having Roll Number")
+                ):
                     tracked_activity_pages.add(page_number)
                 job = (
-                    _inline_activity_paragraph(page, normalized_values)
+                    _inline_activity_paragraph(
+                        page,
+                        normalized_values,
+                        preserve_ec_format=rendering_profile == "executive_council",
+                    )
                     if is_standard_recognition
                     else _paragraph_from_tagged_block(page, normalized_values)
                 )
@@ -1058,6 +1116,7 @@ def render_certificate(
                     document[page_number - 1], rectangle, text, size, rgb, normalized_values,
                     replaced_names, font_bytes,
                     tracking=1.35 if page_number in tracked_activity_pages else 0,
+                    lineheight=1.616 if page_number in tracked_activity_pages else 1.15,
                 )
         qr_fields = {
             field.page_number: _effective_qr_field(document[field.page_number - 1], field)
@@ -1089,6 +1148,7 @@ def render_certificate(
                     fonts,
                     alignment="left" if is_leadership_template and field.field_name in {"roll_number", "issue_date"} else "center",
                     emphasize=not is_leadership_template,
+                    rendering_profile=rendering_profile,
                 )
         if watermark:
             for page in document:

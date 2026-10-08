@@ -77,6 +77,44 @@ def test_rendering_places_student_name_above_its_underline() -> None:
     assert span["bbox"][3] < underline_y
 
 
+def test_ec_profile_uses_distinct_recipient_typeface() -> None:
+    document = fitz.open()
+    document.new_page(width=600, height=400)
+    template = document.tobytes()
+    document.close()
+    field = SimpleNamespace(
+        field_name="student_name", page_number=1, x=160, y=164, width=280, height=36,
+        font_family="tiro", custom_font_storage_key=None, font_size=28, text_color="#454545",
+    )
+
+    default_output = render_certificate(
+        template, [field], {"student_name": "Awais Khan"},
+        verification_url="https://example.test/verify/x",
+        required_field_names=frozenset({"student_name"}),
+    )
+    ec_output = render_certificate(
+        template, [field], {"student_name": "Awais Khan"},
+        verification_url="https://example.test/verify/x",
+        required_field_names=frozenset({"student_name"}),
+        rendering_profile="executive_council",
+    )
+
+    def recipient_font(output: bytes) -> str:
+        rendered = fitz.open(stream=output, filetype="pdf")
+        font = next(
+            span["font"]
+            for block in rendered[0].get_text("dict")["blocks"]
+            for line in block.get("lines", [])
+            for span in line["spans"]
+            if "Awais" in span["text"]
+        )
+        rendered.close()
+        return font
+
+    assert "IBMPlexSans" in recipient_font(default_output)
+    assert "CormorantGaramond" in recipient_font(ec_output)
+
+
 def test_rendering_replaces_a_complete_tagged_paragraph_without_old_text() -> None:
     document = fitz.open()
     page = document.new_page()
@@ -135,6 +173,7 @@ def test_rendering_keeps_the_roll_number_clause_when_canva_exports_it_as_a_separ
         {"roll_number": "2K23-BSCS-104", "activity_name": "Orientation 2K25", "activity_date": "2025-09-01"},
         verification_url="https://example.test/verify/x",
         required_field_names=frozenset({"roll_number", "activity_name", "activity_date"}),
+        rendering_profile="executive_council",
     )
 
     rendered = fitz.open(stream=output, filetype="pdf")
@@ -305,10 +344,11 @@ def test_rendering_preserves_canva_tracked_organizer_certificate_style() -> None
         {"roll_number": "2K23-BSCS-104", "activity_name": "Orientation 2K25", "activity_date": "2025-09-01"},
         verification_url="https://example.test/verify/x",
         required_field_names=frozenset({"roll_number", "activity_name", "activity_date"}),
+        rendering_profile="executive_council",
     )
 
     rendered = fitz.open(stream=output, filetype="pdf")
-    text = rendered[0].get_text().replace("\n", " ")
+    text = rendered[0].get_text()
     value_spans = [
         span
         for block in rendered[0].get_text("dict")["blocks"]
@@ -319,6 +359,9 @@ def test_rendering_preserves_canva_tracked_organizer_certificate_style() -> None
     rendered.close()
     assert "Having Roll Number" in text
     assert "Orientation" in text
+    body_lines = [line for line in text.splitlines() if line.strip()]
+    assert len(body_lines) == 5
+    assert body_lines[-1] == "the activity."
     assert {span["color"] for span in value_spans} == {0x454545}
     assert {span["font"] for span in value_spans} == {"OpenSans-Regular"}
 

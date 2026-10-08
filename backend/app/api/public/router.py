@@ -225,6 +225,12 @@ def download_document(request: Request, document_id: UUID, db: Session = Depends
             public_base_url=settings.public_app_url,
             image_values=image_values,
             required_field_names=required_field_names,
+            rendering_profile=(
+                "executive_council"
+                if getattr(document, "document_type", None)
+                == DocumentType.EXECUTIVE_COUNCIL_CERTIFICATE
+                else "default"
+            ),
         )
         db.commit()
     except RuntimeError as error:

@@ -402,6 +402,11 @@ def preview_template(
             watermark="PREVIEW",
             image_values=signature_images,
             custom_fonts=custom_fonts,
+            rendering_profile=(
+                "executive_council"
+                if template.purpose == "EXECUTIVE_COUNCIL"
+                else "default"
+            ),
         )
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail="Template storage is temporarily unavailable") from error

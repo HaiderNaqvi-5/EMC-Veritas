@@ -282,6 +282,7 @@ def issue_ec_certificates(
                 public_base_url=settings.public_app_url,
                 actor_admin_id=admin.id,
                 image_values=signature_images,
+                rendering_profile="executive_council",
             )
             document_ids.append(document.id)
         record_audit_event(

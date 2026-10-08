@@ -32,6 +32,7 @@ def generate_on_first_download(
     actor_admin_id: UUID | None = None,
     image_values: Mapping[str, bytes] | None = None,
     required_field_names: frozenset[str] | None = None,
+    rendering_profile: str = "default",
 ) -> bytes:
     """Return an issued PDF, creating and caching it only on the first valid download."""
     if document.status is not DocumentStatus.VALID:
@@ -55,6 +56,7 @@ def generate_on_first_download(
             image_values=image_values,
             custom_fonts=custom_fonts,
             required_field_names=required_field_names or REQUIRED_CERTIFICATE_FIELDS,
+            rendering_profile=rendering_profile,
         )
     except CertificateRenderingError as error:
         raise DocumentLifecycleError(str(error)) from error
