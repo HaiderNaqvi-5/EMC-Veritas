@@ -6,7 +6,7 @@ from app.core.settings import settings
 
 
 class SupabaseStorage:
-    def __init__(self) -> None:
+    def __init__(self, cache: dict[str, bytes] | None = None) -> None:
         if not settings.supabase_service_role_key:
             raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY is required for persistent Storage operations")
         self.bucket = settings.supabase_storage_bucket
@@ -15,6 +15,7 @@ class SupabaseStorage:
             "apikey": settings.supabase_service_role_key,
             "Authorization": f"Bearer {settings.supabase_service_role_key}",
         }
+        self.cache = cache
 
     def upload(self, key: str, content: bytes, content_type: str) -> None:
         try:
@@ -29,10 +30,15 @@ class SupabaseStorage:
             raise RuntimeError("Supabase Storage upload failed") from error
 
     def download(self, key: str) -> bytes:
+        if self.cache is not None and key in self.cache:
+            return self.cache[key]
         try:
             response = httpx.get(f"{self.base_url}/{quote(key, safe='/')}", headers=self.headers, timeout=30)
             response.raise_for_status()
-            return response.content
+            content = response.content
+            if self.cache is not None:
+                self.cache[key] = content
+            return content
         except httpx.HTTPError as error:
             raise RuntimeError("Supabase Storage download failed") from error
 
