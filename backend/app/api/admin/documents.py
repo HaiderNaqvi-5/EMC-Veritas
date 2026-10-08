@@ -73,7 +73,10 @@ def _admin_document_response(
 
 
 def _signature_images_for_reserved_document(
-    db: Session, document: IssuedDocument, storage: SupabaseStorage
+    db: Session,
+    document: IssuedDocument,
+    storage: SupabaseStorage,
+    image_cache: dict[str, bytes] | None = None,
 ) -> dict[str, bytes]:
     rows = db.execute(
         select(DocumentSignatory, Signatory)
@@ -82,10 +85,18 @@ def _signature_images_for_reserved_document(
     ).all()
     if not rows:
         raise DocumentLifecycleError("The document has no reserved signature snapshot")
-    return {
-        signature_field_name(snapshot.official_title): storage.download(signatory.signature_storage_key)
-        for snapshot, signatory in rows
-    }
+
+    result = {}
+    for snapshot, signatory in rows:
+        key = signatory.signature_storage_key
+        if image_cache is not None:
+            if key not in image_cache:
+                image_cache[key] = storage.download(key)
+            img_bytes = image_cache[key]
+        else:
+            img_bytes = storage.download(key)
+        result[signature_field_name(snapshot.official_title)] = img_bytes
+    return result
 
 
 @router.get("", response_model=list[AdminDocumentResponse])
@@ -312,6 +323,8 @@ def pre_generate_activity_documents(
     generated = 0
     failed_document_ids: list[UUID] = []
     storage = SupabaseStorage()
+    template_cache: dict[str, bytes] = {}
+    signature_cache: dict[str, bytes] = {}
     for document in pending:
         document_id = document.id
         try:
@@ -333,9 +346,13 @@ def pre_generate_activity_documents(
                     "issue_date": document.issue_date.isoformat(),
                 }
             values["verification_id"] = document.verification_id
-            template_pdf = storage.download(template.storage_key)
+
+            if template.storage_key not in template_cache:
+                template_cache[template.storage_key] = storage.download(template.storage_key)
+            template_pdf = template_cache[template.storage_key]
+
             image_values = (
-                _signature_images_for_reserved_document(db, document, storage)
+                _signature_images_for_reserved_document(db, document, storage, signature_cache)
                 if should_replace_signatures(template.signature_handling, fields)
                 else None
             )
