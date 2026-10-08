@@ -1,7 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "../../components/ui/Skeleton";
-import { apiRequest } from "../../lib/api/client";
+import { apiRequest, deleteApiResource } from "../../lib/api/client";
 
 type Activity = {
   id: string;
@@ -138,8 +138,8 @@ export function ActivitiesPage({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
       apiRequest(`/admin/documents/activities/${id}/issue`, { method: "POST" }),
     onSuccess: () => void refreshActivities(),
   });
-  const remove = useMutation({ mutationFn: (id: string) => apiRequest<void>(`/admin/activities/${id}`, { method: "DELETE" }), onSuccess: () => { setViewId(""); void refreshActivities(); } });
-  const permanentlyDelete = useMutation({ mutationFn: (id: string) => apiRequest<void>(`/admin/activities/${id}/permanently`, { method: "DELETE" }), onSuccess: () => { setViewId(""); void refreshActivities(); } });
+  const remove = useMutation({ mutationFn: (id: string) => deleteApiResource(`/admin/activities/${id}`), onSuccess: () => { setViewId(""); void refreshActivities(); } });
+  const permanentlyDelete = useMutation({ mutationFn: (id: string) => deleteApiResource(`/admin/activities/${id}/permanently`), onSuccess: () => { setViewId(""); void refreshActivities(); } });
   const participantImport = useMutation({ mutationFn: async () => { const data = new FormData(); data.set("file", participantFile as File); return apiRequest<{ added: number; already_present: number; unknown_roll_numbers: string[] }>(`/admin/imports/activities/${activityId}/participants/import`, { method: "POST", body: data }); }, onSuccess: () => { setParticipantFile(null); setViewId(activityId); void refreshParticipants(); } });
   const error =
     create.error?.message ??

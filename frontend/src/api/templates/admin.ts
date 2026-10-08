@@ -1,4 +1,4 @@
-import { apiBlobRequest, apiRequest, retryConnection } from "../../lib/api/client";
+import { apiBlobRequest, apiRequest, deleteApiResource, retryConnection } from "../../lib/api/client";
 
 export type Template = {
   id: string;
@@ -42,7 +42,7 @@ export type TemplateAnalysis = {
 export const listTemplates = (purpose: Template["purpose"] = "PARTICIPANT") =>
   apiRequest<Template[]>(`/admin/templates?purpose=${purpose}`);
 export const deleteTemplate = (templateId: string) =>
-  apiRequest<void>(`/admin/templates/${templateId}`, { method: "DELETE" });
+  deleteApiResource(`/admin/templates/${templateId}`);
 export const listTemplateFields = (templateId: string) =>
   apiRequest<TemplateField[]>(`/admin/templates/${templateId}/fields`);
 export const analyzeTemplate = (templateId: string) =>

@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest, retryConnection } from "../../lib/api/client";
+import { apiRequest, deleteApiResource } from "../../lib/api/client";
 import { Skeleton } from "../../components/ui/Skeleton";
 
 type Student = { id: string; roll_number: string; full_name: string; active: boolean };
@@ -20,13 +20,7 @@ export function ExecutiveMembershipsPage() {
   const complete = useMutation({ mutationFn: (id: string) => apiRequest<Membership>(`/admin/executive-memberships/${id}/complete`, { method: "POST" }), onSuccess: () => void refresh() });
   const remove = useMutation({ mutationFn: (id: string) => apiRequest<Membership>(`/admin/executive-memberships/${id}/remove`, { method: "POST" }), onSuccess: () => void refresh() });
   const permanentlyDelete = useMutation({
-    mutationFn: (id: string) => retryConnection(
-      // Render can take longer than eight seconds to wake after a deploy or
-      // restart. Keep this destructive operation pending while it reconnects
-      // rather than showing a false connection failure to the admin.
-      () => apiRequest<void>(`/admin/executive-memberships/${id}`, { method: "DELETE", signal: AbortSignal.timeout(30_000) }),
-      4,
-    ),
+    mutationFn: (id: string) => deleteApiResource(`/admin/executive-memberships/${id}`),
     onSuccess: () => void refresh(),
   });
   const error = create.error?.message ?? complete.error?.message ?? remove.error?.message ?? permanentlyDelete.error?.message ?? memberships.error?.message;

@@ -45,6 +45,18 @@ export async function retryConnection<T>(
   }
 }
 
+/**
+ * Deletes are designed to be safely repeatable by the API.  Keep trying a
+ * dropped request while a hosted service wakes or reconnects instead of
+ * immediately reporting a false failure to the administrator.
+ */
+export async function deleteApiResource(path: string): Promise<void> {
+  return retryConnection(
+    () => apiRequest<void>(path, { method: "DELETE", signal: AbortSignal.timeout(30_000) }),
+    4,
+  );
+}
+
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");

@@ -1,7 +1,7 @@
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "../../components/ui/Skeleton";
-import { apiRequest, retryConnection } from "../../lib/api/client";
+import { apiRequest, deleteApiResource } from "../../lib/api/client";
 import { canonicalRollNumber } from "../../lib/utils";
 
 type Student = {
@@ -53,10 +53,7 @@ export function StudentsPage() {
     },
   });
   const remove = useMutation({
-    mutationFn: (id: string) => retryConnection(
-      () => apiRequest<void>(`/admin/students/${id}`, { method: "DELETE", signal: AbortSignal.timeout(8_000) }),
-      1,
-    ),
+    mutationFn: (id: string) => deleteApiResource(`/admin/students/${id}`),
     onSuccess: () => void client.invalidateQueries({ queryKey: ["admin", "students"] }),
   });
   function submit(event: FormEvent) {
