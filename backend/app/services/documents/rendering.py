@@ -1504,7 +1504,7 @@ def render_certificate(
                 if field.page_number in ec_farewell_pages and field.field_name == "student_name":
                     text_field = copy(field)
                     text_field.x = 217.5
-                    text_field.y = 226.0
+                    text_field.y = 244.0
                     text_field.width = 407.0
                     text_field.height = 37.0
                     source_font_bytes = (
