@@ -1512,8 +1512,8 @@ def render_certificate(
                         / "assets"
                         / "Montserrat-Bold.ttf"
                     ).read_bytes()
-                    source_font_size = 12.0
-                    source_tracking = 0
+                    source_font_size = 15.0
+                    source_tracking = 0.45
                 elif field.page_number in ec_farewell_pages and field.field_name == "verification_id":
                     source_font_bytes = (
                         Path(__file__).resolve().parents[2] / "assets" / "Canva Sans Bold.otf"
