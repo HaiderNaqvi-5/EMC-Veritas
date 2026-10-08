@@ -311,7 +311,7 @@ def pre_generate_activity_documents(
     ready_before = len(valid_documents) - sum(1 for document in valid_documents if not document.storage_key)
     generated = 0
     failed_document_ids: list[UUID] = []
-    storage = SupabaseStorage()
+    storage = SupabaseStorage(cache={})
     for document in pending:
         document_id = document.id
         try:
