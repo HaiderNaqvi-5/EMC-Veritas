@@ -539,6 +539,53 @@ def test_rendering_centres_verification_id_below_its_qr_code() -> None:
     assert serial["bbox"][1] >= 480
 
 
+def test_ec_rendering_uses_a_compact_qr_for_every_template() -> None:
+    document = fitz.open()
+    document.new_page(width=842, height=595)
+    template = document.tobytes()
+    document.close()
+    fields = [
+        SimpleNamespace(
+            field_name="qr_code", page_number=1, x=376, y=430, width=90, height=90,
+            font_family="helv", custom_font_storage_key=None, font_size=10,
+            text_color="#000000",
+        ),
+        SimpleNamespace(
+            field_name="verification_id", page_number=1, x=360, y=530, width=122,
+            height=16, font_family="helv", custom_font_storage_key=None, font_size=14,
+            text_color="#000000",
+        ),
+    ]
+
+    output = render_certificate(
+        template,
+        fields,
+        {"verification_id": "EMC-ABCD1234"},
+        verification_url="https://example.test/verify/EMC-ABCD1234",
+        required_field_names=frozenset(),
+        rendering_profile="executive_council",
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    page = rendered[0]
+    image = next(item for item in page.get_images(full=True) if item[2] > 100)
+    rectangle = page.get_image_rects(image[0])[0]
+    serial = next(
+        span
+        for block in page.get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for span in line["spans"]
+        if "EMC-ABCD1234" in span["text"]
+    )
+    rendered.close()
+
+    assert abs(rectangle.width - 46) < 0.1
+    assert abs(rectangle.height - 46) < 0.1
+    assert abs((rectangle.x0 + rectangle.x1) / 2 - 421) < 0.1
+    assert serial["size"] <= 8.5
+    assert serial["bbox"][1] >= rectangle.y1
+
+
 def test_rendering_expands_a_saved_tiny_qr_tag_box_to_its_panel() -> None:
     document = fitz.open()
     page = document.new_page(width=600, height=600)

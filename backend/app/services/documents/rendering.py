@@ -202,11 +202,60 @@ def _effective_qr_field(page: fitz.Page, field: TemplateField) -> TemplateField:
         return field
     size = max(16, min(frame.width, frame.height) - 8)
     effective = copy(field)
-    effective.x = frame.x0 + (frame.width - size) / 2
-    effective.y = frame.y0 + (frame.height - size) / 2
-    effective.width = size
-    effective.height = size
+    object.__setattr__(effective, "x", frame.x0 + (frame.width - size) / 2)
+    object.__setattr__(effective, "y", frame.y0 + (frame.height - size) / 2)
+    object.__setattr__(effective, "width", size)
+    object.__setattr__(effective, "height", size)
     return effective
+
+
+def _qr_field_for_render(
+    page: fitz.Page,
+    field: TemplateField,
+    *,
+    max_size: float | None = None,
+) -> TemplateField:
+    """Resolve a QR panel and optionally reduce it around its visual centre."""
+    effective = _effective_qr_field(page, field)
+    if max_size is None or max(effective.width, effective.height) <= max_size:
+        return effective
+    resized = copy(effective)
+    center_x = effective.x + effective.width / 2
+    center_y = effective.y + effective.height / 2
+    object.__setattr__(resized, "width", max_size)
+    object.__setattr__(resized, "height", max_size)
+    object.__setattr__(resized, "x", center_x - max_size / 2)
+    object.__setattr__(resized, "y", center_y - max_size / 2)
+    return resized
+
+
+def _strip_farewell_qr_holder(document: fitz.Document, page: fitz.Page) -> bool:
+    """Delete Canva's rounded QR holder and its translucent backing object."""
+    changed = False
+    for xref, _name, _parent, bbox in page.get_xobjects():
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1]
+        if not (300 <= width <= 350 and 450 <= height <= 550):
+            continue
+        stream = document.xref_stream(xref)
+        marker = b"\nh\nS\nEMC\n"
+        if marker in stream:
+            document.update_stream(xref, stream.replace(marker, b"\nh\nn\nEMC\n", 1))
+            changed = True
+            break
+    backing_pattern = re.compile(
+        rb"(/Image\s+<<[^>]*?/MCID\s+\d+[^>]*?>>\s+BDC\s+)"
+        rb"(37[0-9](?:\.\d+)?\s+8[0-9](?:\.\d+)?\s+"
+        rb"[67][0-9](?:\.\d+)?\s+8[0-9](?:\.\d+)?\s+re\s+)f(\s+EMC)"
+    )
+    for content_xref in page.get_contents():
+        stream = document.xref_stream(content_xref)
+        updated, count = backing_pattern.subn(rb"\1\2n\3", stream, count=1)
+        if count:
+            document.update_stream(content_xref, updated)
+            changed = True
+            break
+    return changed
 
 
 def _qr_panel_for_field(page: fitz.Page, field: TemplateField) -> fitz.Rect | None:
@@ -228,19 +277,65 @@ def _qr_panel_for_field(page: fitz.Page, field: TemplateField) -> fitz.Rect | No
     return min(frames, key=lambda rectangle: rectangle.width * rectangle.height)
 
 
-def _insert_qr(page: fitz.Page, field: TemplateField, verification_url: str) -> None:
+def _cover_qr_panel_outline(page: fitz.Page, field: TemplateField) -> None:
+    """Trace a QR holder's stroke in white without covering its background."""
+    center = fitz.Point(field.x + field.width / 2, field.y + field.height / 2)
+    candidates = [
+        drawing
+        for drawing in page.get_drawings()
+        if drawing.get("type") == "s"
+        and drawing["rect"].contains(center)
+        and 32 <= min(drawing["rect"].width, drawing["rect"].height) <= 160
+        and max(drawing["rect"].width, drawing["rect"].height) <= 180
+    ]
+    if not candidates:
+        return
+    drawing = min(candidates, key=lambda item: item["rect"].width * item["rect"].height)
+    shape = page.new_shape()
+    for item in drawing.get("items", []):
+        if item[0] == "l":
+            shape.draw_line(item[1], item[2])
+        elif item[0] == "c":
+            shape.draw_bezier(item[1], item[2], item[3], item[4])
+    shape.finish(
+        width=max(2.5, float(drawing.get("width") or 1) + 1),
+        # Match Canva's warm-white certificate stock instead of using pure
+        # white, which leaves a visible ghost outline on this design.
+        color=(0.9961, 0.9961, 0.9922),
+        fill=None,
+        closePath=True,
+        lineCap=1,
+        lineJoin=1,
+    )
+    shape.commit(overlay=True)
+
+
+def _insert_qr(
+    page: fitz.Page,
+    field: TemplateField,
+    verification_url: str,
+    *,
+    max_size: float | None = None,
+    quiet_zone: int = 1,
+    positioned_field: TemplateField | None = None,
+) -> None:
     panel = _qr_panel_for_field(page, field)
-    field = _effective_qr_field(page, field)
+    field = positioned_field or _qr_field_for_render(page, field, max_size=max_size)
     if field.width <= 0 or field.height <= 0:
         raise CertificateRenderingError("Template QR field has an invalid box")
     if panel is not None:
         # The template's holder is useful for detecting and sizing a QR field,
-        # but it is not part of the issued document. Cover the decorative
-        # outline while retaining a plain white scanning area around the QR.
-        clean_panel = fitz.Rect(panel.x0 - 1, panel.y0 - 1, panel.x1 + 1, panel.y1 + 1)
-        page.draw_rect(clean_panel, color=None, fill=(1, 1, 1), overlay=True)
+        # but it is not part of the issued document. Canva grouped this
+        # outline with other certificate artwork, so deleting the vector can
+        # also delete the outer frame. Cover only the thin outline; do not
+        # paint a white card behind the QR.
+        _cover_qr_panel_outline(page, field)
     rectangle = fitz.Rect(field.x, field.y, field.x + field.width, field.y + field.height)
-    page.insert_image(rectangle, stream=qr_png(verification_url), keep_proportion=True)
+    page.insert_image(
+        rectangle,
+        stream=qr_png(verification_url, border=quiet_zone),
+        keep_proportion=True,
+    )
 
 
 def _verification_field_below_qr(
@@ -1318,6 +1413,12 @@ def render_certificate(
             hashlib.sha256(template_pdf).hexdigest() == _EC_FAREWELL_SOURCE_SHA256
             or matches_farewell_layout
         )
+        if fixed_ec_farewell and _strip_farewell_qr_holder(document, document[0]):
+            # Reopen after changing nested Canva streams so PyMuPDF discards
+            # the display list it cached while identifying the preset.
+            clean_template = document.tobytes(garbage=4, deflate=True)
+            document.close()
+            document = fitz.open(stream=clean_template, filetype="pdf")
         # ``society_name`` belongs only to Society Head letters. Club-wide
         # roles (President, Vice President, Deputy Vice President, etc.) use
         # the same flowing leadership-letter renderer without that field.
@@ -1491,15 +1592,39 @@ def render_certificate(
                     tracking=1.35 if page_number in tracked_activity_pages else 0,
                     lineheight=1.616 if page_number in tracked_activity_pages else 1.15,
                 )
+        # EC certificates share one verification-block policy regardless of
+        # which approved design is uploaded. Respect the template's detected
+        # centre, but keep the QR compact enough not to compete with the two
+        # signatures or dominate the footer.
+        ec_qr_size = 46 if rendering_profile == "executive_council" else None
         qr_fields = {
-            field.page_number: _effective_qr_field(document[field.page_number - 1], field)
+            field.page_number: _qr_field_for_render(
+                document[field.page_number - 1], field, max_size=ec_qr_size
+            )
             for field in field_list
             if field.field_name == "qr_code"
         }
+        # Clean and place QR panels first. Some PDF analyzers return the
+        # verification ID before the QR field; drawing the panel cover later
+        # would wash out text that had already been rendered beneath it.
+        for field in field_list:
+            if field.field_name != "qr_code":
+                continue
+            page = document[field.page_number - 1]
+            _insert_qr(
+                page,
+                field,
+                verification_url,
+                max_size=ec_qr_size,
+                # Four modules is the standard QR quiet zone. Apply it to
+                # every EC certificate rather than special-casing one PDF.
+                quiet_zone=4 if rendering_profile == "executive_council" else 1,
+                positioned_field=qr_fields[field.page_number],
+            )
         for field in field_list:
             page = document[field.page_number - 1]
             if field.field_name == "qr_code":
-                _insert_qr(page, field, verification_url)
+                continue
             elif field.field_name in images:
                 _insert_image(page, field, images[field.field_name])
             elif field.field_name in signature_slots:
@@ -1531,10 +1656,28 @@ def render_certificate(
                     source_font_size = 15.0
                     source_tracking = 0.45
                 elif field.page_number in ec_farewell_pages and field.field_name == "verification_id":
+                    text_field = copy(text_field)
+                    object.__setattr__(
+                        text_field,
+                        "y",
+                        qr_fields[field.page_number].y
+                        + qr_fields[field.page_number].height
+                        + 3,
+                    )
                     source_font_bytes = (
                         Path(__file__).resolve().parents[2] / "assets" / "Canva Sans Bold.otf"
                     ).read_bytes()
-                    source_font_size = 11.0
+                    source_font_size = 8.5
+                    source_tracking = 0
+                elif (
+                    rendering_profile == "executive_council"
+                    and field.field_name == "verification_id"
+                ):
+                    # Verification IDs are supporting metadata across the EC
+                    # system. Keep them visually subordinate and immediately
+                    # below the code even when an uploaded template used an
+                    # oversized placeholder style.
+                    source_font_size = min(source_font_size or 8.5, 8.5)
                     source_tracking = 0
                 _insert_text(
                     page,
