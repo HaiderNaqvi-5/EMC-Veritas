@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ from app.models.domain import (
     EmcSession,
     ExecutiveMembership,
     IssuedDocument,
+    LeadershipTemplate,
     MembershipStatus,
     SessionStatus,
     Society,
@@ -286,6 +287,14 @@ def delete_removed_membership(
         delete(ActivityOrganizer).where(
             ActivityOrganizer.executive_membership_id == membership.id
         )
+    )
+    # A template may still be scoped to this removed member.  Keep the
+    # uploaded template as an archived backup, but clear its foreign key so it
+    # cannot block permanent membership deletion or remain in a live workflow.
+    db.execute(
+        update(LeadershipTemplate)
+        .where(LeadershipTemplate.executive_membership_id == membership.id)
+        .values(executive_membership_id=None, active=False, archived=True)
     )
     db.delete(membership)
     db.commit()
