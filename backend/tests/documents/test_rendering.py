@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import fitz
@@ -5,8 +6,36 @@ import fitz
 from app.services.documents.rendering import (
     _leadership_content,
     _paragraph_words,
+    _render_activity_paragraph,
     render_certificate,
 )
+
+
+def test_activity_paragraph_uses_complete_boston_angel_at_15_point_8() -> None:
+    document = fitz.open()
+    page = document.new_page(width=842, height=595)
+    source_font = (Path(__file__).parents[2] / "app" / "assets" / "Boston Angel Bold.ttf").read_bytes()
+
+    _render_activity_paragraph(
+        page,
+        fitz.Rect(80, 120, 760, 320),
+        "In recognition of Hoor Kashif bearing 2K22-BSSE-145.",
+        10,
+        (0, 0, 0),
+        {"student_name": "Hoor Kashif", "roll_number": "2K22-BSSE-145"},
+        {"student_name", "roll_number"},
+        source_font,
+    )
+
+    span = next(
+        span
+        for block in page.get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for span in line["spans"]
+        if "Hoor" in span["text"]
+    )
+    assert span["font"] == "BostonAngel-Bold"
+    assert abs(span["size"] - 15.8) < 0.01
 
 
 def test_leadership_content_omits_the_society_clause_for_an_overall_ec_role() -> None:

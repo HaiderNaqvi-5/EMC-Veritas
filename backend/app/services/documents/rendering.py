@@ -953,7 +953,24 @@ def _render_activity_paragraph(
     # Use a uniquely embedded font instead of a built-in PDF font alias.
     # Canva templates can already bind aliases such as "helv" to incompatible
     # font resources, which makes newly drawn characters appear fragmented.
-    if tracking > 0:
+    source_font_name = ""
+    if font_bytes is not None:
+        try:
+            source_font_name = fitz.Font(fontbuffer=font_bytes).name.lower()
+        except (RuntimeError, ValueError):
+            # The normal rendering path will raise a clear error if the source
+            # font itself is unreadable. This probe only selects an override.
+            pass
+    if "boston angel" in source_font_name:
+        # The source Canva file embeds only a subset of Boston Angel. Use the
+        # complete font supplied for EMC templates so every replacement value
+        # is genuinely Boston Angel, including roll-number digits and hyphens.
+        font_bytes = (
+            Path(__file__).resolve().parents[2] / "assets" / "Boston Angel Bold.ttf"
+        ).read_bytes()
+        font_size = 15.8
+        font_name = "EMCBostonAngel"
+    elif tracking > 0:
         # Canva's embedded Open Sans is subsetted to the original placeholder
         # text. Reusing that subset forces replacement values into IBM Plex,
         # visibly mixing two typefaces in one sentence. The complete Open Sans
@@ -961,7 +978,10 @@ def _render_activity_paragraph(
         font_bytes = (
             Path(__file__).resolve().parents[2] / "assets" / "OpenSans-Variable.ttf"
         ).read_bytes()
-    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_CENTER, lineheight=lineheight, font_name="EMCActivityBody", font_bytes=font_bytes, tracking=tracking)
+        font_name = "EMCActivityBody"
+    else:
+        font_name = "EMCActivityBody"
+    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_CENTER, lineheight=lineheight, font_name=font_name, font_bytes=font_bytes, tracking=tracking)
 
 
 def _render_leadership_paragraph(
