@@ -140,9 +140,11 @@ def permanently_delete_archived_activity(
         SupabaseStorage().delete_many(storage_keys)
     document_ids = [document.id for document in documents]
     if document_ids:
+        # Use ordered SQL deletes rather than ORM object deletes.  The latter
+        # can flush an issued document before its immutable signatory snapshot
+        # has gone away, which violates PostgreSQL's foreign-key constraint.
         db.execute(delete(DocumentSignatory).where(DocumentSignatory.issued_document_id.in_(document_ids)))
-        for document in documents:
-            db.delete(document)
+        db.execute(delete(IssuedDocument).where(IssuedDocument.id.in_(document_ids)))
     db.execute(delete(ActivityParticipant).where(ActivityParticipant.activity_id == item.id))
     db.execute(delete(ActivityOrganizer).where(ActivityOrganizer.activity_id == item.id))
     record_audit_event(

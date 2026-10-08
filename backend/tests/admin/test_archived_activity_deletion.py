@@ -18,7 +18,10 @@ def test_super_admin_can_permanently_delete_an_archived_activity_and_its_documen
 
     permanently_delete_archived_activity(activity.id, admin=SimpleNamespace(id=uuid4()), db=db)
 
-    assert db.delete.call_args_list[-3:] == [((document,),) for document in documents] + [((activity,),)]
+    # Dependents are removed in SQL before the activity itself, avoiding a
+    # foreign-key violation when issued documents have signatory snapshots.
+    assert db.execute.call_count == 4
+    assert db.delete.call_args_list == [((activity,),)]
     db.commit.assert_called_once_with()
 
 
