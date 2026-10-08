@@ -175,8 +175,7 @@ async def upload_template_font(
     content = await file.read()
     try:
         content_type = ensure_font(file.filename or "", file.content_type, content)
-        fitz.Font(fontbuffer=content)
-    except (ValueError, RuntimeError) as error:
+    except ValueError as error:
         raise HTTPException(status_code=422, detail="Uploaded template font is not a readable TTF or OTF") from error
     suffix = (file.filename or "font.ttf").rsplit(".", 1)[-1].lower()
     font = TemplateFont(

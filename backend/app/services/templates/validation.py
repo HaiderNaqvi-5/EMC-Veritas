@@ -10,4 +10,10 @@ def ensure_font(filename: str, content_type: str | None, content: bytes) -> str:
         raise ValueError("Uploaded template fonts must be TTF or OTF files")
     if not content:
         raise ValueError("Uploaded template font is empty")
+    signatures = {
+        "ttf": (b"\x00\x01\x00\x00", b"true", b"typ1"),
+        "otf": (b"OTTO",),
+    }
+    if not content.startswith(signatures[suffix]):
+        raise ValueError("Uploaded template font has an invalid TTF or OTF signature")
     return expected_content_type
