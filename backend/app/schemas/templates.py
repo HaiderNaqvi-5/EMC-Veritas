@@ -35,6 +35,7 @@ class TemplateFieldResponse(BaseModel):
     width: int
     height: int
     font_family: Literal["helv", "tiro", "cour", "mont", "custom"]
+    custom_font_id: UUID | None = None
     font_size: int | None
     text_color: str
 

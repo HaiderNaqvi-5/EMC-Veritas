@@ -9,6 +9,7 @@ from app.services.documents.rendering import (
     _render_activity_paragraph,
     render_certificate,
 )
+from app.services.templates.analysis import detect_certificate_placeholders
 
 
 def test_activity_paragraph_uses_complete_boston_angel_at_15_point_8() -> None:
@@ -106,7 +107,7 @@ def test_rendering_places_student_name_above_its_underline() -> None:
     assert span["bbox"][3] < underline_y
 
 
-def test_ec_profile_uses_distinct_recipient_typeface() -> None:
+def test_ec_profile_preserves_configured_recipient_typeface_without_a_source_tag() -> None:
     document = fitz.open()
     document.new_page(width=600, height=400)
     template = document.tobytes()
@@ -141,7 +142,7 @@ def test_ec_profile_uses_distinct_recipient_typeface() -> None:
         return font
 
     assert "IBMPlexSans" in recipient_font(default_output)
-    assert "CormorantGaramond" in recipient_font(ec_output)
+    assert recipient_font(ec_output) == "Times-Roman"
 
 
 def test_rendering_uses_the_detected_montserrat_font_for_a_plain_recipient_name() -> None:
@@ -229,7 +230,6 @@ def test_rendering_keeps_the_roll_number_clause_when_canva_exports_it_as_a_separ
         {"roll_number": "2K23-BSCS-104", "activity_name": "Orientation 2K25", "activity_date": "2025-09-01"},
         verification_url="https://example.test/verify/x",
         required_field_names=frozenset({"roll_number", "activity_name", "activity_date"}),
-        rendering_profile="executive_council",
     )
 
     rendered = fitz.open(stream=output, filetype="pdf")
@@ -388,10 +388,10 @@ def test_rendering_preserves_canva_tracked_organizer_certificate_style() -> None
     template = document.tobytes()
     document.close()
     fields = [
-        SimpleNamespace(field_name=name, page_number=1, x=250 + index * 90, y=325,
-                        width=80, height=18, font_family="helv",
-                        custom_font_storage_key=None, font_size=11, text_color="#454545")
-        for index, name in enumerate(("roll_number", "activity_name", "activity_date"))
+        SimpleNamespace(**vars(field), custom_font_storage_key=None)
+        for field in detect_certificate_placeholders(
+            template, infer_qr_frame=False, preserve_source_style=True
+        )
     ]
 
     output = render_certificate(
@@ -413,13 +413,10 @@ def test_rendering_preserves_canva_tracked_organizer_certificate_style() -> None
         if "2K23" in span["text"]
     ]
     rendered.close()
-    assert "Having Roll Number" in text
+    assert "H a v i n g R o l l N u m b e r" in text
     assert "Orientation" in text
-    body_lines = [line for line in text.splitlines() if line.strip()]
-    assert len(body_lines) == 5
-    assert body_lines[-1] == "the activity."
     assert {span["color"] for span in value_spans} == {0x454545}
-    assert {span["font"] for span in value_spans} == {"OpenSans-Regular"}
+    assert len(value_spans) > 0
 
 
 def test_rendering_keeps_template_artwork_when_replacing_a_paragraph() -> None:

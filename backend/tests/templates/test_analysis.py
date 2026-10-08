@@ -64,6 +64,26 @@ def test_analysis_detects_common_certificate_placeholders_with_positions() -> No
     assert result[-1].detected_text == "dedicated QR square"
 
 
+def test_ec_analysis_preserves_the_uploaded_recipient_style() -> None:
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text((180, 160), "{{student_name}}", fontname="cour", fontsize=12, color=(0.2, 0.3, 0.4))
+    pdf_bytes = document.tobytes()
+    document.close()
+
+    field = next(
+        field
+        for field in analysis.detect_certificate_placeholders(
+            pdf_bytes, preserve_source_style=True
+        )
+        if field.field_name == "student_name"
+    )
+
+    assert field.font_family == "cour"
+    assert field.font_size == 12
+    assert field.text_color == "#334d66"
+
+
 def test_analysis_combines_split_placeholder_fragments() -> None:
     first = fitz.Rect(10, 20, 40, 35)
     second = fitz.Rect(40, 20, 90, 35)

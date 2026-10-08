@@ -42,34 +42,56 @@ def _insert_text(
     alignment: str = "center",
     emphasize: bool = True,
     rendering_profile: str = "default",
+    source_font_bytes: bytes | None = None,
+    source_font_size: float | None = None,
+    tracking: float = 0,
 ) -> None:
     if field.width <= 0 or field.height < 6:
         raise CertificateRenderingError(f"Template field '{field.field_name}' has an invalid box")
     font_family = getattr(field, "font_family", "helv")
     custom_font_key = getattr(field, "custom_font_storage_key", None)
+    if rendering_profile == "executive_council":
+        emphasize = False
+    if source_font_bytes is not None and rendering_profile == "executive_council":
+        candidate = fitz.Font(fontbuffer=source_font_bytes)
+        if all(candidate.has_glyph(ord(character)) for character in value):
+            font_bytes = source_font_bytes
+            font_name = f"EMCSource{field.page_number}{abs(hash(field.field_name)) % 10_000_000}"
+            try:
+                page.insert_font(fontname=font_name, fontbuffer=font_bytes)
+            except (RuntimeError, ValueError) as error:
+                raise CertificateRenderingError(
+                    f"Source font for template field '{field.field_name}' is unreadable"
+                ) from error
+            emphasize = False
+        elif (
+            (font_family == "mont" and custom_font_key is None)
+            or (font_family == "custom" and custom_font_key in custom_fonts)
+        ):
+            source_font_bytes = None
+        else:
+            raise CertificateRenderingError(
+                f"The embedded font for '{field.field_name}' does not contain every required "
+                "character. Upload the full TTF or OTF and assign it to this field."
+            )
     if (
-        field.field_name == "student_name"
-        and rendering_profile == "executive_council"
-        and font_family != "custom"
+        source_font_bytes is None
+        and rendering_profile != "executive_council"
+        and field.field_name == "student_name"
+        and font_family not in {"custom", "mont"}
         and custom_font_key is None
     ):
-        # A certificate recipient is the visual focal point. Cormorant
-        # Garamond complements the template's ceremonial display face without
-        # the artificial weight and stroke previously applied by IBM Plex.
         font_bytes = (
-            Path(__file__).resolve().parents[2]
-            / "assets"
-            / "CormorantGaramond-Variable.ttf"
+            Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf"
         ).read_bytes()
-        font_name = "EMCCormorantGaramond"
+        font_name = "EMCIBMPlexSansMedium"
         try:
             page.insert_font(fontname=font_name, fontbuffer=font_bytes)
         except (RuntimeError, ValueError) as error:
-            raise CertificateRenderingError("Certificate recipient font is unreadable") from error
-        emphasize = False
-    elif font_family == "mont" and custom_font_key is None:
-        # Canva often embeds Montserrat as a glyph subset. Use the complete
-        # OFL copy so a real recipient name retains the detected family.
+            raise CertificateRenderingError("IBM Plex font for the student name is unreadable") from error
+    elif source_font_bytes is None and font_family == "mont" and custom_font_key is None:
+        # Montserrat is an OFL font shipped in full because Canva PDFs usually
+        # embed only the placeholder glyph subset.
         font_bytes = (
             Path(__file__).resolve().parents[2]
             / "assets"
@@ -80,16 +102,7 @@ def _insert_text(
             page.insert_font(fontname=font_name, fontbuffer=font_bytes)
         except (RuntimeError, ValueError) as error:
             raise CertificateRenderingError("Montserrat template font is unreadable") from error
-    elif field.field_name == "student_name" and font_family != "custom" and custom_font_key is None:
-        font_bytes = (
-            Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf"
-        ).read_bytes()
-        font_name = "EMCIBMPlexSansMedium"
-        try:
-            page.insert_font(fontname=font_name, fontbuffer=font_bytes)
-        except (RuntimeError, ValueError) as error:
-            raise CertificateRenderingError("IBM Plex font for the student name is unreadable") from error
-    elif font_family == "custom":
+    elif source_font_bytes is None and font_family == "custom":
         if not custom_font_key or custom_font_key not in custom_fonts:
             raise CertificateRenderingError(
                 f"Template field '{field.field_name}' references an unavailable custom font"
@@ -102,10 +115,10 @@ def _insert_text(
             raise CertificateRenderingError(
                 f"Custom font for template field '{field.field_name}' is unreadable"
             ) from error
-    elif font_family in {"helv", "tiro", "cour"} and custom_font_key is None:
+    elif source_font_bytes is None and font_family in {"helv", "tiro", "cour"} and custom_font_key is None:
         font_bytes = None
         font_name = font_family
-    else:
+    elif source_font_bytes is None:
         raise CertificateRenderingError("Template font is invalid")
     if field.field_name == "issue_date":
         # Keep the inline metadata date in the same Calibri-compatible face as
@@ -116,16 +129,17 @@ def _insert_text(
             page.insert_font(fontname=font_name, fontbuffer=font_bytes)
         except (RuntimeError, ValueError) as error:
             raise CertificateRenderingError("Leadership issue-date font is unreadable") from error
-    preferred = getattr(field, "font_size", None)
+    preferred = source_font_size or getattr(field, "font_size", None)
     maximum = min(preferred or 18, field.height - 2)
     try:
         font_size = fit_font_size(
             value,
             field.width,
             maximum,
-            lambda text, size: _text_width(text, size, font_name, font_bytes),
+            lambda text, size: _text_width(text, size, font_name, font_bytes)
+            + tracking * max(0, len(text) - 1),
         )
-        text_width = _text_width(value, font_size, font_name, font_bytes)
+        text_width = _text_width(value, font_size, font_name, font_bytes) + tracking * max(0, len(value) - 1)
     except (RuntimeError, ValueError) as error:
         raise CertificateRenderingError(
             f"Custom font for template field '{field.field_name}' is unreadable"
@@ -149,15 +163,27 @@ def _insert_text(
         # original tag's visual left edge after the decimal coordinate rounds.
         x = field.x + 1
     point = fitz.Point(x, baseline_y)
-    page.insert_text(
-        point,
-        value,
-        fontname=font_name,
-        fontsize=font_size,
-        color=_color(getattr(field, "text_color", "#000000")),
-        render_mode=2 if emphasize else 0,
-        border_width=0.04 if emphasize else 1,
-    )
+    if tracking > 0:
+        character_x = point.x
+        for character in value:
+            page.insert_text(
+                fitz.Point(character_x, point.y), character,
+                fontname=font_name, fontsize=font_size,
+                color=_color(getattr(field, "text_color", "#000000")),
+                render_mode=2 if emphasize else 0,
+                border_width=0.04 if emphasize else 1,
+            )
+            character_x += _text_width(character, font_size, font_name, font_bytes) + tracking
+    else:
+        page.insert_text(
+            point,
+            value,
+            fontname=font_name,
+            fontsize=font_size,
+            color=_color(getattr(field, "text_color", "#000000")),
+            render_mode=2 if emphasize else 0,
+            border_width=0.04 if emphasize else 1,
+        )
 
 
 def _effective_qr_field(page: fitz.Page, field: TemplateField) -> TemplateField:
@@ -581,8 +607,18 @@ def _leadership_paragraph_from_tagged_blocks(
 def _remove_placeholder_from_field(page: fitz.Page, field: TemplateField) -> None:
     """Erase the placeholder at one saved field box, not every matching tag."""
     rectangle = fitz.Rect(field.x, field.y, field.x + field.width, field.y + field.height)
-    token = "{{" + field.field_name + "}}"
-    matches = [match for match in page.search_for(token) if match.intersects(rectangle)]
+    tokens = ["{{" + field.field_name + "}}"]
+    if field.field_name == "verification_id":
+        tokens.extend(("{{Serial No.}}", "{{Serial No}}", "{{serial_no.}}", "{{serial_no}}"))
+    matches: list[fitz.Rect] = []
+    for token in tokens:
+        matches = [
+            match
+            for match in _search_text_ignoring_spacing(page, token)
+            if match.intersects(rectangle)
+        ]
+        if matches:
+            break
     if not matches:
         return
     combined = fitz.Rect(matches[0])
@@ -593,6 +629,48 @@ def _remove_placeholder_from_field(page: fitz.Page, field: TemplateField) -> Non
     # span, such as "Roll Number: {{roll_number}}".  Redacting the full span
     # would remove the fixed label as well.
     page.add_redact_annot(combined, fill=None)
+
+
+def _source_field_style(
+    page: fitz.Page, field: TemplateField
+) -> tuple[bytes | None, float | None, float]:
+    """Return the uploaded template's font program and character tracking.
+
+    Canva commonly exports visual letter spacing as literal spaces between
+    glyphs. Measuring the visible placeholder width against the same token
+    without those spaces lets replacement values retain the authored rhythm.
+    """
+    token = "{{" + field.field_name + "}}"
+    if field.field_name == "verification_id":
+        tokens = (token, "{{Serial No.}}", "{{serial_no.}}", "{{serial_no}}")
+    else:
+        tokens = (token,)
+    matches: list[fitz.Rect] = []
+    for candidate in tokens:
+        matches = _search_text_ignoring_spacing(page, candidate)
+        if matches:
+            token = candidate
+            break
+    if not matches:
+        return None, None, 0
+    rectangle = fitz.Rect(matches[0])
+    for match in matches[1:]:
+        rectangle.include_rect(match)
+    font_bytes = _source_font_bytes(page, rectangle)
+    if font_bytes is None:
+        return None, None, 0
+    _family, source_size, _rgb = _source_text_style(page, rectangle)
+    normalized = re.sub(r"\s+", "", token)
+    if len(normalized) < 2:
+        return font_bytes, 0
+    try:
+        font = fitz.Font(fontbuffer=font_bytes)
+        size = source_size
+        base_width = font.text_length(normalized, fontsize=size)
+        tracking = max(0.0, (rectangle.width - base_width) / (len(normalized) - 1))
+    except (RuntimeError, ValueError):
+        tracking = 0
+    return font_bytes, source_size, min(tracking, 8.0)
 
 
 def _remove_leadership_recipient_heading(page: fitz.Page) -> None:
@@ -1080,6 +1158,16 @@ def render_certificate(
                 configured_names
             )
         )
+        source_field_styles = {
+            (field.page_number, field.field_name): _source_field_style(
+                document[field.page_number - 1], field
+            )
+            for field in field_list
+            if rendering_profile == "executive_council"
+            and 1 <= field.page_number <= document.page_count
+            and field.field_name not in {"qr_code"}
+            and not field.field_name.startswith("signature_")
+        }
         # Paragraph replacement is derived from the PDF itself, not from the
         # saved box configuration. Older templates can carry imperfect field
         # records, but their visible certificate paragraph must still be
@@ -1088,6 +1176,12 @@ def render_certificate(
             page = document[page_number - 1]
             if is_leadership_template:
                 job = _leadership_paragraph_from_tagged_blocks(page, normalized_values)
+            elif rendering_profile == "executive_council":
+                # EC templates are author-controlled designs. Preserve every
+                # static glyph and line break, replacing only explicit tags.
+                # Reflowing the full paragraph imports assumptions from a
+                # previous template and is the source of style/overflow drift.
+                job = None
             else:
                 # Prefer the standard recognition renderer only for the
                 # standard EMC wording. Generic tagged prose keeps its text.
@@ -1152,6 +1246,8 @@ def render_certificate(
                 # fixed label ("Issue Date:").  A broad span redaction would
                 # erase that original template text as well.
                 _remove_placeholder_from_field(document[field.page_number - 1], field)
+            elif rendering_profile == "executive_council":
+                _remove_placeholder_from_field(document[field.page_number - 1], field)
             else:
                 _remove_inline_placeholder(document[field.page_number - 1], field.field_name)
         for page in document:
@@ -1204,6 +1300,15 @@ def render_certificate(
                     # stroke/outline that makes the name look shadowed.
                     emphasize=not is_leadership_template and field.field_name != "student_name",
                     rendering_profile=rendering_profile,
+                    source_font_bytes=source_field_styles.get(
+                        (field.page_number, field.field_name), (None, None, 0)
+                    )[0],
+                    source_font_size=source_field_styles.get(
+                        (field.page_number, field.field_name), (None, None, 0)
+                    )[1],
+                    tracking=source_field_styles.get(
+                        (field.page_number, field.field_name), (None, None, 0)
+                    )[2],
                 )
         if watermark:
             for page in document:

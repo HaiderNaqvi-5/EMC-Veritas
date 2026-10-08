@@ -217,7 +217,10 @@ def analyze_template(
         page_count = document.page_count
         document.close()
         analysis = analyze_pdf_text(pdf_bytes)
-        detected_fields = detect_certificate_placeholders(pdf_bytes)
+        detected_fields = detect_certificate_placeholders(
+            pdf_bytes,
+            preserve_source_style=template.purpose == "EXECUTIVE_COUNCIL",
+        )
     except (RuntimeError, fitz.FileDataError) as error:
         raise HTTPException(status_code=503, detail="Template analysis is temporarily unavailable") from error
     return TemplateAnalysisResponse(
@@ -323,16 +326,28 @@ def list_template_fields(
     template_id: UUID,
     db: Session = Depends(get_db),
     admin: Admin = Depends(super_admin_required),
-) -> list[TemplateField]:
+) -> list[TemplateFieldResponse]:
     """Return the saved placement data used by the renderer, not editor defaults."""
     _template_or_404(db, template_id)
-    return list(
+    fields = list(
         db.scalars(
             select(TemplateField)
             .where(TemplateField.template_id == template_id)
             .order_by(TemplateField.created_at, TemplateField.id)
         ).all()
     )
+    fonts_by_key = {
+        font.storage_key: font.id
+        for font in db.scalars(
+            select(TemplateFont).where(TemplateFont.template_id == template_id)
+        ).all()
+    }
+    return [
+        TemplateFieldResponse.model_validate(field).model_copy(
+            update={"custom_font_id": fonts_by_key.get(field.custom_font_storage_key)}
+        )
+        for field in fields
+    ]
 
 
 @router.post("/{template_id}/preview")

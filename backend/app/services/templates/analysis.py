@@ -113,6 +113,7 @@ def detect_certificate_placeholders(
     *,
     placeholders: dict[str, tuple[str, ...]] | None = None,
     infer_qr_frame: bool = True,
+    preserve_source_style: bool = False,
 ) -> list[DetectedTemplateField]:
     """Find common visible certificate placeholders and return editable field suggestions.
 
