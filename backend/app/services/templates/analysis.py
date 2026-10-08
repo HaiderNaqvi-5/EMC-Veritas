@@ -152,11 +152,6 @@ def detect_certificate_placeholders(
                 continue
             page_index, rectangle, alias = match
             font_family, font_size, text_color = _style_at(document[page_index], rectangle)
-            if field_name == "student_name":
-                center_x = (rectangle.x0 + rectangle.x1) / 2
-                center_y = (rectangle.y0 + rectangle.y1) / 2
-                rectangle = fitz.Rect(center_x - 140, center_y - 18, center_x + 140, center_y + 18)
-                font_family, font_size = "tiro", 28
             if field_name == "verification_id":
                 # The serial placeholder is normally printed at the right edge.
                 # Expanding it to the right can put it past the page boundary,
@@ -356,7 +351,12 @@ def _style_at(page: fitz.Page, rectangle: fitz.Rect) -> tuple[str, int, str]:
     if best_span is None:
         return "helv", 12, "#000000"
     source_font = str(best_span.get("font", "")).lower()
-    font_family = "cour" if "cour" in source_font else "tiro" if "times" in source_font else "helv"
+    font_family = (
+        "cour" if "cour" in source_font
+        else "tiro" if "times" in source_font
+        else "mont" if "montserrat" in source_font
+        else "helv"
+    )
     color = int(best_span.get("color", 0))
     return font_family, min(72, max(5, round(float(best_span.get("size", 12))))), f"#{color:06x}"
 

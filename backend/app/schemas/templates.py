@@ -12,7 +12,7 @@ class TemplateFieldInput(BaseModel):
     y: int = Field(ge=0)
     width: int = Field(gt=0)
     height: int = Field(gt=0)
-    font_family: Literal["helv", "tiro", "cour", "custom"] = "helv"
+    font_family: Literal["helv", "tiro", "cour", "mont", "custom"] = "helv"
     custom_font_id: UUID | None = None
     font_size: int | None = Field(default=None, ge=5, le=72)
     text_color: str = Field(default="#000000", pattern=r"^#[0-9A-Fa-f]{6}$")
@@ -34,7 +34,7 @@ class TemplateFieldResponse(BaseModel):
     y: int
     width: int
     height: int
-    font_family: Literal["helv", "tiro", "cour", "custom"]
+    font_family: Literal["helv", "tiro", "cour", "mont", "custom"]
     font_size: int | None
     text_color: str
 
@@ -64,7 +64,7 @@ class DetectedTemplateFieldResponse(BaseModel):
     width: int
     height: int
     detected_text: str
-    font_family: Literal["helv", "tiro", "cour"]
+    font_family: Literal["helv", "tiro", "cour", "mont"]
     font_size: int = Field(ge=5, le=72)
     text_color: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
 

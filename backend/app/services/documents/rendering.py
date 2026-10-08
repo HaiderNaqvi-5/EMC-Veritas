@@ -67,6 +67,19 @@ def _insert_text(
         except (RuntimeError, ValueError) as error:
             raise CertificateRenderingError("Certificate recipient font is unreadable") from error
         emphasize = False
+    elif font_family == "mont" and custom_font_key is None:
+        # Canva often embeds Montserrat as a glyph subset. Use the complete
+        # OFL copy so a real recipient name retains the detected family.
+        font_bytes = (
+            Path(__file__).resolve().parents[2]
+            / "assets"
+            / "Montserrat-VariableFont_wght.ttf"
+        ).read_bytes()
+        font_name = "EMCMontserrat"
+        try:
+            page.insert_font(fontname=font_name, fontbuffer=font_bytes)
+        except (RuntimeError, ValueError) as error:
+            raise CertificateRenderingError("Montserrat template font is unreadable") from error
     elif field.field_name == "student_name" and font_family != "custom" and custom_font_key is None:
         font_bytes = (
             Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf"
@@ -855,10 +868,23 @@ def _render_tagged_paragraph(
             continue
         word_font = bold_font if bold else font
         word_font_name = bold_font_name if bold else font_name
-        if not calibri_compatible and not all(word_font.has_glyph(ord(character)) for character in word):
-            word_font = fallback_font
-            word_font_name = fallback_name
-        word_width = word_font.text_length(word, fontsize=size) + tracking * max(0, len(word) - 1)
+        # A Canva PDF commonly carries a subset of its source font. Do not
+        # replace a whole substituted value with a different typeface merely
+        # because it contains one missing digit or hyphen. Preserve every
+        # available source glyph and use the fallback only for those exact
+        # missing characters.
+        has_missing_glyphs = not calibri_compatible and not all(
+            word_font.has_glyph(ord(character)) for character in word
+        )
+        if has_missing_glyphs:
+            word_width = sum(
+                (word_font if word_font.has_glyph(ord(character)) else fallback_font).text_length(
+                    character, fontsize=size
+                )
+                for character in word
+            ) + tracking * max(0, len(word) - 1)
+        else:
+            word_width = word_font.text_length(word, fontsize=size) + tracking * max(0, len(word) - 1)
         gap = 0.0 if not line or word[0] in ",.;:)]}" or line[-1][0][-1] in "([{" else space
         required = gap + word_width
         if line and width + required > rectangle.width:
@@ -882,15 +908,22 @@ def _render_tagged_paragraph(
         for word, bold, word_width, gap, word_font_name in items:
             x += gap
             point = fitz.Point(x, baseline)
-            if tracking > 0:
+            primary_font = bold_font if bold else font
+            primary_name = bold_font_name if bold else font_name
+            has_missing_glyphs = not calibri_compatible and not all(
+                primary_font.has_glyph(ord(character)) for character in word
+            )
+            if tracking > 0 or has_missing_glyphs:
                 character_x = x
                 for character in word:
+                    character_font = primary_font if primary_font.has_glyph(ord(character)) else fallback_font
+                    character_name = primary_name if character_font is primary_font else fallback_name
                     page.insert_text(
                         fitz.Point(character_x, baseline), character,
-                        fontname=word_font_name, fontsize=size, color=color,
+                        fontname=character_name, fontsize=size, color=color,
                         render_mode=0, border_width=1,
                     )
-                    character_x += word_font.text_length(character, fontsize=size) + tracking
+                    character_x += character_font.text_length(character, fontsize=size) + tracking
             else:
                 page.insert_text(
                     point,
@@ -1147,7 +1180,9 @@ def render_certificate(
                     normalized_values[field.field_name],
                     fonts,
                     alignment="left" if is_leadership_template and field.field_name in {"roll_number", "issue_date"} else "center",
-                    emphasize=not is_leadership_template,
+                    # Recipient names are plain template text. Do not add a
+                    # stroke/outline that makes the name look shadowed.
+                    emphasize=not is_leadership_template and field.field_name != "student_name",
                     rendering_profile=rendering_profile,
                 )
         if watermark:

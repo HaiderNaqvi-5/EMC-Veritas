@@ -115,6 +115,33 @@ def test_ec_profile_uses_distinct_recipient_typeface() -> None:
     assert "CormorantGaramond" in recipient_font(ec_output)
 
 
+def test_rendering_uses_the_detected_montserrat_font_for_a_plain_recipient_name() -> None:
+    document = fitz.open()
+    page = document.new_page()
+    field = SimpleNamespace(
+        field_name="student_name", page_number=1, x=120, y=100, width=220, height=24,
+        font_family="mont", custom_font_storage_key=None, font_size=12, text_color="#000000",
+    )
+
+    output = render_certificate(
+        document.tobytes(), [field], {"student_name": "Abdul Hadi"},
+        verification_url="https://example.test/verify/x",
+        required_field_names=frozenset({"student_name"}),
+    )
+    document.close()
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    span = next(
+        span
+        for block in rendered[0].get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for span in line["spans"]
+        if "Abdul Hadi" in span["text"]
+    )
+    rendered.close()
+    assert span["font"] == "Montserrat-Thin"
+
+
 def test_rendering_replaces_a_complete_tagged_paragraph_without_old_text() -> None:
     document = fitz.open()
     page = document.new_page()

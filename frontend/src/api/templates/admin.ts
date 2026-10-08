@@ -17,7 +17,7 @@ export type TemplateField = {
   y: number;
   width: number;
   height: number;
-  font_family?: "helv" | "tiro" | "cour" | "custom";
+  font_family?: "helv" | "tiro" | "cour" | "mont" | "custom";
   custom_font_id?: string | null;
   font_size?: number | null;
   text_color?: string;
