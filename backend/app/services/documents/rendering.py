@@ -1298,9 +1298,25 @@ def render_certificate(
         leadership_paragraph_pages: set[int] = set()
         tracked_activity_pages: set[int] = set()
         ec_farewell_pages: set[int] = set()
-        fixed_ec_farewell = (
-            rendering_profile == "executive_council"
-            and hashlib.sha256(template_pdf).hexdigest() == _EC_FAREWELL_SOURCE_SHA256
+        farewell_field_anchors = {
+            "student_name": (367, 249),
+            "roll_number": (263, 290),
+            "activity_name": (285, 317),
+            "activity_date": (439, 317),
+            "qr_code": (378, 445),
+            "verification_id": (384, 532),
+        }
+        fields_by_name = {field.field_name: field for field in field_list}
+        matches_farewell_layout = all(
+            name in fields_by_name
+            and fields_by_name[name].page_number == 1
+            and abs(fields_by_name[name].x - x) <= 20
+            and abs(fields_by_name[name].y - y) <= 20
+            for name, (x, y) in farewell_field_anchors.items()
+        )
+        fixed_ec_farewell = rendering_profile == "executive_council" and (
+            hashlib.sha256(template_pdf).hexdigest() == _EC_FAREWELL_SOURCE_SHA256
+            or matches_farewell_layout
         )
         # ``society_name`` belongs only to Society Head letters. Club-wide
         # roles (President, Vice President, Deputy Vice President, etc.) use
