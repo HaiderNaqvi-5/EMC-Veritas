@@ -312,14 +312,40 @@ def pre_generate_activity_documents(
     generated = 0
     failed_document_ids: list[UUID] = []
     storage = SupabaseStorage()
+
+    # Bolt optimization: Bulk fetch related records outside the loop to prevent N+1 query bottlenecks.
+    # This reduces 3 queries per document to just 3 queries total for the batch.
+    student_ids = {doc.student_id for doc in pending if doc.student_id}
+    template_ids = {doc.template_id or activity.template_id for doc in pending}
+
+    students_map = {}
+    templates_map = {}
+    fields_map = {}
+
+    if pending:
+        students_map = {
+            s.id: s for s in db.scalars(select(Student).where(Student.id.in_(student_ids))).all()
+        }
+        templates_map = {
+            t.id: t for t in db.scalars(select(Template).where(Template.id.in_(template_ids))).all()
+        }
+
+        all_fields = db.scalars(
+            select(TemplateField).where(TemplateField.template_id.in_(template_ids))
+        ).all()
+        fields_map = {t_id: [] for t_id in template_ids}
+        for field in all_fields:
+            if field.template_id in fields_map:
+                fields_map[field.template_id].append(field)
+
     for document in pending:
         document_id = document.id
         try:
-            student = db.get(Student, document.student_id)
-            template = db.get(Template, document.template_id or activity.template_id)
+            student = students_map.get(document.student_id)
+            template = templates_map.get(document.template_id or activity.template_id)
             if student is None or template is None:
                 raise DocumentLifecycleError("The issued document is missing its student or template")
-            fields = list(db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all())
+            fields = fields_map.get(template.id, [])
             try:
                 values = json.loads(document.render_payload_json or "")
             except json.JSONDecodeError as error:
