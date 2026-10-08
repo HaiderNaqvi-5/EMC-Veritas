@@ -56,8 +56,10 @@ def test_analysis_detects_common_certificate_placeholders_with_positions() -> No
         "activity_date", "qr_code",
     ]
     assert all(field.page_number == 1 and field.width > 0 and field.height > 0 for field in result)
-    assert result[0].font_family == "tiro"
-    assert result[0].font_size == 28
+    # The synthetic PDF uses Helvetica.  Keep this expectation aligned with
+    # style detection rather than the legacy Times fallback.
+    assert result[0].font_family == "helv"
+    assert result[0].font_size == 11
     assert result[0].text_color == "#000000"
     assert result[-1].detected_text == "dedicated QR square"
 

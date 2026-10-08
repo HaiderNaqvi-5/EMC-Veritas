@@ -117,7 +117,7 @@ def test_ec_profile_uses_distinct_recipient_typeface() -> None:
 
 def test_rendering_uses_the_detected_montserrat_font_for_a_plain_recipient_name() -> None:
     document = fitz.open()
-    page = document.new_page()
+    document.new_page()
     field = SimpleNamespace(
         field_name="student_name", page_number=1, x=120, y=100, width=220, height=24,
         font_family="mont", custom_font_storage_key=None, font_size=12, text_color="#000000",
