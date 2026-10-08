@@ -766,7 +766,20 @@ def _inline_activity_paragraph(
     return rectangle, text, needed, size, rgb, font_bytes
 
 
-def _is_ec_farewell_template(page: fitz.Page) -> bool:
+def _rawdict_text(rawdict: Mapping[str, object]) -> str:
+    """Return visible characters from a cached PyMuPDF raw text dictionary."""
+    return "".join(
+        str(character.get("c", ""))
+        for block in rawdict.get("blocks", [])  # type: ignore[union-attr]
+        for line in block.get("lines", [])
+        for span in line.get("spans", [])
+        for character in span.get("chars", [])
+    )
+
+
+def _is_ec_farewell_template(
+    page: fitz.Page, rawdict: Mapping[str, object] | None = None
+) -> bool:
     """Identify the fixed Canva EC organizer certificate supplied by EMC.
 
     This intentionally uses several stable design markers instead of a file
@@ -775,8 +788,20 @@ def _is_ec_farewell_template(page: fitz.Page) -> bool:
     """
     if abs(page.rect.width - 842.25) > 2 or abs(page.rect.height - 595.5) > 2:
         return False
+    if rawdict is None:
+        return all(
+            _search_text_ignoring_spacing(page, marker)
+            for marker in (
+                "CERTIFICATE",
+                "ORGANIZATION",
+                "This Certificate is Proudly presented to",
+                "Having Roll Number",
+                "execution of the activity",
+            )
+        )
+    normalized = re.sub(r"\s+", "", _rawdict_text(rawdict)).casefold()
     return all(
-        _search_text_ignoring_spacing(page, marker)
+        re.sub(r"\s+", "", marker).casefold() in normalized
         for marker in (
             "CERTIFICATE",
             "ORGANIZATION",
@@ -788,13 +813,16 @@ def _is_ec_farewell_template(page: fitz.Page) -> bool:
 
 
 def _ec_farewell_paragraph(
-    page: fitz.Page, values: Mapping[str, str]
+    page: fitz.Page,
+    values: Mapping[str, str],
+    rawdict: Mapping[str, object] | None = None,
 ) -> tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None]:
     """Parse and fill the authored four-line paragraph in the fixed EC design."""
     needed = {"roll_number", "activity_name", "activity_date"}
     rectangle = fitz.Rect(99.5, 289.0, 720.5, 400.0)
     positioned_lines: list[tuple[float, str]] = []
-    for block in page.get_text("rawdict").get("blocks", []):
+    source_rawdict = rawdict if rawdict is not None else page.get_text("rawdict")
+    for block in source_rawdict.get("blocks", []):  # type: ignore[union-attr]
         for line in block.get("lines", []):
             line_rectangle = fitz.Rect(line["bbox"])
             if not line_rectangle.intersects(rectangle):
@@ -814,7 +842,7 @@ def _ec_farewell_paragraph(
             previous_right: float | None = None
             for character in characters:
                 left, _top, right, _bottom = character["bbox"]
-                if previous_right is not None and left - previous_right > 5.0:
+                if previous_right is not None and left - previous_right > 4.0:
                     output.append(" ")
                 output.append(character["c"])
                 previous_right = right
@@ -830,7 +858,10 @@ def _ec_farewell_paragraph(
     text = token_pattern.sub(lambda match: values[match.group(1)], source)
     # Coordinates, colour, type size and rhythm are measured from the Canva
     # source PDF. The generous fixed box ends above the signature row.
-    _remove_text_in_rectangle(page, rectangle)
+    # This preset's paragraph rectangle contains no static copy. A transparent
+    # text-only redaction removes it without another expensive Canva text-layer
+    # extraction and keeps the watermark artwork underneath untouched.
+    page.add_redact_annot(rectangle, fill=None)
     font_bytes = (
         Path(__file__).resolve().parents[2] / "assets" / "Boston Angel Light.otf"
     ).read_bytes()
@@ -1263,6 +1294,19 @@ def render_certificate(
                 configured_names
             )
         )
+        # The supplied Canva EC design has an unusually expensive text layer.
+        # Extract it once per page and reuse it for both preset identification
+        # and paragraph parsing. Re-reading it for every field made hosted
+        # previews take more than a minute on a shared CPU.
+        ec_rawdicts: dict[int, Mapping[str, object]] = {}
+        if rendering_profile == "executive_council":
+            for page_number in range(1, document.page_count + 1):
+                page = document[page_number - 1]
+                if abs(page.rect.width - 842.25) <= 2 and abs(page.rect.height - 595.5) <= 2:
+                    rawdict = page.get_text("rawdict")
+                    if _is_ec_farewell_template(page, rawdict):
+                        ec_rawdicts[page_number] = rawdict
+                        ec_farewell_pages.add(page_number)
         source_field_styles = {
             (field.page_number, field.field_name): _source_field_style(
                 document[field.page_number - 1], field
@@ -1270,6 +1314,7 @@ def render_certificate(
             for field in field_list
             if rendering_profile == "executive_council"
             and 1 <= field.page_number <= document.page_count
+            and field.page_number not in ec_farewell_pages
             and field.field_name not in {"qr_code"}
             and not field.field_name.startswith("signature_")
         }
@@ -1282,9 +1327,10 @@ def render_certificate(
             if is_leadership_template:
                 job = _leadership_paragraph_from_tagged_blocks(page, normalized_values)
             elif rendering_profile == "executive_council":
-                if _is_ec_farewell_template(page):
-                    job = _ec_farewell_paragraph(page, normalized_values)
-                    ec_farewell_pages.add(page_number)
+                if page_number in ec_farewell_pages:
+                    job = _ec_farewell_paragraph(
+                        page, normalized_values, ec_rawdicts[page_number]
+                    )
                 else:
                     # Other EC templates remain author-controlled designs.
                     # Preserve their static prose and replace explicit tags.
@@ -1353,6 +1399,26 @@ def render_certificate(
                 # fixed label ("Issue Date:").  A broad span redaction would
                 # erase that original template text as well.
                 _remove_placeholder_from_field(document[field.page_number - 1], field)
+            elif field.page_number in ec_farewell_pages:
+                # Every dynamic box in the fixed preset is isolated from its
+                # surrounding label/artwork. A direct transparent text-only
+                # redaction avoids repeatedly searching the same Canva layer.
+                page = document[field.page_number - 1]
+                if field.field_name == "verification_id":
+                    # The authored ``{{Serial No.}}`` extends slightly beyond
+                    # its saved value box. Locate this one short token exactly
+                    # so no opening braces survive below the generated ID.
+                    _remove_placeholder_from_field(page, field)
+                else:
+                    page.add_redact_annot(
+                        fitz.Rect(
+                            field.x,
+                            field.y,
+                            field.x + field.width,
+                            field.y + field.height,
+                        ),
+                        fill=None,
+                    )
             elif rendering_profile == "executive_council":
                 _remove_placeholder_from_field(document[field.page_number - 1], field)
             else:
