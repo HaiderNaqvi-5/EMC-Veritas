@@ -21,3 +21,16 @@ def test_readiness_endpoint() -> None:
     assert response.status_code == 200
     assert response.json() == {"ready": True}
 
+
+def test_runtime_info_exposes_non_secret_renderer_versions() -> None:
+    async def request_runtime_info() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get("/api/health/info")
+
+    response = asyncio.run(request_runtime_info())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["commit"]
+    assert payload["pymupdf"]
+    assert payload["font_validator"] == "fonttools"

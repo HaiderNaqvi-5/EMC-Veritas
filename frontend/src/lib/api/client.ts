@@ -4,7 +4,7 @@ export const SESSION_EXPIRED_EVENT = "emc:admin-session-expired";
 export const apiUrl = (path: string) => `${apiBase}${path}`;
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string) {
+  constructor(public readonly status: number, message: string, public readonly code?: string) {
     super(message);
     this.name = "ApiError";
   }
@@ -74,8 +74,13 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     if (response.status === 401 && !path.startsWith("/admin/auth/login")) {
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     }
-    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new ApiError(response.status, body?.detail ?? "The request could not be completed.");
+    const body = (await response.json().catch(() => null)) as { detail?: string | { code?: string; message?: string } } | null;
+    const detail = body?.detail;
+    throw new ApiError(
+      response.status,
+      typeof detail === "string" ? detail : detail?.message ?? "The request could not be completed.",
+      typeof detail === "object" ? detail.code : undefined,
+    );
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -103,8 +108,13 @@ export async function apiBlobRequest(path: string, init: RequestInit = {}): Prom
     if (response.status === 401 && !path.startsWith("/admin/auth/login")) {
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     }
-    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new ApiError(response.status, body?.detail ?? "The request could not be completed.");
+    const body = (await response.json().catch(() => null)) as { detail?: string | { code?: string; message?: string } } | null;
+    const detail = body?.detail;
+    throw new ApiError(
+      response.status,
+      typeof detail === "string" ? detail : detail?.message ?? "The request could not be completed.",
+      typeof detail === "object" ? detail.code : undefined,
+    );
   }
   return response.blob();
 }

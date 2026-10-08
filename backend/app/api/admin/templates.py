@@ -176,7 +176,13 @@ async def upload_template_font(
     try:
         content_type = ensure_font(file.filename or "", file.content_type, content)
     except ValueError as error:
-        raise HTTPException(status_code=422, detail="Uploaded template font is not a readable TTF or OTF") from error
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "FONT_VALIDATION_FAILED",
+                "message": f"Font validation failed: {error}",
+            },
+        ) from error
     suffix = (file.filename or "font.ttf").rsplit(".", 1)[-1].lower()
     font = TemplateFont(
         id=uuid4(),
@@ -188,7 +194,13 @@ async def upload_template_font(
     try:
         SupabaseStorage().upload(font.storage_key, content, font.content_type)
     except RuntimeError as error:
-        raise HTTPException(status_code=503, detail="Template font storage is temporarily unavailable") from error
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "FONT_STORAGE_FAILED",
+                "message": "Font validation passed, but storage is temporarily unavailable.",
+            },
+        ) from error
     db.add(font)
     record_audit_event(
         db,
