@@ -4,6 +4,8 @@ from types import SimpleNamespace
 import fitz
 
 from app.services.documents.rendering import (
+    _ec_farewell_paragraph,
+    _is_ec_farewell_template,
     _leadership_content,
     _paragraph_words,
     _render_activity_paragraph,
@@ -37,6 +39,52 @@ def test_activity_paragraph_uses_complete_boston_angel_at_15_point_8() -> None:
     )
     assert span["font"] == "BostonAngel-Bold"
     assert abs(span["size"] - 15.8) < 0.01
+
+
+def test_ec_farewell_preset_parses_the_source_paragraph_before_substitution() -> None:
+    document = fitz.open()
+    page = document.new_page(width=842.25, height=595.5)
+    font_bytes = (
+        Path(__file__).parents[2] / "app" / "assets" / "Boston Angel Light.otf"
+    ).read_bytes()
+    page.insert_font(fontname="BostonLight", fontbuffer=font_bytes)
+
+    def tracked_line(y: float, text: str) -> None:
+        font = fitz.Font(fontbuffer=font_bytes)
+        x = 100.0
+        for character in text:
+            if character == " ":
+                x += 8
+                continue
+            page.insert_text((x, y), character, fontname="BostonLight", fontsize=13)
+            x += font.text_length(character, fontsize=13) + 2.2
+
+    page.insert_text((100, 80), "CERTIFICATE")
+    page.insert_text((100, 110), "ORGANIZATION")
+    page.insert_text((100, 140), "This Certificate is Proudly presented to")
+    tracked_line(304, "Having Roll Number {{roll_number}}, In recognition of their")
+    tracked_line(331, "outstanding efforts in organizing and managing {{activity_name}} on {{activity_date}} under the EMC. Their")
+    tracked_line(358, "leadership, coordination, and commitment significantly contributed to the successful")
+    tracked_line(385, "execution of the activity.")
+
+    assert _is_ec_farewell_template(page)
+    _rectangle, text, names, size, rgb, parsed_font = _ec_farewell_paragraph(
+        page,
+        {
+            "roll_number": "2K23-BSCS-104",
+            "activity_name": "Orientation Week 2k25",
+            "activity_date": "2025-09-01",
+        },
+    )
+    document.close()
+
+    assert names == {"roll_number", "activity_name", "activity_date"}
+    assert "Having Roll Number 2K23-BSCS-104" in text
+    assert "Orientation Week 2k25 on 2025-09-01" in text
+    assert "{{" not in text
+    assert size == 13
+    assert rgb == (0x45, 0x45, 0x45)
+    assert parsed_font
 
 
 def test_leadership_content_omits_the_society_clause_for_an_overall_ec_role() -> None:

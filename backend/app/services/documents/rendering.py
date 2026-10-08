@@ -766,6 +766,77 @@ def _inline_activity_paragraph(
     return rectangle, text, needed, size, rgb, font_bytes
 
 
+def _is_ec_farewell_template(page: fitz.Page) -> bool:
+    """Identify the fixed Canva EC organizer certificate supplied by EMC.
+
+    This intentionally uses several stable design markers instead of a file
+    hash. Re-exporting the same Canva design changes the PDF bytes, while a
+    different EC template must continue through the generic renderer.
+    """
+    if abs(page.rect.width - 842.25) > 2 or abs(page.rect.height - 595.5) > 2:
+        return False
+    return all(
+        _search_text_ignoring_spacing(page, marker)
+        for marker in (
+            "CERTIFICATE",
+            "ORGANIZATION",
+            "This Certificate is Proudly presented to",
+            "Having Roll Number",
+            "execution of the activity",
+        )
+    )
+
+
+def _ec_farewell_paragraph(
+    page: fitz.Page, values: Mapping[str, str]
+) -> tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None]:
+    """Parse and fill the authored four-line paragraph in the fixed EC design."""
+    needed = {"roll_number", "activity_name", "activity_date"}
+    rectangle = fitz.Rect(99.5, 289.0, 720.5, 400.0)
+    positioned_lines: list[tuple[float, str]] = []
+    for block in page.get_text("rawdict").get("blocks", []):
+        for line in block.get("lines", []):
+            line_rectangle = fitz.Rect(line["bbox"])
+            if not line_rectangle.intersects(rectangle):
+                continue
+            characters = sorted(
+                (
+                    character
+                    for span in line.get("spans", [])
+                    for character in span.get("chars", [])
+                    if character.get("c", "") and not character.get("c", "").isspace()
+                ),
+                key=lambda character: character["bbox"][0],
+            )
+            if not characters:
+                continue
+            output: list[str] = []
+            previous_right: float | None = None
+            for character in characters:
+                left, _top, right, _bottom = character["bbox"]
+                if previous_right is not None and left - previous_right > 5.0:
+                    output.append(" ")
+                output.append(character["c"])
+                previous_right = right
+            positioned_lines.append((line_rectangle.y0, "".join(output).strip()))
+    parsed_lines = [line for _top, line in sorted(positioned_lines)]
+    source = "\n".join(parsed_lines)
+    token_pattern = re.compile(r"\{\{([a-z][a-z0-9_]*)\}\}")
+    detected = set(token_pattern.findall(source))
+    if detected != needed or "Having Roll Number" not in source or "execution of the activity." not in source:
+        raise CertificateRenderingError(
+            "EC Farewell paragraph does not match the approved source format"
+        )
+    text = token_pattern.sub(lambda match: values[match.group(1)], source)
+    # Coordinates, colour, type size and rhythm are measured from the Canva
+    # source PDF. The generous fixed box ends above the signature row.
+    _remove_text_in_rectangle(page, rectangle)
+    font_bytes = (
+        Path(__file__).resolve().parents[2] / "assets" / "Boston Angel Light.otf"
+    ).read_bytes()
+    return rectangle, text, needed, 13.0, (0x45, 0x45, 0x45), font_bytes
+
+
 def _search_text_ignoring_spacing(page: fitz.Page, phrase: str) -> list[fitz.Rect]:
     """Locate Canva text whose exported glyphs have literal spaces between them."""
     direct = page.search_for(phrase)
@@ -1062,6 +1133,29 @@ def _render_activity_paragraph(
     _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_CENTER, lineheight=lineheight, font_name=font_name, font_bytes=font_bytes, tracking=tracking)
 
 
+def _render_ec_farewell_paragraph(
+    page: fitz.Page,
+    rectangle: fitz.Rect,
+    text: str,
+    font_bytes: bytes,
+) -> None:
+    """Render the fixed EC paragraph with the source design's exact rhythm."""
+    _render_tagged_paragraph(
+        page,
+        rectangle,
+        text,
+        {},
+        set(),
+        13.0,
+        (0x45, 0x45, 0x45),
+        align=fitz.TEXT_ALIGN_CENTER,
+        lineheight=2.078,
+        font_name="EMCBostonAngelLight",
+        font_bytes=font_bytes,
+        tracking=2.2,
+    )
+
+
 def _render_leadership_paragraph(
     page: fitz.Page,
     rectangle: fitz.Rect,
@@ -1148,6 +1242,7 @@ def render_certificate(
         paragraph_fields: set[tuple[int, str]] = set()
         leadership_paragraph_pages: set[int] = set()
         tracked_activity_pages: set[int] = set()
+        ec_farewell_pages: set[int] = set()
         # ``society_name`` belongs only to Society Head letters. Club-wide
         # roles (President, Vice President, Deputy Vice President, etc.) use
         # the same flowing leadership-letter renderer without that field.
@@ -1177,11 +1272,13 @@ def render_certificate(
             if is_leadership_template:
                 job = _leadership_paragraph_from_tagged_blocks(page, normalized_values)
             elif rendering_profile == "executive_council":
-                # EC templates are author-controlled designs. Preserve every
-                # static glyph and line break, replacing only explicit tags.
-                # Reflowing the full paragraph imports assumptions from a
-                # previous template and is the source of style/overflow drift.
-                job = None
+                if _is_ec_farewell_template(page):
+                    job = _ec_farewell_paragraph(page, normalized_values)
+                    ec_farewell_pages.add(page_number)
+                else:
+                    # Other EC templates remain author-controlled designs.
+                    # Preserve their static prose and replace explicit tags.
+                    job = None
             else:
                 # Prefer the standard recognition renderer only for the
                 # standard EMC wording. Generic tagged prose keeps its text.
@@ -1260,6 +1357,12 @@ def render_certificate(
                 _render_leadership_paragraph(
                     document[page_number - 1], rectangle, text, size, rgb, normalized_values, replaced_names, font_bytes, source_bold_words
                 )
+            elif page_number in ec_farewell_pages:
+                if font_bytes is None:
+                    raise CertificateRenderingError("EC Farewell paragraph font is unavailable")
+                _render_ec_farewell_paragraph(
+                    document[page_number - 1], rectangle, text, font_bytes
+                )
             else:
                 _render_activity_paragraph(
                     document[page_number - 1], rectangle, text, size, rgb, normalized_values,
@@ -1290,6 +1393,28 @@ def render_certificate(
                     if field.field_name == "verification_id"
                     else field
                 )
+                source_font_bytes, source_font_size, source_tracking = source_field_styles.get(
+                    (field.page_number, field.field_name), (None, None, 0)
+                )
+                if field.page_number in ec_farewell_pages and field.field_name == "student_name":
+                    text_field = copy(field)
+                    text_field.x = 217.5
+                    text_field.y = 226.0
+                    text_field.width = 407.0
+                    text_field.height = 37.0
+                    source_font_bytes = (
+                        Path(__file__).resolve().parents[2]
+                        / "assets"
+                        / "Montserrat-Regular.ttf"
+                    ).read_bytes()
+                    source_font_size = 12.0
+                    source_tracking = 0
+                elif field.page_number in ec_farewell_pages and field.field_name == "verification_id":
+                    source_font_bytes = (
+                        Path(__file__).resolve().parents[2] / "assets" / "Canva Sans Bold.otf"
+                    ).read_bytes()
+                    source_font_size = 11.0
+                    source_tracking = 0
                 _insert_text(
                     page,
                     text_field,
@@ -1300,15 +1425,9 @@ def render_certificate(
                     # stroke/outline that makes the name look shadowed.
                     emphasize=not is_leadership_template and field.field_name != "student_name",
                     rendering_profile=rendering_profile,
-                    source_font_bytes=source_field_styles.get(
-                        (field.page_number, field.field_name), (None, None, 0)
-                    )[0],
-                    source_font_size=source_field_styles.get(
-                        (field.page_number, field.field_name), (None, None, 0)
-                    )[1],
-                    tracking=source_field_styles.get(
-                        (field.page_number, field.field_name), (None, None, 0)
-                    )[2],
+                    source_font_bytes=source_font_bytes,
+                    source_font_size=source_font_size,
+                    tracking=source_tracking,
                 )
         if watermark:
             for page in document:
