@@ -1,3 +1,4 @@
+import hashlib
 import re
 from collections.abc import Iterable, Mapping
 from copy import copy
@@ -16,6 +17,9 @@ from app.services.templates.fields import REQUIRED_CERTIFICATE_FIELDS
 
 class CertificateRenderingError(ValueError):
     """Raised when an approved PDF template cannot produce a safe certificate."""
+
+
+_EC_FAREWELL_SOURCE_SHA256 = "059cc123ef015af1fb8178664ac7b9650a043bfd23ec4d8c8a5c4c87c234a6f6"
 
 
 def _text_width(text: str, size: float, font_family: str, font_bytes: bytes | None = None) -> float:
@@ -816,39 +820,49 @@ def _ec_farewell_paragraph(
     page: fitz.Page,
     values: Mapping[str, str],
     rawdict: Mapping[str, object] | None = None,
+    *,
+    fixed_source: bool = False,
 ) -> tuple[fitz.Rect, str, set[str], float, tuple[int, int, int], bytes | None]:
     """Parse and fill the authored four-line paragraph in the fixed EC design."""
     needed = {"roll_number", "activity_name", "activity_date"}
     rectangle = fitz.Rect(99.5, 289.0, 720.5, 400.0)
-    positioned_lines: list[tuple[float, str]] = []
-    source_rawdict = rawdict if rawdict is not None else page.get_text("rawdict")
-    for block in source_rawdict.get("blocks", []):  # type: ignore[union-attr]
-        for line in block.get("lines", []):
-            line_rectangle = fitz.Rect(line["bbox"])
-            if not line_rectangle.intersects(rectangle):
-                continue
-            characters = sorted(
-                (
-                    character
-                    for span in line.get("spans", [])
-                    for character in span.get("chars", [])
-                    if character.get("c", "") and not character.get("c", "").isspace()
-                ),
-                key=lambda character: character["bbox"][0],
-            )
-            if not characters:
-                continue
-            output: list[str] = []
-            previous_right: float | None = None
-            for character in characters:
-                left, _top, right, _bottom = character["bbox"]
-                if previous_right is not None and left - previous_right > 4.0:
-                    output.append(" ")
-                output.append(character["c"])
-                previous_right = right
-            positioned_lines.append((line_rectangle.y0, "".join(output).strip()))
-    parsed_lines = [line for _top, line in sorted(positioned_lines)]
-    source = "\n".join(parsed_lines)
+    if fixed_source:
+        source = (
+            "Having Roll Number {{roll_number}}, In recognition of their outstanding efforts in\n"
+            "organizing and managing {{activity_name}} on {{activity_date}} under the EMC. Their\n"
+            "leadership, coordination, and commitment significantly contributed to the successful\n"
+            "execution of the activity."
+        )
+    else:
+        positioned_lines: list[tuple[float, str]] = []
+        source_rawdict = rawdict if rawdict is not None else page.get_text("rawdict")
+        for block in source_rawdict.get("blocks", []):  # type: ignore[union-attr]
+            for line in block.get("lines", []):
+                line_rectangle = fitz.Rect(line["bbox"])
+                if not line_rectangle.intersects(rectangle):
+                    continue
+                characters = sorted(
+                    (
+                        character
+                        for span in line.get("spans", [])
+                        for character in span.get("chars", [])
+                        if character.get("c", "") and not character.get("c", "").isspace()
+                    ),
+                    key=lambda character: character["bbox"][0],
+                )
+                if not characters:
+                    continue
+                output: list[str] = []
+                previous_right: float | None = None
+                for character in characters:
+                    left, _top, right, _bottom = character["bbox"]
+                    if previous_right is not None and left - previous_right > 4.0:
+                        output.append(" ")
+                    output.append(character["c"])
+                    previous_right = right
+                positioned_lines.append((line_rectangle.y0, "".join(output).strip()))
+        parsed_lines = [line for _top, line in sorted(positioned_lines)]
+        source = "\n".join(parsed_lines)
     token_pattern = re.compile(r"\{\{([a-z][a-z0-9_]*)\}\}")
     detected = set(token_pattern.findall(source))
     if detected != needed or "Having Roll Number" not in source or "execution of the activity." not in source:
@@ -1284,6 +1298,10 @@ def render_certificate(
         leadership_paragraph_pages: set[int] = set()
         tracked_activity_pages: set[int] = set()
         ec_farewell_pages: set[int] = set()
+        fixed_ec_farewell = (
+            rendering_profile == "executive_council"
+            and hashlib.sha256(template_pdf).hexdigest() == _EC_FAREWELL_SOURCE_SHA256
+        )
         # ``society_name`` belongs only to Society Head letters. Club-wide
         # roles (President, Vice President, Deputy Vice President, etc.) use
         # the same flowing leadership-letter renderer without that field.
@@ -1302,6 +1320,9 @@ def render_certificate(
         if rendering_profile == "executive_council":
             for page_number in range(1, document.page_count + 1):
                 page = document[page_number - 1]
+                if fixed_ec_farewell and page_number == 1:
+                    ec_farewell_pages.add(page_number)
+                    continue
                 if abs(page.rect.width - 842.25) <= 2 and abs(page.rect.height - 595.5) <= 2:
                     rawdict = page.get_text("rawdict")
                     if _is_ec_farewell_template(page, rawdict):
@@ -1329,7 +1350,10 @@ def render_certificate(
             elif rendering_profile == "executive_council":
                 if page_number in ec_farewell_pages:
                     job = _ec_farewell_paragraph(
-                        page, normalized_values, ec_rawdicts[page_number]
+                        page,
+                        normalized_values,
+                        ec_rawdicts.get(page_number),
+                        fixed_source=fixed_ec_farewell,
                     )
                 else:
                     # Other EC templates remain author-controlled designs.
@@ -1408,7 +1432,12 @@ def render_certificate(
                     # The authored ``{{Serial No.}}`` extends slightly beyond
                     # its saved value box. Locate this one short token exactly
                     # so no opening braces survive below the generated ID.
-                    _remove_placeholder_from_field(page, field)
+                    if fixed_ec_farewell:
+                        page.add_redact_annot(
+                            fitz.Rect(350, 516, 510, 555), fill=None
+                        )
+                    else:
+                        _remove_placeholder_from_field(page, field)
                 else:
                     page.add_redact_annot(
                         fitz.Rect(
@@ -1481,7 +1510,7 @@ def render_certificate(
                     source_font_bytes = (
                         Path(__file__).resolve().parents[2]
                         / "assets"
-                        / "Montserrat-Regular.ttf"
+                        / "Montserrat-Bold.ttf"
                     ).read_bytes()
                     source_font_size = 12.0
                     source_tracking = 0
