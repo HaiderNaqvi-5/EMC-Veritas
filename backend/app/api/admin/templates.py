@@ -389,13 +389,12 @@ def preview_template(
     signature_date = activity.issue_date or datetime.now(EMC_TIMEZONE).date()
     try:
         storage = SupabaseStorage()
-        template_pdf = storage.download(template.storage_key)
-        custom_fonts = {
-            field.custom_font_storage_key: storage.download(field.custom_font_storage_key)
+        custom_font_keys = {
+            field.custom_font_storage_key
             for field in fields
             if field.custom_font_storage_key
         }
-        signature_images: dict[str, bytes] = {}
+        selected_signatories = {}
         if should_replace_signatures(template.signature_handling, fields):
             signature_fields = configured_signature_field_names(fields)
             active_signatories = list(
@@ -409,10 +408,18 @@ def preview_template(
                 raise CertificateRenderingError(
                     "Configured signatories are unavailable for: " + ", ".join(unavailable_fields)
                 )
-            signature_images = {
-                field_name: storage.download(signatory.signature_storage_key)
-                for field_name, signatory in selected_signatories.items()
-            }
+        signature_keys = {
+            signatory.signature_storage_key for signatory in selected_signatories.values()
+        }
+        assets = storage.download_many(
+            [template.storage_key, *sorted(custom_font_keys), *sorted(signature_keys)]
+        )
+        template_pdf = assets[template.storage_key]
+        custom_fonts = {key: assets[key] for key in custom_font_keys}
+        signature_images = {
+            field_name: assets[signatory.signature_storage_key]
+            for field_name, signatory in selected_signatories.items()
+        }
         output = render_certificate(
             template_pdf,
             fields,
