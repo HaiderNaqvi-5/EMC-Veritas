@@ -5,18 +5,31 @@ from openpyxl import Workbook
 from app.services.imports import preview_students
 
 
+class MockScalarsResult:
+    def __init__(self, items):
+        self.items = items
+    def all(self):
+        return self.items
+
 class EmptyDatabase:
     def scalar(self, _query):
         return None
 
+    def scalars(self, _query):
+        return MockScalarsResult([])
+
 
 class ConflictingDatabase:
     class StudentRecord:
+        roll_number = "A1"
         full_name = "Different name"
         email = None
 
     def scalar(self, _query):
         return self.StudentRecord()
+
+    def scalars(self, _query):
+        return MockScalarsResult([self.StudentRecord()])
 
 
 def workbook(headers, rows):

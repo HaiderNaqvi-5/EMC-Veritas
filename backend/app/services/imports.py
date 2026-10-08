@@ -21,13 +21,23 @@ def preview_students(db: Session, content: bytes) -> dict:
     roll_index = next((headers[key] for key in ROLL if key in headers), None); name_index = next((headers[key] for key in NAME if key in headers), None); email_index = next((headers[key] for key in EMAIL if key in headers), None) if STUDENT_IMPORT_EMAIL_ENABLED else None
     if roll_index is None or name_index is None: raise ValueError("Spreadsheet must include Roll Number and Full Name headings")
     seen=set(); rows=[]; counts={"valid_rows":0,"duplicate_rows":0,"conflicting_rows":0,"invalid_rows":0}
-    for number, values in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+
+    # Since load_workbook is used with read_only=True, we can only iterate over the sheet once.
+    # Read rows into a list to allow multiple passes for pre-fetching and processing.
+    sheet_rows = list(sheet.iter_rows(min_row=2, values_only=True))
+
+    # Pre-fetch all students matching the roll numbers in the spreadsheet to avoid N+1 queries
+    extracted_rolls = {normalize_roll_number(str(v[roll_index])) for v in sheet_rows if v[roll_index] is not None and normalize_roll_number(str(v[roll_index]))}
+    existing_students = db.scalars(select(Student).where(Student.roll_number.in_(extracted_rolls))).all() if extracted_rolls else []
+    student_map = {student.roll_number: student for student in existing_students}
+
+    for number, values in enumerate(sheet_rows, start=2):
         roll=normalize_roll_number(str(values[roll_index])) if values[roll_index] is not None else ""; name=str(values[name_index]).strip() if values[name_index] is not None else ""; email=str(values[email_index]).strip().lower() if email_index is not None and values[email_index] is not None else ""
         outcome="valid"; detail=None
         if not roll or not name: outcome="invalid"; detail="Roll number and full name are required"
         elif roll in seen: outcome="duplicate"; detail="Duplicate roll number in spreadsheet"
         else:
-            existing=db.scalar(select(Student).where(Student.roll_number == roll))
+            existing=student_map.get(roll)
             if existing and existing.full_name != name: outcome="conflict"; detail="Existing student name differs; choose a resolution explicitly"
             elif STUDENT_IMPORT_EMAIL_ENABLED and email and existing and existing.email and existing.email.lower() != email: outcome="conflict"; detail="Existing verified email differs; use the Super Admin recovery flow instead"
         seen.add(roll)
@@ -54,15 +64,27 @@ def import_activity_participants(db: Session, activity_id, content: bytes) -> di
     roll_index = next((headers[key] for key in ROLL if key in headers), None)
     if roll_index is None: raise ValueError("Spreadsheet must include a Roll Number heading")
     added = existing = 0; unknown_roll_numbers: list[str] = []; seen: set[str] = set()
-    for values in sheet.iter_rows(min_row=2, values_only=True):
+
+    # Since load_workbook is used with read_only=True, we can only iterate over the sheet once.
+    # Read rows into a list to allow multiple passes for pre-fetching and processing.
+    sheet_rows = list(sheet.iter_rows(min_row=2, values_only=True))
+
+    # Pre-fetch all relevant students and their existing participations to avoid N+1 queries
+    extracted_rolls = {normalize_roll_number(str(v[roll_index])) for v in sheet_rows if v[roll_index] is not None and normalize_roll_number(str(v[roll_index]))}
+    existing_students = db.scalars(select(Student).where(Student.roll_number.in_(extracted_rolls), Student.active.is_(True))).all() if extracted_rolls else []
+    student_map = {student.roll_number: student for student in existing_students}
+
+    existing_participants = set(db.scalars(select(ActivityParticipant.student_id).where(ActivityParticipant.activity_id == activity_id, ActivityParticipant.student_id.in_([s.id for s in existing_students]))).all()) if existing_students else set()
+
+    for values in sheet_rows:
         roll = normalize_roll_number(str(values[roll_index])) if values[roll_index] is not None else ""
         if not roll or roll in seen: continue
         seen.add(roll)
-        student = db.scalar(select(Student).where(Student.roll_number == roll, Student.active.is_(True)))
+        student = student_map.get(roll)
         if student is None:
             unknown_roll_numbers.append(roll); continue
-        participant = db.scalar(select(ActivityParticipant).where(ActivityParticipant.activity_id == activity_id, ActivityParticipant.student_id == student.id))
-        if participant is not None:
+
+        if student.id in existing_participants:
             existing += 1; continue
         db.add(ActivityParticipant(activity_id=activity_id, student_id=student.id, eligible=True)); added += 1
     return {"added": added, "already_present": existing, "unknown_roll_numbers": unknown_roll_numbers}
