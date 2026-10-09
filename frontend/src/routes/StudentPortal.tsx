@@ -1,5 +1,4 @@
 import { FormEvent, type ReactNode, useState } from "react";
-import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -98,12 +97,7 @@ function VeritasSeal({ small = false }: { small?: boolean }) {
 }
 function CertificatePreview() {
   return (
-    <motion.div
-      initial={{ opacity: 0, rotate: 4, y: 24 }}
-      animate={{ opacity: 1, rotate: 2, y: 0 }}
-      transition={{ duration: 0.8, delay: 0.18 }}
-      className="certificate-preview relative mx-auto max-w-[30rem] rounded-[.35rem] p-3 shadow-2xl"
-    >
+    <div className="certificate-preview relative mx-auto max-w-[30rem] rounded-[.35rem] p-3 shadow-2xl">
       <div className="certificate-inner relative min-h-[25rem] overflow-hidden rounded-[.15rem] px-7 py-8 text-center text-slate-900 sm:px-10">
         <div className="absolute left-3 top-3 h-14 w-14 border-l-4 border-t-4 border-[#a91f35]" />
         <div className="absolute right-3 top-3 h-14 w-14 border-r-4 border-t-4 border-[#a91f35]" />
@@ -143,7 +137,7 @@ function CertificatePreview() {
           <p className="mt-1 text-[7px]">President, EMC</p>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
 function RecognitionCanvas() {
@@ -279,20 +273,18 @@ function ArchiveStory() {
         </div>
         <div className="archive-story__chapters">
           {archiveChapters.map((chapter, index) => (
-            <motion.article
+            <article
               key={chapter.number}
               className={`archive-story__chapter ${index === active ? "is-active" : ""}`}
-              initial={{ opacity: 0, y: 38 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.6 }}
-              onViewportEnter={() => setActive(index)}
-              transition={{ duration: .7, ease: [0.22, 1, 0.36, 1] }}
+              onMouseEnter={() => setActive(index)}
+              onFocus={() => setActive(index)}
+              tabIndex={0}
             >
               <span>{chapter.number}</span>
               <p>{chapter.kicker}</p>
               <h3>{chapter.type}</h3>
               <div className="archive-story__record"><div><small>CONTEXT</small><strong>{chapter.detail}</strong></div><VerificationMark /></div>
-            </motion.article>
+            </article>
           ))}
         </div>
       </div>
