@@ -26,7 +26,7 @@ from app.models.domain import (
     TemplateField,
 )
 from app.services.audit import record_audit_event
-from app.services.documents.issuance import reserve_document
+from app.services.documents.issuance import reserve_document, supersede_document
 from app.services.documents.lifecycle import DocumentLifecycleError, generate_on_first_download
 from app.services.signatures.availability import select_effective_signatories_for_fields
 from app.services.signatures.rendering import (
@@ -67,8 +67,20 @@ class EcMemberResponse(BaseModel):
 
 class EcIssueResponse(BaseModel):
     issued: int
-    already_issued: int
+    newly_issued: int
+    reissued: int
     document_ids: list[UUID]
+    superseded_document_ids: list[UUID]
+
+
+def _ec_reissue_state(
+    documents: list[IssuedDocument],
+) -> tuple[int, list[IssuedDocument]]:
+    """Return the next immutable version and every currently valid predecessor."""
+    return (
+        max((document.version for document in documents), default=0) + 1,
+        [document for document in documents if document.status is DocumentStatus.VALID],
+    )
 
 
 def _activity(db: Session, activity_id: UUID) -> Activity:
@@ -216,15 +228,23 @@ def issue_ec_certificates(
     ).all()
     if not rows:
         raise HTTPException(status_code=409, detail="Select at least one EC organizer first")
-    existing_student_ids = set(
+    student_ids = {student.id for _, _, student in rows}
+    existing_documents = list(
         db.scalars(
-            select(IssuedDocument.student_id).where(
+            select(IssuedDocument)
+            .where(
                 IssuedDocument.activity_id == activity.id,
-                IssuedDocument.document_type == DocumentType.EXECUTIVE_COUNCIL_CERTIFICATE,
-                IssuedDocument.status == DocumentStatus.VALID,
+                IssuedDocument.student_id.in_(student_ids),
+                IssuedDocument.document_type
+                == DocumentType.EXECUTIVE_COUNCIL_CERTIFICATE,
             )
+            .order_by(IssuedDocument.student_id, IssuedDocument.version.desc())
+            .with_for_update()
         ).all()
     )
+    document_history: dict[UUID, list[IssuedDocument]] = {}
+    for existing in existing_documents:
+        document_history.setdefault(existing.student_id, []).append(existing)
     issue_date = datetime.now(EMC_TIMEZONE).date()
     selected_signatories: dict[str, Signatory] = {}
     if should_replace_signatures(template.signature_handling, fields):
@@ -247,11 +267,12 @@ def issue_ec_certificates(
             for field_name, signatory in selected_signatories.items()
         }
         document_ids: list[UUID] = []
-        skipped = 0
+        superseded_document_ids: list[UUID] = []
+        reissued = 0
         for _, membership, student in rows:
-            if student.id in existing_student_ids:
-                skipped += 1
-                continue
+            version, predecessors = _ec_reissue_state(
+                document_history.get(student.id, [])
+            )
             values = {
                 "student_name": student.full_name,
                 "roll_number": student.roll_number,
@@ -269,6 +290,7 @@ def issue_ec_certificates(
                 issue_date=issue_date,
                 render_values=values,
                 actor_admin_id=admin.id,
+                version=version,
                 signatories=tuple(selected_signatories.values()),
             )
             values["verification_id"] = document.verification_id
@@ -284,6 +306,27 @@ def issue_ec_certificates(
                 image_values=signature_images,
                 rendering_profile="executive_council",
             )
+            # Preserve the currently published certificate until the new PDF
+            # exists in Storage. If rendering or upload fails, the database
+            # rollback leaves the old certificate valid and downloadable.
+            for predecessor in predecessors:
+                supersede_document(predecessor)
+                superseded_document_ids.append(predecessor.id)
+                record_audit_event(
+                    db,
+                    actor_admin_id=admin.id,
+                    event_type="DOCUMENT_SUPERSEDED",
+                    entity_type="issued_document",
+                    entity_id=predecessor.id,
+                    payload={
+                        "replacement_document_id": str(document.id),
+                        "replacement_version": document.version,
+                        "replacement_template_id": str(template.id),
+                        "reason": "corrected_ec_certificate_template",
+                    },
+                )
+            if predecessors:
+                reissued += 1
             document_ids.append(document.id)
         record_audit_event(
             db,
@@ -294,7 +337,11 @@ def issue_ec_certificates(
             payload={
                 "template_id": str(template.id),
                 "issued_document_ids": [str(item) for item in document_ids],
-                "already_issued": skipped,
+                "newly_issued": len(document_ids) - reissued,
+                "reissued": reissued,
+                "superseded_document_ids": [
+                    str(item) for item in superseded_document_ids
+                ],
             },
         )
         db.commit()
@@ -305,5 +352,9 @@ def issue_ec_certificates(
             detail="EC certificates could not be prepared in document storage",
         ) from error
     return EcIssueResponse(
-        issued=len(document_ids), already_issued=skipped, document_ids=document_ids
+        issued=len(document_ids),
+        newly_issued=len(document_ids) - reissued,
+        reissued=reissued,
+        document_ids=document_ids,
+        superseded_document_ids=superseded_document_ids,
     )
