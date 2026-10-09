@@ -1,7 +1,9 @@
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
 import fitz
+from PIL import Image, ImageDraw
 
 from app.services.documents.rendering import (
     _ec_farewell_paragraph,
@@ -584,6 +586,76 @@ def test_ec_rendering_uses_a_compact_qr_for_every_template() -> None:
     assert abs((rectangle.x0 + rectangle.x1) / 2 - 421) < 0.1
     assert serial["size"] <= 8.5
     assert serial["bbox"][1] >= rectangle.y1
+
+
+def test_ec_farewell_signature_replacement_preserves_authored_names() -> None:
+    document = fitz.open()
+    page = document.new_page(width=842.25, height=595.5)
+    page.insert_text((300, 70), "CERTIFICATE", fontsize=24)
+    page.insert_text((350, 100), "ORGANIZATION", fontsize=12)
+    page.insert_text((285, 135), "This Certificate is Proudly presented to", fontsize=10)
+    page.insert_text((367, 260), "{{student_name}}", fontsize=10)
+    page.insert_text((100, 300), "Having Roll Number {{roll_number}}", fontsize=10)
+    page.insert_text((285, 325), "{{activity_name}}", fontsize=10)
+    page.insert_text((439, 325), "{{activity_date}}", fontsize=10)
+    page.insert_text((310, 375), "execution of the activity", fontsize=10)
+    page.insert_text((150, 444), "{{signature_dsa}}", fontsize=10)
+    page.insert_text((150, 480), "AMNA ZULFIQAR", fontsize=10)
+    page.insert_text((570, 444), "{{signature_hod}}", fontsize=10)
+    page.insert_text((570, 480), "DR. NAEEM ASLAM", fontsize=10)
+    page.insert_text((390, 465), "{{qr_code}}", fontsize=8)
+    page.insert_text((384, 540), "{{verification_id}}", fontsize=8)
+    template = document.tobytes()
+    document.close()
+
+    field_defaults = {
+        "font_family": "helv",
+        "custom_font_storage_key": None,
+        "font_size": 10,
+        "text_color": "#000000",
+    }
+    fields = [
+        SimpleNamespace(field_name="student_name", page_number=1, x=367, y=249, width=110, height=18, **field_defaults),
+        SimpleNamespace(field_name="roll_number", page_number=1, x=263, y=290, width=90, height=18, **field_defaults),
+        SimpleNamespace(field_name="activity_name", page_number=1, x=285, y=317, width=120, height=18, **field_defaults),
+        SimpleNamespace(field_name="activity_date", page_number=1, x=439, y=317, width=100, height=18, **field_defaults),
+        SimpleNamespace(field_name="signature_dsa", page_number=1, x=105, y=410, width=180, height=80, **field_defaults),
+        SimpleNamespace(field_name="signature_hod", page_number=1, x=525, y=410, width=180, height=80, **field_defaults),
+        SimpleNamespace(field_name="qr_code", page_number=1, x=378, y=445, width=62, height=62, **field_defaults),
+        SimpleNamespace(field_name="verification_id", page_number=1, x=384, y=532, width=110, height=16, **field_defaults),
+    ]
+    signature_stream = BytesIO()
+    signature = Image.new("RGBA", (180, 72), (255, 255, 255, 0))
+    ImageDraw.Draw(signature).line((20, 38, 160, 20), fill=(0, 0, 0, 255), width=3)
+    signature.save(signature_stream, format="PNG")
+    values = {
+        "student_name": "Abdul Hadi",
+        "roll_number": "2K23-BSCS-104",
+        "activity_name": "Youm-e-Hussain",
+        "activity_date": "2026-10-09",
+        "verification_id": "EMC-ABCD1234",
+    }
+
+    output = render_certificate(
+        template,
+        fields,
+        values,
+        verification_url="https://example.test/verify/EMC-ABCD1234",
+        image_values={
+            "signature_dsa": signature_stream.getvalue(),
+            "signature_hod": signature_stream.getvalue(),
+        },
+        required_field_names=frozenset(),
+        rendering_profile="executive_council",
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    text = rendered[0].get_text().upper()
+    rendered.close()
+    assert "AMNA ZULFIQAR" in text
+    assert "DR. NAEEM ASLAM" in text
+    assert "{{SIGNATURE_DSA}}" not in text
+    assert "{{SIGNATURE_HOD}}" not in text
 
 
 def test_rendering_expands_a_saved_tiny_qr_tag_box_to_its_panel() -> None:

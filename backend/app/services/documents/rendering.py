@@ -355,23 +355,36 @@ def _verification_field_below_qr(
     # A tall, wide QR card can reserve a dedicated bottom strip for the
     # serial. A normal square panel cannot, so leave it outside the outline.
     if panel is not None and panel.width >= 72 and panel.height >= qr_field.height + 26:
-        aligned.width = max(16, panel.width - 8)
-        aligned.height = 12
-        aligned.x = panel.x0 + (panel.width - aligned.width) / 2
-        aligned.y = panel.y1 - aligned.height - 4
-        aligned.font_size = min(getattr(field, "font_size", None) or 10, 8)
+        width = max(16, panel.width - 8)
+        height = 12
+        object.__setattr__(aligned, "width", width)
+        object.__setattr__(aligned, "height", height)
+        object.__setattr__(aligned, "x", panel.x0 + (panel.width - width) / 2)
+        object.__setattr__(aligned, "y", panel.y1 - height - 4)
+        object.__setattr__(
+            aligned, "font_size", min(getattr(field, "font_size", None) or 10, 8)
+        )
         return aligned
-    aligned.width = min(84, max(qr_field.width + 22, 68))
-    aligned.height = max(12, min(field.height, 16))
-    aligned.x = max(
+    width = min(84, max(qr_field.width + 22, 68))
+    height = max(12, min(field.height, 16))
+    x = max(
         24,
         min(
-            qr_field.x + (qr_field.width - aligned.width) / 2,
-            page.rect.width - aligned.width - 24,
+            qr_field.x + (qr_field.width - width) / 2,
+            page.rect.width - width - 24,
         ),
     )
-    aligned.y = min(qr_field.y + qr_field.height + 8, page.rect.height - aligned.height - 24)
-    aligned.font_size = min(getattr(field, "font_size", None) or 10, 8)
+    object.__setattr__(aligned, "width", width)
+    object.__setattr__(aligned, "height", height)
+    object.__setattr__(aligned, "x", x)
+    object.__setattr__(
+        aligned,
+        "y",
+        min(qr_field.y + qr_field.height + 8, page.rect.height - height - 24),
+    )
+    object.__setattr__(
+        aligned, "font_size", min(getattr(field, "font_size", None) or 10, 8)
+    )
     return aligned
 
 
@@ -1541,11 +1554,17 @@ def render_certificate(
                 # erase that original template text as well.
                 _remove_placeholder_from_field(document[field.page_number - 1], field)
             elif field.page_number in ec_farewell_pages:
-                # Every dynamic box in the fixed preset is isolated from its
-                # surrounding label/artwork. A direct transparent text-only
-                # redaction avoids repeatedly searching the same Canva layer.
                 page = document[field.page_number - 1]
-                if field.field_name == "verification_id":
+                if field.field_name.startswith("signature_"):
+                    # Signature fields are deliberately expanded into a
+                    # practical image area during template analysis. In this
+                    # design that area also contains the authored signatory
+                    # name and signature line, so redacting the whole box
+                    # removes the person's name. Remove only the literal
+                    # placeholder; the transparent signature image can then
+                    # sit above the preserved name and title.
+                    _remove_placeholder_from_field(page, field)
+                elif field.field_name == "verification_id":
                     # The authored ``{{Serial No.}}`` extends slightly beyond
                     # its saved value box. Locate this one short token exactly
                     # so no opening braces survive below the generated ID.
@@ -1556,6 +1575,8 @@ def render_certificate(
                     else:
                         _remove_placeholder_from_field(page, field)
                 else:
+                    # The remaining dynamic boxes in the fixed preset are
+                    # isolated from their surrounding labels and artwork.
                     page.add_redact_annot(
                         fitz.Rect(
                             field.x,
@@ -1644,10 +1665,10 @@ def render_certificate(
                 )
                 if field.page_number in ec_farewell_pages and field.field_name == "student_name":
                     text_field = copy(field)
-                    text_field.x = 217.5
-                    text_field.y = 244.0
-                    text_field.width = 407.0
-                    text_field.height = 37.0
+                    object.__setattr__(text_field, "x", 217.5)
+                    object.__setattr__(text_field, "y", 244.0)
+                    object.__setattr__(text_field, "width", 407.0)
+                    object.__setattr__(text_field, "height", 37.0)
                     source_font_bytes = (
                         Path(__file__).resolve().parents[2]
                         / "assets"
