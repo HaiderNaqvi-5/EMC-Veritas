@@ -17,6 +17,12 @@ class SupabaseStorage:
     _download_cache: ClassVar[OrderedDict[tuple[str, str], bytes]] = OrderedDict()
     _cache_lock: ClassVar[Lock] = Lock()
     _cache_limit: ClassVar[int] = 16
+    # Storage requests are made from synchronous FastAPI handlers, which may
+    # run concurrently in the thread pool.  Reusing connections avoids a new
+    # TLS handshake for every signed URL during a student portal burst.
+    _client: ClassVar[httpx.Client] = httpx.Client(
+        limits=httpx.Limits(max_connections=100, max_keepalive_connections=32)
+    )
 
     def __init__(self) -> None:
         if not settings.supabase_service_role_key:
@@ -30,7 +36,7 @@ class SupabaseStorage:
 
     def upload(self, key: str, content: bytes, content_type: str) -> None:
         try:
-            response = httpx.post(
+            response = self._client.post(
                 f"{self.base_url}/{quote(key, safe='/')}",
                 headers={**self.headers, "Content-Type": content_type, "x-upsert": "false"},
                 content=content,
@@ -49,7 +55,7 @@ class SupabaseStorage:
                 self._download_cache.move_to_end(cache_key)
                 return cached
         try:
-            response = httpx.get(f"{self.base_url}/{quote(key, safe='/')}", headers=self.headers, timeout=30)
+            response = self._client.get(f"{self.base_url}/{quote(key, safe='/')}", headers=self.headers, timeout=30)
             response.raise_for_status()
             content = response.content
             self._cache_put(key, content)
@@ -80,7 +86,7 @@ class SupabaseStorage:
         if not prefixes:
             return
         try:
-            response = httpx.delete(
+            response = self._client.delete(
                 self.base_url,
                 headers={**self.headers, "Content-Type": "application/json"},
                 json={"prefixes": prefixes},
@@ -96,7 +102,7 @@ class SupabaseStorage:
     def signed_download_url(self, key: str, filename: str, expires_in: int = 60) -> str:
         """Create a short-lived URL so the browser downloads from Storage directly."""
         try:
-            response = httpx.post(
+            response = self._client.post(
                 f"{settings.supabase_url.rstrip('/')}/storage/v1/object/sign/{self.bucket}/{quote(key, safe='/')}",
                 headers={**self.headers, "Content-Type": "application/json"},
                 json={"expiresIn": expires_in},
