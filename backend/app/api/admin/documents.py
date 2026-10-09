@@ -291,6 +291,49 @@ def pre_generate_activity_documents(
     admin: Admin = Depends(current_active_admin),
 ) -> ActivityPreGenerationResponse:
     """Render a small bounded batch before a public link is shared."""
+    return _pre_generate_activity_document_batch(
+        activity_id,
+        document_type=DocumentType.ACTIVITY_CERTIFICATE,
+        rendering_profile="default",
+        audit_event_type="ACTIVITY_DOCUMENTS_PREGENERATED",
+        limit=limit,
+        db=db,
+        admin=admin,
+    )
+
+
+@router.post(
+    "/activities/{activity_id}/pre-generate-ec",
+    response_model=ActivityPreGenerationResponse,
+)
+def pre_generate_ec_documents(
+    activity_id: UUID,
+    limit: int = 5,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(current_active_admin),
+) -> ActivityPreGenerationResponse:
+    """Render a bounded batch of issued EC certificates before students download."""
+    return _pre_generate_activity_document_batch(
+        activity_id,
+        document_type=DocumentType.EXECUTIVE_COUNCIL_CERTIFICATE,
+        rendering_profile="executive_council",
+        audit_event_type="ACTIVITY_EC_DOCUMENTS_PREGENERATED",
+        limit=limit,
+        db=db,
+        admin=admin,
+    )
+
+
+def _pre_generate_activity_document_batch(
+    activity_id: UUID,
+    *,
+    document_type: DocumentType,
+    rendering_profile: str,
+    audit_event_type: str,
+    limit: int,
+    db: Session,
+    admin: Admin,
+) -> ActivityPreGenerationResponse:
     if limit < 1 or limit > 20:
         raise HTTPException(status_code=422, detail="Batch size must be between 1 and 20")
     activity = db.get(Activity, activity_id)
@@ -301,7 +344,7 @@ def pre_generate_activity_documents(
             select(IssuedDocument)
             .where(
                 IssuedDocument.activity_id == activity.id,
-                IssuedDocument.document_type == DocumentType.ACTIVITY_CERTIFICATE,
+                IssuedDocument.document_type == document_type,
                 IssuedDocument.status == DocumentStatus.VALID,
             )
             .order_by(IssuedDocument.created_at)
@@ -316,7 +359,12 @@ def pre_generate_activity_documents(
         document_id = document.id
         try:
             student = db.get(Student, document.student_id)
-            template = db.get(Template, document.template_id or activity.template_id)
+            template_id = document.template_id or (
+                activity.template_id
+                if document_type is DocumentType.ACTIVITY_CERTIFICATE
+                else None
+            )
+            template = db.get(Template, template_id) if template_id is not None else None
             if student is None or template is None:
                 raise DocumentLifecycleError("The issued document is missing its student or template")
             fields = list(db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all())
@@ -325,6 +373,8 @@ def pre_generate_activity_documents(
             except json.JSONDecodeError as error:
                 raise DocumentLifecycleError("The reserved certificate data is unavailable") from error
             if not values:
+                if document_type is DocumentType.EXECUTIVE_COUNCIL_CERTIFICATE:
+                    raise DocumentLifecycleError("The reserved EC certificate data is unavailable")
                 values = {
                     "student_name": student.full_name,
                     "roll_number": student.roll_number,
@@ -349,6 +399,7 @@ def pre_generate_activity_documents(
                 public_base_url=settings.public_app_url,
                 actor_admin_id=admin.id,
                 image_values=image_values,
+                rendering_profile=rendering_profile,
             )
             db.commit()
             generated += 1
@@ -360,10 +411,14 @@ def pre_generate_activity_documents(
     record_audit_event(
         db,
         actor_admin_id=admin.id,
-        event_type="ACTIVITY_DOCUMENTS_PREGENERATED",
+        event_type=audit_event_type,
         entity_type="activity",
         entity_id=activity.id,
-        payload={"generated_count": generated, "failed_document_ids": [str(item) for item in failed_document_ids]},
+        payload={
+            "document_type": document_type.value,
+            "generated_count": generated,
+            "failed_document_ids": [str(item) for item in failed_document_ids],
+        },
     )
     db.commit()
     return ActivityPreGenerationResponse(
