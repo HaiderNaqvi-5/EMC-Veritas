@@ -1,21 +1,17 @@
-import { lazy, Suspense, useEffect } from "react";
+import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { warmReadiness } from "../lib/api/client";
+import { AdminPortal } from "./AdminPortal";
 import { StudentPortal } from "./StudentPortal";
-
-// The public student portal is the busiest route. Keep its initial bundle
-// focused on the student flow; admin and verification workspaces load only
-// when their routes are visited.
-const AdminPortal = lazy(() => import("./AdminPortal").then(({ AdminPortal }) => ({ default: AdminPortal })));
-const AdminLogin = lazy(() => import("./AdminLogin").then(({ AdminLogin }) => ({ default: AdminLogin })));
-const VerifyDocument = lazy(() => import("./VerifyDocument").then(({ VerifyDocument }) => ({ default: VerifyDocument })));
-const VerifyPortal = lazy(() => import("./VerifyPortal").then(({ VerifyPortal }) => ({ default: VerifyPortal })));
+import { VerifyDocument } from "./VerifyDocument";
+import { VerifyPortal } from "./VerifyPortal";
+import { AdminLogin } from "./AdminLogin";
 
 export function App() {
   useEffect(() => {
     warmReadiness();
   }, []);
-  return (<Suspense fallback={null}>
+  return (
     <Routes>
       <Route path="/" element={<StudentPortal />} />
       <Route path="/verify" element={<VerifyPortal />} />
@@ -25,5 +21,5 @@ export function App() {
       <Route path="/student-login" element={<Navigate to="/" replace />} />
       <Route path="/activate" element={<Navigate to="/" replace />} />
     </Routes>
-  </Suspense>);
+  );
 }
