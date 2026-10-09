@@ -1,0 +1,3 @@
+## 2026-10-09 - External Storage N+1 in Batch Document Generation
+**Learning:** In backend document generation loops (like `pre_generate_activity_documents`), repeatedly fetching identical template PDFs and signature images via `storage.download` inside a loop leads to severe network I/O bottlenecks. Supabase storage requests typically add hundreds of milliseconds each, turning a small batch of 20 documents into a multi-second operation.
+**Action:** Always maintain an in-memory dictionary `download_cache` to memoize storage downloads across loop iterations for identical storage keys (templates, signature images) in batch operations.
