@@ -1,151 +1,20 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { apiRequest, deleteApiResource } from "../../lib/api/client";
 import { canonicalRollNumber } from "../../lib/utils";
-
-type Student = {
-  id: string;
-  roll_number: string;
-  full_name: string;
-  active: boolean;
-};
-
+type Student = { id: string; roll_number: string; full_name: string; active: boolean };
+const pageSize = 15;
 export function StudentsPage() {
-  const client = useQueryClient();
-  const [rollNumber, setRollNumber] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [editingId, setEditingId] = useState("");
-  const [editRollNumber, setEditRollNumber] = useState("");
-  const [editFullName, setEditFullName] = useState("");
-  const query = useQuery({
-    queryKey: ["admin", "students"],
-    queryFn: () => apiRequest<Student[]>("/admin/students"),
-  });
-  const create = useMutation({
-    mutationFn: () =>
-      apiRequest<Student>("/admin/students", {
-        method: "POST",
-        body: JSON.stringify({ roll_number: rollNumber, full_name: fullName }),
-      }),
-    onSuccess: () => {
-      setRollNumber("");
-      setFullName("");
-      void client.invalidateQueries({ queryKey: ["admin", "students"] });
-    },
-  });
-  const deactivate = useMutation({
-    mutationFn: (id: string) =>
-      apiRequest<Student>(`/admin/students/${id}/deactivate`, {
-        method: "POST",
-      }),
-    onSuccess: () =>
-      void client.invalidateQueries({ queryKey: ["admin", "students"] }),
-  });
-  const update = useMutation({
-    mutationFn: (id: string) => apiRequest<Student>(`/admin/students/${id}`, {
-      method: "PUT",
-      body: JSON.stringify({ roll_number: editRollNumber, full_name: editFullName }),
-    }),
-    onSuccess: () => {
-      setEditingId("");
-      void client.invalidateQueries({ queryKey: ["admin", "students"] });
-    },
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) => deleteApiResource(`/admin/students/${id}`),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["admin", "students"] }),
-  });
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    create.mutate();
-  }
-  return (
-    <section>
-      <h1 className="text-3xl font-bold">Students</h1>
-      <p className="mt-2 text-slate-600 dark:text-slate-400">
-        Create, review, and deactivate EMC student records.
-      </p>
-      <form
-        className="mt-6 grid gap-3 rounded-xl border p-4 md:grid-cols-3"
-        onSubmit={submit}
-      >
-        <input
-          required
-          value={rollNumber}
-          onChange={(e) => setRollNumber(canonicalRollNumber(e.target.value))}
-          placeholder="Roll number"
-          className="rounded border p-2"
-        />
-        <input
-          required
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-          placeholder="Full name"
-          className="rounded border p-2"
-        />
-        <button
-          disabled={create.isPending}
-          className="rounded bg-slate-900 p-2 text-white"
-        >
-          Add student
-        </button>
-        {create.isError && (
-          <p role="alert" className="text-red-700 md:col-span-3">
-            {create.error.message}
-          </p>
-        )}
-      </form>
-      {query.isLoading ? (
-        <Skeleton className="mt-6 h-48 w-full" />
-      ) : query.isError ? (
-        <p role="alert" className="mt-6 rounded-lg bg-red-50 p-4 text-red-700">
-          {query.error.message}
-        </p>
-      ) : (
-        <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b">
-                <th className="p-4">Roll number</th>
-                <th className="p-4">Student</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {query.data?.map((student) => (
-                <tr key={student.id} className="border-b last:border-0">
-                  <td className="p-4">{editingId === student.id ? <input required aria-label="Edit roll number" value={editRollNumber} onChange={(event) => setEditRollNumber(canonicalRollNumber(event.target.value))} className="w-full rounded border p-2"/> : student.roll_number}</td>
-                  <td className="p-4">{editingId === student.id ? <input required aria-label="Edit student name" value={editFullName} onChange={(event) => setEditFullName(event.target.value)} className="w-full rounded border p-2"/> : student.full_name}</td>
-                  <td className="p-4">
-                    {student.active ? "Active" : "Deactivated"}
-                  </td>
-                  <td className="p-4">
-                    {editingId === student.id ? (
-                      <span className="flex flex-wrap gap-3">
-                        <button onClick={() => update.mutate(student.id)} disabled={update.isPending || !editRollNumber.trim() || !editFullName.trim()} className="font-semibold underline">{update.isPending ? "Saving…" : "Save"}</button>
-                        <button onClick={() => { setEditingId(""); update.reset(); }} disabled={update.isPending} className="underline">Cancel</button>
-                      </span>
-                    ) : student.active ? (
-                      <span className="flex flex-wrap gap-3">
-                        <button onClick={() => { setEditingId(student.id); setEditRollNumber(student.roll_number); setEditFullName(student.full_name); update.reset(); }} className="underline">Edit</button>
-                        <button onClick={() => deactivate.mutate(student.id)} disabled={deactivate.isPending} className="underline">Deactivate</button>
-                      </span>
-                    ) : (
-                      <span className="flex flex-wrap gap-3">
-                        <button onClick={() => { setEditingId(student.id); setEditRollNumber(student.roll_number); setEditFullName(student.full_name); update.reset(); }} className="underline">Edit</button>
-                        <button onClick={() => { if (window.confirm(`Delete ${student.full_name}? This cannot be undone.`)) remove.mutate(student.id); }} disabled={remove.isPending} className="text-red-700 underline disabled:opacity-60">Delete</button>
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {update.isError && <p role="alert" className="border-t bg-red-50 p-4 text-red-700">{update.error.message}</p>}
-        </div>
-      )}
-    </section>
-  );
+  const client = useQueryClient(); const [rollNumber, setRollNumber] = useState(""); const [fullName, setFullName] = useState(""); const [editingId, setEditingId] = useState(""); const [editRollNumber, setEditRollNumber] = useState(""); const [editFullName, setEditFullName] = useState(""); const [search, setSearch] = useState(""); const [statusFilter, setStatusFilter] = useState("all"); const [page, setPage] = useState(1);
+  const query = useQuery({ queryKey: ["admin", "students"], queryFn: () => apiRequest<Student[]>("/admin/students") });
+  const create = useMutation({ mutationFn: () => apiRequest<Student>("/admin/students", { method: "POST", body: JSON.stringify({ roll_number: rollNumber, full_name: fullName }) }), onSuccess: () => { setRollNumber(""); setFullName(""); void client.invalidateQueries({ queryKey: ["admin", "students"] }); } });
+  const deactivate = useMutation({ mutationFn: (id: string) => apiRequest<Student>(`/admin/students/${id}/deactivate`, { method: "POST" }), onSuccess: () => void client.invalidateQueries({ queryKey: ["admin", "students"] }) });
+  const update = useMutation({ mutationFn: (id: string) => apiRequest<Student>(`/admin/students/${id}`, { method: "PUT", body: JSON.stringify({ roll_number: editRollNumber, full_name: editFullName }) }), onSuccess: () => { setEditingId(""); void client.invalidateQueries({ queryKey: ["admin", "students"] }); } });
+  const remove = useMutation({ mutationFn: (id: string) => deleteApiResource(`/admin/students/${id}`), onSuccess: () => void client.invalidateQueries({ queryKey: ["admin", "students"] }) });
+  const filtered = useMemo(() => { const term = search.trim().toLowerCase(); return (query.data ?? []).filter((student) => (statusFilter === "all" || (statusFilter === "active") === student.active) && (!term || student.roll_number.toLowerCase().includes(term) || student.full_name.toLowerCase().includes(term))); }, [query.data, search, statusFilter]);
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize)); useEffect(() => { setPage(1); }, [search, statusFilter]); useEffect(() => { setPage((current) => Math.min(current, pages)); }, [pages]); const shown = filtered.slice((page - 1) * pageSize, page * pageSize);
+  return <section><div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-3xl font-bold">Students</h1><p className="mt-2 text-slate-600 dark:text-slate-400">Create, review, and deactivate EMC student records.</p></div>{query.isSuccess && <p className="text-sm text-slate-500">{filtered.length} result{filtered.length === 1 ? "" : "s"}</p>}</div>
+    <form className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900" onSubmit={(event: FormEvent) => { event.preventDefault(); create.mutate(); }}><h2 className="font-semibold">Add student</h2><div className="mt-3 grid gap-3 md:grid-cols-3"><input required value={rollNumber} onChange={(e) => setRollNumber(canonicalRollNumber(e.target.value))} placeholder="Roll number" className="rounded-lg border p-2.5" /><input required value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name" className="rounded-lg border p-2.5" /><button disabled={create.isPending} className="rounded-lg bg-indigo-600 p-2.5 font-semibold text-white disabled:opacity-60">{create.isPending ? "Adding…" : "Add student"}</button></div>{create.isError && <p role="alert" className="mt-3 text-sm text-red-700">{create.error.message}</p>}</form>
+    {query.isLoading ? <Skeleton className="mt-6 h-64 w-full" /> : query.isError ? <div role="alert" className="mt-6 rounded-xl bg-red-50 p-4 text-red-700 dark:bg-red-950/30 dark:text-red-200">Could not load students: {query.error.message}<button onClick={() => void query.refetch()} className="ml-3 underline">Retry</button></div> : <><div className="mt-6 flex flex-wrap gap-3"><input aria-label="Search students" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search roll number or name" className="min-w-60 flex-1 rounded-lg border p-2.5" /><select aria-label="Student status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-lg border p-2.5"><option value="all">All statuses</option><option value="active">Active</option><option value="deactivated">Deactivated</option></select></div><div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"><table className="w-full min-w-[640px] text-left text-sm"><thead className="bg-slate-50 dark:bg-slate-800"><tr><th className="p-4">Roll number</th><th className="p-4">Student</th><th className="p-4">Status</th><th className="p-4">Actions</th></tr></thead><tbody>{shown.map((student) => <tr key={student.id} className="border-t border-slate-200 dark:border-slate-800"><td className="p-4">{editingId === student.id ? <input required aria-label="Edit roll number" value={editRollNumber} onChange={(event) => setEditRollNumber(canonicalRollNumber(event.target.value))} className="w-full rounded border p-2" /> : student.roll_number}</td><td className="p-4">{editingId === student.id ? <input required aria-label="Edit student name" value={editFullName} onChange={(event) => setEditFullName(event.target.value)} className="w-full rounded border p-2" /> : student.full_name}</td><td className="p-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${student.active ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" : "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-100"}`}>{student.active ? "Active" : "Deactivated"}</span></td><td className="p-4">{editingId === student.id ? <span className="flex gap-2"><button onClick={() => update.mutate(student.id)} disabled={update.isPending || !editRollNumber.trim() || !editFullName.trim()} className="rounded bg-indigo-600 px-3 py-1.5 text-white disabled:opacity-60">{update.isPending ? "Saving…" : "Save"}</button><button onClick={() => { setEditingId(""); update.reset(); }} disabled={update.isPending} className="rounded border px-3 py-1.5">Cancel</button></span> : <span className="flex flex-wrap gap-2"><button onClick={() => { setEditingId(student.id); setEditRollNumber(student.roll_number); setEditFullName(student.full_name); update.reset(); }} className="rounded border px-3 py-1.5">Edit</button>{student.active ? <button onClick={() => deactivate.mutate(student.id)} disabled={deactivate.isPending} className="rounded border border-amber-600 px-3 py-1.5 text-amber-800 disabled:opacity-60">{deactivate.isPending ? "Deactivating…" : "Deactivate"}</button> : <button onClick={() => { if (window.confirm(`Delete ${student.full_name}? This cannot be undone.`)) remove.mutate(student.id); }} disabled={remove.isPending} className="rounded border border-red-600 px-3 py-1.5 text-red-700 disabled:opacity-60">{remove.isPending ? "Deleting…" : "Delete"}</button>}</span>}</td></tr>)}</tbody></table>{!shown.length && <p className="p-6 text-center text-sm text-slate-500">No students match the current search and filter.</p>}{update.isError && <p role="alert" className="border-t bg-red-50 p-4 text-red-700">{update.error.message}</p>}</div>{filtered.length > pageSize && <nav aria-label="Student pagination" className="mt-4 flex items-center justify-between"><button disabled={page === 1} onClick={() => setPage((current) => current - 1)} className="rounded border px-3 py-2 disabled:opacity-50">Previous</button><span className="text-sm text-slate-500">Page {page} of {pages}</span><button disabled={page === pages} onClick={() => setPage((current) => current + 1)} className="rounded border px-3 py-2 disabled:opacity-50">Next</button></nav>}</>}</section>;
 }

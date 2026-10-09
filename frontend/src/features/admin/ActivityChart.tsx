@@ -1,5 +1,2 @@
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-
-export default function ActivityChart({ data }: { data: { status: string; count: number }[] }) {
-  return <div className="mt-6 h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={data}><XAxis dataKey="status"/><YAxis allowDecimals={false}/><Tooltip/><Bar dataKey="count" fill="#4f46e5" radius={[4, 4, 0, 0]}/></BarChart></ResponsiveContainer></div>;
-}
+export default function ActivityChart({ data }: { data: { status: string; count: number }[] }) { return <><div className="mt-5 h-52" aria-label="Activity counts by lifecycle status"><ResponsiveContainer width="100%" height="100%"><BarChart data={data} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}><XAxis dataKey="status" tick={{ fill: "currentColor", fontSize: 12 }} /><YAxis allowDecimals={false} tick={{ fill: "currentColor", fontSize: 12 }} /><Tooltip formatter={(value) => [value, "Activities"]} /><Bar dataKey="count" name="Activities" fill="#4f46e5" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div><ul className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">{data.map((item) => <li key={item.status} className="rounded bg-slate-100 px-2 py-1.5 text-slate-700 dark:bg-slate-800 dark:text-slate-200"><span className="font-semibold">{item.status}</span>: {item.count}</li>)}</ul></>; }
