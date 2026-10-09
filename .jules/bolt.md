@@ -1,0 +1,3 @@
+## 2024-03-01 - Prevent Eager I/O During N+1 Optimizations
+**Learning:** When resolving an N+1 query problem that guards an expensive I/O operation (like `storage.download` for conditionally replaced signatures), eagerly executing the I/O within the bulk-fetch helper undermines the optimization. It causes unnecessary network delay and memory bloat for records that won't actually use the downloaded file.
+**Action:** When fixing N+1 queries, only bulk-fetch the *metadata* (e.g., storage keys). Let the expensive file downloads remain lazy and conditional inside the iteration loop, using the pre-fetched keys.
