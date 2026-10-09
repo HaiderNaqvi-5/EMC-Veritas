@@ -20,6 +20,12 @@ class CertificateRenderingError(ValueError):
 
 
 _EC_FAREWELL_SOURCE_SHA256 = "059cc123ef015af1fb8178664ac7b9650a043bfd23ec4d8c8a5c4c87c234a6f6"
+_BOLD_CERTIFICATE_FIELDS = {
+    "student_name",
+    "roll_number",
+    "activity_name",
+    "activity_date",
+}
 
 
 def _text_width(text: str, size: float, font_family: str, font_bytes: bytes | None = None) -> float:
@@ -167,13 +173,27 @@ def _insert_text(
         # original tag's visual left edge after the decimal coordinate rounds.
         x = field.x + 1
     point = fitz.Point(x, baseline_y)
+    if field.field_name in _BOLD_CERTIFICATE_FIELDS:
+        # Dynamic identity/activity values must remain visually distinct even
+        # when an uploaded template provides only one font face. Avoid adding
+        # a stroke when the selected source/custom font is already bold.
+        font_is_bold = False
+        if font_bytes is not None:
+            try:
+                font_is_bold = "bold" in getattr(
+                    fitz.Font(fontbuffer=font_bytes), "name", ""
+                ).lower()
+            except (RuntimeError, ValueError):
+                pass
+        emphasize = not font_is_bold
+    text_color = _color(getattr(field, "text_color", "#000000"))
     if tracking > 0:
         character_x = point.x
         for character in value:
             page.insert_text(
                 fitz.Point(character_x, point.y), character,
                 fontname=font_name, fontsize=font_size,
-                color=_color(getattr(field, "text_color", "#000000")),
+                color=text_color, fill=text_color,
                 render_mode=2 if emphasize else 0,
                 border_width=0.04 if emphasize else 1,
             )
@@ -184,7 +204,8 @@ def _insert_text(
             value,
             fontname=font_name,
             fontsize=font_size,
-            color=_color(getattr(field, "text_color", "#000000")),
+            color=text_color,
+            fill=text_color,
             render_mode=2 if emphasize else 0,
             border_width=0.04 if emphasize else 1,
         )
@@ -1113,6 +1134,7 @@ def _render_tagged_paragraph(
     lineheight: float,
     font_name: str,
     font_bytes: bytes | None,
+    bold_font_bytes: bytes | None = None,
     source_bold_words: set[str] | None = None,
     calibri_compatible: bool = False,
     tracking: float = 0,
@@ -1124,8 +1146,8 @@ def _render_tagged_paragraph(
         bold_font_bytes = (asset_directory / "Carlito-Bold.ttf").read_bytes()
     elif font_bytes is None:
         font_bytes = (Path(__file__).resolve().parents[2] / "assets" / "IBMPlexSans-Medium.ttf").read_bytes()
-        bold_font_bytes = font_bytes
-    else:
+        bold_font_bytes = bold_font_bytes or font_bytes
+    elif bold_font_bytes is None:
         bold_font_bytes = font_bytes
     try:
         page.insert_font(fontname=font_name, fontbuffer=font_bytes)
@@ -1222,8 +1244,9 @@ def _render_tagged_paragraph(
                     character_name = primary_name if character_font is primary_font else fallback_name
                     page.insert_text(
                         fitz.Point(character_x, baseline), character,
-                        fontname=character_name, fontsize=size, color=color,
-                        render_mode=0, border_width=1,
+                        fontname=character_name, fontsize=size, color=color, fill=color,
+                        render_mode=2 if bold and bold_font_bytes == font_bytes else 0,
+                        border_width=0.04 if bold and bold_font_bytes == font_bytes else 1,
                     )
                     character_x += character_font.text_length(character, fontsize=size) + tracking
             else:
@@ -1233,8 +1256,9 @@ def _render_tagged_paragraph(
                     fontname=word_font_name,
                     fontsize=size,
                     color=color,
-                    render_mode=0,
-                    border_width=1,
+                    fill=color,
+                    render_mode=2 if bold and bold_font_bytes == font_bytes else 0,
+                    border_width=0.04 if bold and bold_font_bytes == font_bytes else 1,
                 )
             x += word_width
         baseline += size * lineheight
@@ -1263,11 +1287,12 @@ def _render_activity_paragraph(
             # The normal rendering path will raise a clear error if the source
             # font itself is unreadable. This probe only selects an override.
             pass
+    bold_font_bytes = None
     if "boston angel" in source_font_name:
         # The source Canva file embeds only a subset of Boston Angel. Use the
         # complete font supplied for EMC templates so every replacement value
         # is genuinely Boston Angel, including roll-number digits and hyphens.
-        font_bytes = (
+        bold_font_bytes = (
             Path(__file__).resolve().parents[2] / "assets" / "Boston Angel Bold.ttf"
         ).read_bytes()
         font_size = 15.8
@@ -1283,7 +1308,12 @@ def _render_activity_paragraph(
         font_name = "EMCActivityBody"
     else:
         font_name = "EMCActivityBody"
-    _render_tagged_paragraph(page, rectangle, text, values, tagged_names, font_size, rgb, align=fitz.TEXT_ALIGN_CENTER, lineheight=lineheight, font_name=font_name, font_bytes=font_bytes, tracking=tracking)
+    _render_tagged_paragraph(
+        page, rectangle, text, values, tagged_names, font_size, rgb,
+        align=fitz.TEXT_ALIGN_CENTER, lineheight=lineheight,
+        font_name=font_name, font_bytes=font_bytes,
+        bold_font_bytes=bold_font_bytes, tracking=tracking,
+    )
 
 
 def _render_ec_farewell_paragraph(
@@ -1291,9 +1321,15 @@ def _render_ec_farewell_paragraph(
     rectangle: fitz.Rect,
     text: str,
     font_bytes: bytes,
+    values: Mapping[str, str],
+    tagged_names: set[str],
 ) -> None:
     """Render the fixed EC paragraph with the source design's exact rhythm."""
     font = fitz.Font(fontbuffer=font_bytes)
+    bold_font_bytes = (
+        Path(__file__).resolve().parents[2] / "assets" / "Boston Angel Bold.ttf"
+    ).read_bytes()
+    bold_font = fitz.Font(fontbuffer=bold_font_bytes)
     size = 13.0
     tracking = 2.2
     lines = text.splitlines()
@@ -1305,16 +1341,27 @@ def _render_ec_farewell_paragraph(
     writer = fitz.TextWriter(page.rect)
     baseline = rectangle.y0 + size
     for line in lines:
-        width = sum(font.text_length(character, fontsize=size) for character in line)
+        bold_characters = [False] * len(line)
+        for field_name in tagged_names & _BOLD_CERTIFICATE_FIELDS:
+            value = values.get(field_name, "")
+            start = line.find(value) if value else -1
+            while start >= 0:
+                bold_characters[start : start + len(value)] = [True] * len(value)
+                start = line.find(value, start + len(value))
+        width = sum(
+            (bold_font if bold else font).text_length(character, fontsize=size)
+            for character, bold in zip(line, bold_characters, strict=True)
+        )
         width += tracking * max(0, len(line) - 1)
         if width > rectangle.width:
             raise CertificateRenderingError(
                 "EC Farewell paragraph does not fit its dedicated template area"
             )
         x = rectangle.x0 + (rectangle.width - width) / 2
-        for character in line:
-            writer.append((x, baseline), character, font=font, fontsize=size)
-            x += font.text_length(character, fontsize=size) + tracking
+        for character, bold in zip(line, bold_characters, strict=True):
+            character_font = bold_font if bold else font
+            writer.append((x, baseline), character, font=character_font, fontsize=size)
+            x += character_font.text_length(character, fontsize=size) + tracking
         baseline += line_step
     writer.write_text(page, color=(0x45 / 255, 0x45 / 255, 0x45 / 255))
 
@@ -1604,7 +1651,12 @@ def render_certificate(
                 if font_bytes is None:
                     raise CertificateRenderingError("EC Farewell paragraph font is unavailable")
                 _render_ec_farewell_paragraph(
-                    document[page_number - 1], rectangle, text, font_bytes
+                    document[page_number - 1],
+                    rectangle,
+                    text,
+                    font_bytes,
+                    normalized_values,
+                    replaced_names,
                 )
             else:
                 _render_activity_paragraph(

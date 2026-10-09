@@ -43,6 +43,33 @@ def test_activity_paragraph_uses_complete_boston_angel_at_15_point_8() -> None:
     assert abs(span["size"] - 15.8) < 0.01
 
 
+def test_student_name_is_bold_when_template_only_has_a_regular_font() -> None:
+    document = fitz.open()
+    document.new_page(width=300, height=200)
+    template = document.tobytes()
+    document.close()
+    field = SimpleNamespace(
+        field_name="student_name", page_number=1, x=20, y=40, width=200, height=30,
+        font_family="helv", custom_font_storage_key=None, font_size=14,
+        text_color="#000000",
+    )
+
+    output = render_certificate(
+        template,
+        [field],
+        {"student_name": "Test Student"},
+        verification_url="https://example.test/verify/test",
+        required_field_names=frozenset(),
+    )
+
+    rendered = fitz.open(stream=output, filetype="pdf")
+    content = b"\n".join(
+        rendered.xref_stream(xref) for xref in rendered[0].get_contents()
+    )
+    rendered.close()
+    assert b" 2 Tr " in content
+
+
 def test_ec_farewell_preset_parses_the_source_paragraph_before_substitution() -> None:
     document = fitz.open()
     page = document.new_page(width=842.25, height=595.5)
@@ -650,12 +677,28 @@ def test_ec_farewell_signature_replacement_preserves_authored_names() -> None:
     )
 
     rendered = fitz.open(stream=output, filetype="pdf")
-    text = rendered[0].get_text().upper()
+    page = rendered[0]
+    text = page.get_text().upper()
+    paragraph_spans = [
+        span
+        for block in page.get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for span in line["spans"]
+        if 280 <= span["bbox"][1] <= 400
+    ]
+    bold_paragraph_text = "".join(
+        span["text"]
+        for span in paragraph_spans
+        if "bold" in span["font"].lower()
+    ).replace(" ", "")
     rendered.close()
     assert "AMNA ZULFIQAR" in text
     assert "DR. NAEEM ASLAM" in text
     assert "{{SIGNATURE_DSA}}" not in text
     assert "{{SIGNATURE_HOD}}" not in text
+    assert "2K23-BSCS-104" in bold_paragraph_text
+    assert "Youm-e-Hussain" in bold_paragraph_text
+    assert "2026-10-09" in bold_paragraph_text
 
 
 def test_rendering_expands_a_saved_tiny_qr_tag_box_to_its_panel() -> None:
