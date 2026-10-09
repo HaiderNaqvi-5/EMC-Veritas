@@ -11,7 +11,16 @@ def sqlalchemy_database_url(url: str) -> str:
     return url
 
 
-engine = create_engine(sqlalchemy_database_url(settings.database_url), pool_pre_ping=True, pool_size=5, max_overflow=5)
+# Public certificate releases can send dozens of independent student lookups at
+# once. Keep enough checked connections available that those short reads do not
+# queue behind a ten-connection ceiling; 20 remains well within the managed
+# Postgres connection budget used by this service.
+engine = create_engine(
+    sqlalchemy_database_url(settings.database_url),
+    pool_pre_ping=True,
+    pool_size=20,
+    max_overflow=0,
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
