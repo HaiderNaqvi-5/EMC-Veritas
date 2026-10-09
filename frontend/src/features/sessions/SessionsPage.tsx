@@ -71,6 +71,7 @@ export function SessionsPage() {
   }
   const error =
     create.error?.message ?? close.error?.message ?? update.error?.message;
+  const activeSession = query.data?.find((item) => item.status === "ACTIVE");
   return (
     <section>
       <h1 className="text-3xl font-bold">Sessions</h1>
@@ -78,8 +79,9 @@ export function SessionsPage() {
         Only one EMC session can be active at a time. Historical sessions stay
         retained.
       </p>
+      {query.isLoading ? <Skeleton className="mt-6 h-32 w-full" /> : query.isError ? <div role="alert" className="mt-6 rounded-xl bg-red-50 p-4 text-red-700 dark:bg-red-950/30 dark:text-red-200">Could not load sessions. {query.error.message}<button onClick={() => void query.refetch()} className="ml-2 underline">Retry</button></div> : activeSession ? <section className="mt-6 rounded-xl border border-indigo-200 bg-indigo-50 p-5 dark:border-indigo-900 dark:bg-indigo-950/30"><p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Current session</p><h2 className="mt-1 text-xl font-bold">{activeSession.name}</h2><p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{activeSession.start_date} to {activeSession.end_date} · Status: {activeSession.status}</p><p className="mt-3 text-sm text-slate-600 dark:text-slate-300">Closing ends this active session’s lifecycle. Historical records remain available.</p></section> : <section className="mt-6 rounded-xl border border-dashed p-5 text-sm text-slate-500">No active session. Create one when the next EMC term is ready to begin.</section>}
       <form
-        className="mt-6 grid gap-3 rounded-xl border p-4 md:grid-cols-4"
+        className={`mt-6 grid gap-3 rounded-xl border p-4 md:grid-cols-4 ${activeSession ? "bg-slate-50 opacity-75 dark:bg-slate-900" : "bg-white dark:bg-slate-900"}`}
         onSubmit={submit}
       >
         <input
@@ -109,22 +111,19 @@ export function SessionsPage() {
           className="rounded bg-slate-900 p-2 text-white"
           disabled={create.isPending}
         >
-          Create active session
+          {create.isPending ? "Creating…" : "Create active session"}
         </button>
       </form>
+      {activeSession && <p className="mt-2 text-sm text-slate-500">Only one session may be active at a time.</p>}
       {error && (
         <p role="alert" className="mt-3 text-red-700">
           {error}
         </p>
       )}
-      {query.isLoading ? (
-        <Skeleton className="mt-6 h-40 w-full" />
-      ) : query.isError ? (
-        <p role="alert" className="mt-6 text-red-700">
-          {query.error.message}
-        </p>
-      ) : (
+      {!query.isLoading && !query.isError && (
         <ul className="mt-6 space-y-2">
+          <h2 className="text-lg font-semibold">Session history</h2>
+          {!query.data?.length && <li className="rounded-xl border border-dashed p-4 text-sm text-slate-500">No sessions have been created yet.</li>}
           {query.data?.map((item) => (
             <li key={item.id} className="rounded border p-3">
               <div className="flex items-center justify-between gap-3">
@@ -136,9 +135,9 @@ export function SessionsPage() {
                   <button
                     disabled={close.isPending}
                     onClick={() => close.mutate(item.id)}
-                    className="underline"
+                    className="rounded border border-red-600 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
                   >
-                    Close session
+                    {close.isPending ? "Closing…" : "Close session"}
                   </button>
                 )}
               </div>
