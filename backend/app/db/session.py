@@ -13,6 +13,11 @@ def sqlalchemy_database_url(url: str) -> str:
     return url
 
 
+def alembic_config_url(url: str) -> str:
+    """Escape percent signs because Alembic stores URLs in ConfigParser."""
+    return sqlalchemy_database_url(url).replace("%", "%%")
+
+
 database_url = sqlalchemy_database_url(settings.database_url)
 
 # Supabase's transaction pooler (port 6543) multiplexes short database
