@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse, StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.rate_limit import limiter
@@ -54,7 +54,15 @@ def _signature_images_for_document(
 @router.get("/students/{roll_number}/documents", response_model=StudentDocumentsResponse)
 @limiter.limit("30/minute")
 def student_documents(request: Request, roll_number: str, db: Session = Depends(get_db)) -> StudentDocumentsResponse:
-    student = db.scalar(select(Student).where(func.upper(Student.roll_number) == normalize_roll_number(roll_number), Student.active.is_(True)))
+    # Roll numbers are canonicalized on every write, so compare the normalized
+    # input directly. This keeps the public release-burst lookup index-backed
+    # instead of applying a SQL function to the indexed column.
+    student = db.scalar(
+        select(Student).where(
+            Student.roll_number == normalize_roll_number(roll_number),
+            Student.active.is_(True),
+        )
+    )
     if student is None:
         raise HTTPException(status_code=404, detail="Student record not found")
 
