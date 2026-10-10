@@ -12,5 +12,5 @@ import "@fontsource/public-sans/latin-700.css";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
-  <QueryClientProvider client={queryClient}><BrowserRouter><App /><ActionFeedback /></BrowserRouter></QueryClientProvider>,
+  <QueryClientProvider client={queryClient}><BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><App /><ActionFeedback /></BrowserRouter></QueryClientProvider>,
 );

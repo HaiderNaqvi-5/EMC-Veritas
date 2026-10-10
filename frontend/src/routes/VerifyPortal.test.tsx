@@ -14,6 +14,7 @@ test("keeps malformed verification IDs on the form and explains the canonical fo
   fireEvent.change(screen.getByLabelText("Verification ID"), { target: { value: "EMC-ABC" } });
   fireEvent.click(screen.getByRole("button", { name: "Verify document" }));
   expect(screen.getByRole("alert")).toHaveTextContent("EMC-A1B2C3D4");
+  expect(screen.getByLabelText("Verification ID")).toHaveFocus();
   expect(screen.queryByText("Verified route")).not.toBeInTheDocument();
 });
 

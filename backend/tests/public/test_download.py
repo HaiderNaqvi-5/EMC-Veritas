@@ -107,7 +107,7 @@ def test_public_download_uses_approved_template_and_commits_cache(monkeypatch) -
 
 def test_public_download_rejects_revoked_document(monkeypatch) -> None:
     document = SimpleNamespace(id=uuid4(), verification_id="EMC-REVOKED", status=DocumentStatus.REVOKED)
-    student = SimpleNamespace(id=uuid4())
+    student = SimpleNamespace(id=uuid4(), roll_number="FA21-BCS-001")
     db = _Db((document, student, object()), object(), [])
     app.dependency_overrides[get_db] = lambda: db
     try:
@@ -125,7 +125,8 @@ def test_public_download_redirects_cached_document_to_storage(monkeypatch) -> No
         status=DocumentStatus.VALID,
         storage_key="issued-documents/cached.pdf",
     )
-    db = _Db((document, SimpleNamespace(id=uuid4()), None), object(), [])
+    student = SimpleNamespace(id=uuid4(), roll_number="FA21-BCS-001")
+    db = _Db((document, student, None), object(), [])
 
     class Storage:
         def signed_download_url(self, key: str, filename: str) -> str:
@@ -136,6 +137,12 @@ def test_public_download_redirects_cached_document_to_storage(monkeypatch) -> No
     import app.api.public.router as public_router
 
     monkeypatch.setattr(public_router, "SupabaseStorage", Storage)
+    recorded: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        public_router,
+        "record_public_usage",
+        lambda db, *, roll_number, event: recorded.append((roll_number, event)),
+    )
     app.dependency_overrides[get_db] = lambda: db
     try:
         response = _client_for().get(
@@ -146,6 +153,7 @@ def test_public_download_redirects_cached_document_to_storage(monkeypatch) -> No
 
     assert response.status_code == 307
     assert response.headers["location"] == "https://storage.example.test/signed.pdf?token=secret"
+    assert recorded == [(student.roll_number, "download")]
 
 
 def test_replacement_signature_download_uses_document_snapshot_assets() -> None:
@@ -185,7 +193,7 @@ def test_public_download_renders_reserved_leadership_template(monkeypatch) -> No
     )
     template = SimpleNamespace(id=document.leadership_template_id, storage_key="leadership/president.pdf", signature_handling="retain")
     fields = [SimpleNamespace(field_name="student_name")]
-    student = SimpleNamespace(id=uuid4())
+    student = SimpleNamespace(id=uuid4(), roll_number="FA21-BCS-001")
     db = _Db((document, student, None), template, fields)
 
     class Storage:

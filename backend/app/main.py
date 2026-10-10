@@ -13,6 +13,7 @@ from app.api.admin.ec_certificates import router as admin_ec_certificates_router
 from app.api.admin.executive import router as admin_executive_router
 from app.api.admin.imports import router as admin_imports_router
 from app.api.admin.leadership_templates import router as admin_leadership_templates_router
+from app.api.admin.overview import router as admin_overview_router
 from app.api.admin.sessions import router as admin_sessions_router
 from app.api.admin.signatories import router as admin_signatories_router
 from app.api.admin.student_recovery import router as admin_student_recovery_router
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_executive_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_imports_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_leadership_templates_router, prefix=f"{settings.api_prefix}/admin")
+    app.include_router(admin_overview_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_sessions_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_signatories_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_students_router, prefix=f"{settings.api_prefix}/admin")

@@ -1,7 +1,9 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { Button } from "../components/ui/Button";
+import { PublicThemeToggle } from "../components/PublicThemeToggle";
+import { usePublicTheme } from "../lib/publicTheme";
 
 function Arrow() {
   return <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-none stroke-current stroke-2"><path d="M3 10h13M11 5l5 5-5 5" /></svg>;
@@ -16,8 +18,10 @@ function VerificationSeal() {
 export function VerifyPortal() {
   const [verificationId, setVerificationId] = useState("");
   const [formatError, setFormatError] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const prefersReducedMotion = useReducedMotion();
+  const { theme, toggleTheme } = usePublicTheme();
 
   const primaryEntrance = prefersReducedMotion ? {} : { initial: { opacity: 0, y: 20 }, animate: { opacity: 1, y: 0 }, transition: { duration: .55 } };
   const recordEntrance = prefersReducedMotion ? {} : { initial: { opacity: 0, y: 24, scale: .98 }, animate: { opacity: 1, y: 0, scale: 1 }, transition: { duration: .7, delay: .12, ease: [0.22, 1, 0.36, 1] } };
@@ -27,6 +31,7 @@ export function VerifyPortal() {
     const id = verificationId.trim().toUpperCase();
     if (!/^EMC-[A-HJ-NP-Z2-9]{8}$/.test(id)) {
       setFormatError("Verification IDs look like EMC-A1B2C3D4 — EMC- followed by 8 characters.");
+      inputRef.current?.focus();
       return;
     }
     setFormatError("");
@@ -34,13 +39,13 @@ export function VerifyPortal() {
   }
 
   return (
-    <main className="verification-v2">
+    <main className={`verification-v2 verification-v2--${theme}`}>
       <header className="verification-v2__header">
         <Link to="/" className="verification-v2__brand">
-          <img src="/assets/logos/emc-logo-dark.png" alt="Event Management Club" />
+          <img src={theme === "dark" ? "/assets/logos/emc-logo-dark.png" : "/assets/logos/emc-logo.png"} alt="Event Management Club" />
           <span><strong>EMC Veritas</strong><small>EVENT MANAGEMENT CLUB · NFC-IET MULTAN</small></span>
         </Link>
-        <Link to="/" className="verification-v2__back">Back to portal <Arrow /></Link>
+        <div className="verification-v2__actions"><PublicThemeToggle theme={theme} onToggle={toggleTheme} compact /><Link to="/" className="verification-v2__back">Back to portal <Arrow /></Link></div>
       </header>
 
       <section className="verification-v2__hero">
@@ -53,7 +58,7 @@ export function VerifyPortal() {
             <form onSubmit={submit} className="verification-v2__form">
               <label htmlFor="verification-id">Verification ID</label>
               <div className="verification-v2__lookup">
-                <input id="verification-id" value={verificationId} onChange={(event) => { setVerificationId(event.target.value); setFormatError(""); }} placeholder="e.g. EMC-A1B2C3D4" autoComplete="off" aria-describedby={formatError ? "verification-id-help verification-id-error" : "verification-id-help"} aria-invalid={formatError ? "true" : undefined} required />
+                <input ref={inputRef} id="verification-id" value={verificationId} onChange={(event) => { setVerificationId(event.target.value); setFormatError(""); }} placeholder="e.g. EMC-A1B2C3D4" autoComplete="off" aria-describedby={formatError ? "verification-id-help verification-id-error" : "verification-id-help"} aria-invalid={formatError ? "true" : undefined} required />
                 <Button type="submit">Verify document <Arrow /></Button>
               </div>
               <p id="verification-id-help">You can find the ID beside the QR code on an issued document.</p>

@@ -1,4 +1,5 @@
 import json
+import logging
 from io import BytesIO
 from threading import Lock
 from time import monotonic
@@ -7,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse, StreamingResponse
 from sqlalchemy import and_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.rate_limit import limiter
@@ -31,11 +33,13 @@ from app.services.executive.letters import (
     leadership_fields_for_rendering,
     required_leadership_template_fields,
 )
+from app.services.public_usage import UsageEvent, record_public_usage
 from app.services.signatures.rendering import should_replace_signatures, signature_field_name
 from app.services.storage.supabase import SupabaseStorage
 from app.services.students import normalize_roll_number
 
 router = APIRouter(prefix="/public", tags=["public"])
+logger = logging.getLogger(__name__)
 
 # The public portal is read-heavy and bursts when results are announced. A
 # tiny per-process snapshot turns a release burst into one database read rather
@@ -44,6 +48,17 @@ _PUBLIC_DOCUMENT_CACHE_TTL_SECONDS = 5.0
 _public_documents_cache: dict[str, StudentDocumentsResponse] = {}
 _public_documents_cache_expires_at = 0.0
 _public_documents_cache_lock = Lock()
+
+
+def _record_usage_safely(db: Session, *, roll_number: str, event: UsageEvent) -> None:
+    """Analytics must never prevent a student from retrieving a valid record."""
+
+    try:
+        record_public_usage(db, roll_number=roll_number, event=event)
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Could not update aggregate public usage metrics")
 
 
 def _signature_images_for_document(
@@ -122,9 +137,11 @@ def student_documents(request: Request, roll_number: str, db: Session = Depends(
     # Roll numbers are canonicalized on every write, so compare the normalized
     # input directly. This keeps the public release-burst lookup index-backed
     # instead of applying a SQL function to the indexed column.
-    response = _cached_public_documents(db, normalize_roll_number(roll_number))
+    normalized_roll_number = normalize_roll_number(roll_number)
+    response = _cached_public_documents(db, normalized_roll_number)
     if response is None:
         raise HTTPException(status_code=404, detail="Student record not found")
+    _record_usage_safely(db, roll_number=normalized_roll_number, event="lookup")
     return response
 
 
@@ -178,6 +195,7 @@ def download_document(request: Request, document_id: UUID, db: Session = Depends
             raise HTTPException(
                 status_code=503, detail="Document storage is temporarily unavailable"
             ) from error
+        _record_usage_safely(db, roll_number=student.roll_number, event="download")
         return RedirectResponse(signed_url, status_code=307)
     leadership_template_id = getattr(document, "leadership_template_id", None)
     if leadership_template_id is not None:
@@ -254,6 +272,8 @@ def download_document(request: Request, document_id: UUID, db: Session = Depends
     except DocumentLifecycleError as error:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(error)) from error
+
+    _record_usage_safely(db, roll_number=student.roll_number, event="download")
 
     return StreamingResponse(
         BytesIO(output),

@@ -1,5 +1,5 @@
-import { FormEvent, type ReactNode, useState } from "react";
-import { motion } from "framer-motion";
+import { FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -10,6 +10,8 @@ import {
 import { Button } from "../components/ui/Button";
 import { Skeleton } from "../components/ui/Skeleton";
 import { canonicalRollNumber } from "../lib/utils";
+import { usePublicTheme } from "../lib/publicTheme";
+import { PublicThemeToggle } from "../components/PublicThemeToggle";
 
 function Arrow() {
   return (
@@ -263,8 +265,19 @@ const archiveChapters = [
   },
 ];
 function ArchiveStory() {
+  const prefersReducedMotion = useReducedMotion();
   const [active, setActive] = useState(0);
+  const chapterRefs = useRef<(HTMLElement | null)[]>([]);
   const current = archiveChapters[active];
+  const moveToChapter = (index: number) => {
+    const nextIndex = Math.max(0, Math.min(archiveChapters.length - 1, index));
+    setActive(nextIndex);
+    chapterRefs.current[nextIndex]?.scrollIntoView({
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+      block: "nearest",
+      inline: "start",
+    });
+  };
   return (
     <section id="document-types" className="archive-story">
       <div className="landing-shell archive-story__grid">
@@ -276,11 +289,20 @@ function ArchiveStory() {
           <div className="archive-story__progress" aria-hidden="true">
             {archiveChapters.map((chapter, index) => <i key={chapter.number} className={index <= active ? "is-active" : ""} />)}
           </div>
+          <div className="archive-story__mobile-controls" aria-label="Archive chapters">
+            <p>Swipe through the records or use the arrows.</p>
+            <div>
+              <button type="button" onClick={() => moveToChapter(active - 1)} disabled={active === 0} aria-label="Previous archive chapter">←</button>
+              <span aria-live="polite">{active + 1} of {archiveChapters.length}</span>
+              <button type="button" onClick={() => moveToChapter(active + 1)} disabled={active === archiveChapters.length - 1} aria-label="Next archive chapter">→</button>
+            </div>
+          </div>
         </div>
-        <div className="archive-story__chapters">
+        <div className="archive-story__chapters" aria-label="Types of EMC records">
           {archiveChapters.map((chapter, index) => (
             <motion.article
               key={chapter.number}
+              ref={(element) => { chapterRefs.current[index] = element; }}
               className={`archive-story__chapter ${index === active ? "is-active" : ""}`}
               initial={{ opacity: 0, y: 38 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -300,7 +322,8 @@ function ArchiveStory() {
   );
 }
 export function StudentPortal() {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const { theme, toggleTheme } = usePublicTheme();
+  const lookupAlertRef = useRef<HTMLParagraphElement>(null);
   const [submittedRollNumber, setSubmittedRollNumber] = useState<string | null>(
     null,
   );
@@ -311,6 +334,9 @@ export function StudentPortal() {
     enabled: !!submittedRollNumber,
     retry: 2,
   });
+  useEffect(() => {
+    if (query.isError) lookupAlertRef.current?.focus();
+  }, [query.isError]);
   function submit(event: FormEvent) {
     event.preventDefault();
     const normalized = rollNumber.trim();
@@ -346,15 +372,7 @@ export function StudentPortal() {
           <Link to="/verify">Verify</Link>
         </nav>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
-            className="landing-theme-toggle"
-            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-          >
-            <span aria-hidden="true">{theme === "dark" ? "☼" : "◐"}</span>
-            <span className="hidden sm:inline">{theme === "dark" ? "Light" : "Dark"}</span>
-          </button>
+          <PublicThemeToggle theme={theme} onToggle={toggleTheme} />
           <Link to="/verify" className="landing-login-link">
             Verify a record <Arrow />
           </Link>
@@ -412,6 +430,8 @@ export function StudentPortal() {
             )}
             {query.isError && (
               <p
+                ref={lookupAlertRef}
+                tabIndex={-1}
                 role="alert"
                 className="mt-5 rounded-lg border border-red-300/30 bg-red-950/50 p-3 text-sm text-red-100"
               >
@@ -460,7 +480,7 @@ export function StudentPortal() {
       <ArchiveStory />
       <section id="how-it-works" className="landing-shell journey-section py-28">
         <div className="journey-section__intro">
-          <div>
+          <div className="verification-section__content">
             <p className="landing-eyebrow">From activity to proof</p>
             <h2 className="landing-title mt-3">A record, ready when it matters.</h2>
           </div>

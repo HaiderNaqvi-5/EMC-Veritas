@@ -332,3 +332,16 @@ class AuditLog(Base):
     entity_id: Mapped[str] = mapped_column(String(64), nullable=False)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class PublicStudentUsage(Timestamped, Base):
+    """Aggregate public-portal usage keyed by an irreversible student fingerprint."""
+
+    __tablename__ = "public_student_usage"
+    student_fingerprint: Mapped[str] = mapped_column(String(64), primary_key=True)
+    lookup_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    download_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    first_lookup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_lookup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    first_download_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_download_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

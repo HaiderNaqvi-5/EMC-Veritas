@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { VerificationError, verifyDocument } from "../api/documents/public";
 import { Skeleton } from "../components/ui/Skeleton";
+import { PublicThemeToggle } from "../components/PublicThemeToggle";
+import { usePublicTheme } from "../lib/publicTheme";
 
 function CheckIcon() { return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-7 w-7 fill-none stroke-current stroke-[1.8]"><circle cx="12" cy="12" r="9" /><path d="m8 12 2.5 2.5L16 9" /></svg>; }
 function Arrow() { return <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-none stroke-current stroke-2"><path d="M3 10h13M11 5l5 5-5 5" /></svg>; }
@@ -39,10 +41,11 @@ export function VerifyDocument() {
 
 function Detail({ label, value }: { label: string; value: string }) { return <div><dt>{label}</dt><dd>{value}</dd></div>; }
 function VerificationLayout({ children }: { children: ReactNode }) {
-  return <main className="verification-v2 verification-v2--result">
+  const { theme, toggleTheme } = usePublicTheme();
+  return <main className={`verification-v2 verification-v2--${theme} verification-v2--result`}>
     <header className="verification-v2__header">
-      <Link to="/" className="verification-v2__brand"><img src="/assets/logos/emc-logo-dark.png" alt="Event Management Club" /><span><strong>EMC Veritas</strong><small>EVENT MANAGEMENT CLUB · NFC-IET MULTAN</small></span></Link>
-      <Link to="/verify" className="verification-v2__back">Verify another <Arrow /></Link>
+      <Link to="/" className="verification-v2__brand"><img src={theme === "dark" ? "/assets/logos/emc-logo-dark.png" : "/assets/logos/emc-logo.png"} alt="Event Management Club" /><span><strong>EMC Veritas</strong><small>EVENT MANAGEMENT CLUB · NFC-IET MULTAN</small></span></Link>
+      <div className="verification-v2__actions"><PublicThemeToggle theme={theme} onToggle={toggleTheme} compact /><Link to="/verify" className="verification-v2__back">Verify another <Arrow /></Link></div>
     </header>
     <section className="verification-result"><div className="verification-result__card">{children}</div></section>
   </main>;

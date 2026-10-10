@@ -11,6 +11,7 @@ from app.models.domain import (
     IssuedDocument,
     LeadershipTemplate,
     LeadershipTemplateField,
+    PublicStudentUsage,
     Signatory,
     Society,
     Student,
@@ -21,4 +22,4 @@ from app.models.domain import (
     TemplateFont,
 )
 
-__all__ = ["Activity", "ActivityOrganizer", "ActivityParticipant", "Admin", "AuditLog", "DocumentSignatory", "EmailChangeRequest", "EmcSession", "ExecutiveMembership", "IssuedDocument", "LeadershipTemplate", "LeadershipTemplateField", "Signatory", "Society", "Student", "StudentAccount", "StudentAccountToken", "Template", "TemplateField", "TemplateFont"]
+__all__ = ["Activity", "ActivityOrganizer", "ActivityParticipant", "Admin", "AuditLog", "DocumentSignatory", "EmailChangeRequest", "EmcSession", "ExecutiveMembership", "IssuedDocument", "LeadershipTemplate", "LeadershipTemplateField", "PublicStudentUsage", "Signatory", "Society", "Student", "StudentAccount", "StudentAccountToken", "Template", "TemplateField", "TemplateFont"]

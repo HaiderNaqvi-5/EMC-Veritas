@@ -29,6 +29,12 @@ class _Db:
 
         return _Result()
 
+    def commit(self) -> None:
+        pass
+
+    def rollback(self) -> None:
+        pass
+
 
 def _student() -> SimpleNamespace:
     return SimpleNamespace(id=uuid4(), full_name="Ayesha Khan", roll_number="FA21-BCS-001")
@@ -85,3 +91,17 @@ def test_student_documents_returns_empty_lists_when_no_documents() -> None:
     body = response.json()
     assert body["activity_certificates"] == []
     assert body["leadership_recognition"] == []
+
+
+def test_successful_lookup_records_only_aggregate_usage(monkeypatch) -> None:
+    recorded: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        public_router,
+        "record_public_usage",
+        lambda db, *, roll_number, event: recorded.append((roll_number, event)),
+    )
+
+    response = _get("fa21-bcs-001", _student(), [(_student(), None, None, None)])
+
+    assert response.status_code == 200
+    assert recorded == [("FA21-BCS-001", "lookup")]
