@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from app.api.public import router as public_router
 from app.db.session import get_db
 from app.main import app
 from app.models.domain import DocumentStatus, DocumentType
@@ -43,6 +44,8 @@ def _document(document_type: DocumentType) -> SimpleNamespace:
 
 
 def _get(roll_number: str, student: object | None, rows: list):
+    public_router._public_documents_cache = {}
+    public_router._public_documents_cache_expires_at = 0.0
     app.dependency_overrides[get_db] = lambda: _Db(student, rows)
     try:
         client = TestClient(app)
@@ -53,8 +56,8 @@ def _get(roll_number: str, student: object | None, rows: list):
 
 def test_student_documents_splits_certificate_types() -> None:
     rows = [
-        (_document(DocumentType.ACTIVITY_CERTIFICATE), "Welcome Week", date(2026, 9, 1)),
-        (_document(DocumentType.LEADERSHIP_RECOGNITION), None, None),
+        (_student(), _document(DocumentType.ACTIVITY_CERTIFICATE), "Welcome Week", date(2026, 9, 1)),
+        (_student(), _document(DocumentType.LEADERSHIP_RECOGNITION), None, None),
     ]
     response = _get("FA21-BCS-001", _student(), rows)
 
@@ -76,7 +79,7 @@ def test_student_documents_returns_404_for_unknown_roll_number() -> None:
 
 
 def test_student_documents_returns_empty_lists_when_no_documents() -> None:
-    response = _get("fa21-bcs-001", _student(), [])
+    response = _get("fa21-bcs-001", _student(), [(_student(), None, None, None)])
 
     assert response.status_code == 200
     body = response.json()

@@ -1,10 +1,12 @@
 import json
 from io import BytesIO
+from threading import Lock
+from time import monotonic
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse, StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app.core.rate_limit import limiter
@@ -35,6 +37,14 @@ from app.services.students import normalize_roll_number
 
 router = APIRouter(prefix="/public", tags=["public"])
 
+# The public portal is read-heavy and bursts when results are announced. A
+# tiny per-process snapshot turns a release burst into one database read rather
+# than one read per student. Admin changes become visible within five seconds.
+_PUBLIC_DOCUMENT_CACHE_TTL_SECONDS = 5.0
+_public_documents_cache: dict[str, StudentDocumentsResponse] = {}
+_public_documents_cache_expires_at = 0.0
+_public_documents_cache_lock = Lock()
+
 
 def _signature_images_for_document(
     db: Session, document: IssuedDocument, storage: SupabaseStorage
@@ -51,63 +61,71 @@ def _signature_images_for_document(
         for snapshot, signatory in rows
     }
 
+
+def _public_documents_snapshot(db: Session) -> dict[str, StudentDocumentsResponse]:
+    rows = db.execute(
+        select(Student, IssuedDocument, Activity.name, Activity.activity_date)
+        .outerjoin(
+            IssuedDocument,
+            and_(IssuedDocument.student_id == Student.id, IssuedDocument.status == DocumentStatus.VALID),
+        )
+        .outerjoin(Activity, IssuedDocument.activity_id == Activity.id)
+        .where(Student.active.is_(True))
+        .order_by(IssuedDocument.issue_date.desc())
+    ).all()
+    snapshot: dict[str, StudentDocumentsResponse] = {}
+    for student, document, activity_name, activity_date in rows:
+        response = snapshot.setdefault(
+            student.roll_number,
+            StudentDocumentsResponse(
+                full_name=student.full_name,
+                roll_number=student.roll_number,
+                activity_certificates=[],
+                leadership_recognition=[],
+            ),
+        )
+        if document is None:
+            continue
+        item = PublicDocument(
+            id=document.id,
+            document_type=document.document_type.value,
+            title=(
+                f"{activity_name} — Executive Council Organizer"
+                if activity_name and document.document_type == DocumentType.EXECUTIVE_COUNCIL_CERTIFICATE
+                else activity_name or document.document_type.value.replace("_", " ").title()
+            ),
+            activity_date=activity_date,
+            issue_date=document.issue_date,
+            status=document.status.value,
+            download_url=None,
+        )
+        target = (
+            response.activity_certificates
+            if document.document_type in {DocumentType.ACTIVITY_CERTIFICATE, DocumentType.EXECUTIVE_COUNCIL_CERTIFICATE}
+            else response.leadership_recognition
+        )
+        target.append(item)
+    return snapshot
+
+
+def _cached_public_documents(db: Session, roll_number: str) -> StudentDocumentsResponse | None:
+    global _public_documents_cache, _public_documents_cache_expires_at
+    with _public_documents_cache_lock:
+        if monotonic() >= _public_documents_cache_expires_at:
+            _public_documents_cache = _public_documents_snapshot(db)
+            _public_documents_cache_expires_at = monotonic() + _PUBLIC_DOCUMENT_CACHE_TTL_SECONDS
+        return _public_documents_cache.get(roll_number)
+
 @router.get("/students/{roll_number}/documents", response_model=StudentDocumentsResponse)
 @limiter.limit("30/minute")
 def student_documents(request: Request, roll_number: str, db: Session = Depends(get_db)) -> StudentDocumentsResponse:
     # Roll numbers are canonicalized on every write, so compare the normalized
     # input directly. This keeps the public release-burst lookup index-backed
     # instead of applying a SQL function to the indexed column.
-    student = db.scalar(
-        select(Student).where(
-            Student.roll_number == normalize_roll_number(roll_number),
-            Student.active.is_(True),
-        )
-    )
-    if student is None:
+    response = _cached_public_documents(db, normalize_roll_number(roll_number))
+    if response is None:
         raise HTTPException(status_code=404, detail="Student record not found")
-
-    rows = db.execute(
-        select(IssuedDocument, Activity.name, Activity.activity_date)
-        .outerjoin(Activity, IssuedDocument.activity_id == Activity.id)
-        .where(IssuedDocument.student_id == student.id, IssuedDocument.status == DocumentStatus.VALID)
-        .order_by(IssuedDocument.issue_date.desc())
-    ).all()
-    activity_certificates: list[PublicDocument] = []
-    leadership_recognition: list[PublicDocument] = []
-    for document, activity_name, activity_date in rows:
-        item = PublicDocument(
-            id=document.id,
-            document_type=document.document_type.value,
-            title=(
-                f"{activity_name} — Executive Council Organizer"
-                if activity_name
-                and document.document_type == DocumentType.EXECUTIVE_COUNCIL_CERTIFICATE
-                else activity_name or document.document_type.value.replace("_", " ").title()
-            ),
-            activity_date=activity_date,
-            issue_date=document.issue_date,
-            status=document.status.value,
-            # Signing is intentionally deferred to the download endpoint.
-            # A record lookup can list several certificates; eagerly signing
-            # every one makes the portal slow during a concurrent arrival
-            # burst even though most students download only one document.
-            download_url=None,
-        )
-        (
-            activity_certificates
-            if document.document_type
-            in {
-                DocumentType.ACTIVITY_CERTIFICATE,
-                DocumentType.EXECUTIVE_COUNCIL_CERTIFICATE,
-            }
-            else leadership_recognition
-        ).append(item)
-    return StudentDocumentsResponse(
-        full_name=student.full_name,
-        roll_number=student.roll_number,
-        activity_certificates=activity_certificates,
-        leadership_recognition=leadership_recognition,
-    )
+    return response
 
 
 @router.get("/verify/{verification_id}", response_model=VerificationResponse)
