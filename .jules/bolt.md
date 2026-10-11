@@ -1,0 +1,3 @@
+## 2024-05-19 - Caching external storage downloads during batch operations
+**Learning:** During batch operations (like processing multiple PDF certificates), repeatedly calling external storage downloads (e.g. Supabase `storage.download`) for the same template PDF or signature images creates significant redundant network I/O and latency. Pre-fetching database rows outside of loops using `in_()` and dictionaries resolves N+1 query bottlenecks.
+**Action:** Use local dictionaries (`template_pdf_cache: dict[str, bytes]`, etc.) to cache external file downloads across loop iterations so each unique asset is downloaded exactly once. Bulk-fetch related entities (like `Student`, `Template`, `TemplateField`) outside the loop using sets of IDs and `.in_()` clauses.
