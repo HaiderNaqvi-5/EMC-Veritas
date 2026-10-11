@@ -1,0 +1,10 @@
+
+> emc-veritas-web@0.1.0 preview /app/frontend
+> vite preview
+
+  ➜  Local:   http://localhost:4173/
+  ➜  Network: use --host to expose
+2:29:16 PM [vite] http proxy error: /api/health/ready
+AggregateError [ECONNREFUSED]:
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)

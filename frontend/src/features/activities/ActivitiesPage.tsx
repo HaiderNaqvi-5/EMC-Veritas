@@ -139,9 +139,40 @@ export function ActivitiesPage({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
       apiRequest(`/admin/documents/activities/${id}/issue`, { method: "POST" }),
     onSuccess: () => void refreshActivities(),
   });
-  const remove = useMutation({ mutationFn: (id: string) => deleteApiResource(`/admin/activities/${id}`), onSuccess: () => { setViewId(""); void refreshActivities(); } });
-  const permanentlyDelete = useMutation({ mutationFn: (id: string) => deleteApiResource(`/admin/activities/${id}/permanently`), onSuccess: () => { setViewId(""); void refreshActivities(); } });
-  const participantImport = useMutation({ mutationFn: async () => { const data = new FormData(); data.set("file", participantFile as File); return apiRequest<{ added: number; already_present: number; unknown_roll_numbers: string[] }>(`/admin/imports/activities/${activityId}/participants/import`, { method: "POST", body: data }); }, onSuccess: () => { setParticipantFile(null); setViewId(activityId); void refreshParticipants(); } });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteApiResource(`/admin/activities/${id}`),
+    onSuccess: () => {
+      setViewId("");
+      void refreshActivities();
+    },
+  });
+  const permanentlyDelete = useMutation({
+    mutationFn: (id: string) =>
+      deleteApiResource(`/admin/activities/${id}/permanently`),
+    onSuccess: () => {
+      setViewId("");
+      void refreshActivities();
+    },
+  });
+  const participantImport = useMutation({
+    mutationFn: async () => {
+      const data = new FormData();
+      data.set("file", participantFile as File);
+      return apiRequest<{
+        added: number;
+        already_present: number;
+        unknown_roll_numbers: string[];
+      }>(`/admin/imports/activities/${activityId}/participants/import`, {
+        method: "POST",
+        body: data,
+      });
+    },
+    onSuccess: () => {
+      setParticipantFile(null);
+      setViewId(activityId);
+      void refreshParticipants();
+    },
+  });
   const error =
     create.error?.message ??
     update.error?.message ??
@@ -184,8 +215,10 @@ export function ActivitiesPage({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
   }
   const activeSessions =
     sessions.data?.filter((item) => item.status === "ACTIVE") ?? [];
-  const activeActivities = activities.data?.filter((item) => item.status !== "ARCHIVED") ?? [];
-  const archivedActivities = activities.data?.filter((item) => item.status === "ARCHIVED") ?? [];
+  const activeActivities =
+    activities.data?.filter((item) => item.status !== "ARCHIVED") ?? [];
+  const archivedActivities =
+    activities.data?.filter((item) => item.status === "ARCHIVED") ?? [];
   return (
     <section>
       <h1 className="text-3xl font-bold">Activities</h1>
@@ -212,7 +245,7 @@ export function ActivitiesPage({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
           ))}
         </select>
         <input
-          aria-label="Activity date"
+          aria-label="Activity name"
           required
           placeholder="Activity name"
           value={name}
@@ -220,6 +253,7 @@ export function ActivitiesPage({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
           className="rounded border p-2"
         />
         <input
+          aria-label="Activity date"
           required
           type="date"
           value={date}
@@ -252,9 +286,16 @@ export function ActivitiesPage({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
           Create activity
         </button>
       </form>
-      <p className="mt-2 text-sm text-slate-500">Choose an approved template created in Certificate templates. Templates are immutable once approved, so every issued record uses the deliberate design you selected.</p>
+      <p className="mt-2 text-sm text-slate-500">
+        Choose an approved template created in Certificate templates. Templates
+        are immutable once approved, so every issued record uses the deliberate
+        design you selected.
+      </p>
       {templates.isSuccess && !templates.data?.length && (
-        <p className="mt-2 text-sm text-amber-700">Create, configure, and approve a certificate template before creating an activity.</p>
+        <p className="mt-2 text-sm text-amber-700">
+          Create, configure, and approve a certificate template before creating
+          an activity.
+        </p>
       )}
       {sessions.isSuccess && !activeSessions.length && (
         <p className="mt-2 text-sm text-slate-500">
@@ -279,13 +320,64 @@ export function ActivitiesPage({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
             </option>
           ))}
         </select>
-        <StudentPicker students={students.data ?? []} value={studentId} onChange={setStudentId} disabled={students.isLoading} />
-        <button disabled={!studentId || add.isPending} className="rounded bg-indigo-600 p-2 text-white disabled:opacity-60">
+        <StudentPicker
+          students={students.data ?? []}
+          value={studentId}
+          onChange={setStudentId}
+          disabled={students.isLoading}
+        />
+        <button
+          disabled={!studentId || add.isPending}
+          className="rounded bg-indigo-600 p-2 text-white disabled:opacity-60"
+        >
           {add.isPending ? "Adding participant…" : "Add eligible participant"}
         </button>
       </form>
-      <form onSubmit={(event) => { event.preventDefault(); if (participantFile) participantImport.mutate(); }} className="mt-4 grid gap-3 rounded-xl border p-4 md:grid-cols-3"><select required value={activityId} onChange={(e) => setActivityId(e.target.value)} className="rounded border p-2"><option value="">Choose activity for participant Excel</option>{activeActivities.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input required accept=".xlsx" type="file" onChange={(event) => setParticipantFile(event.target.files?.[0] ?? null)} className="rounded border p-2"/><button disabled={!participantFile || participantImport.isPending} className="rounded bg-slate-900 p-2 text-white">Import participant Excel</button></form>
-      {participantImport.data && <p role="status" className="mt-2 text-sm text-green-700">Imported {participantImport.data.added} participants; {participantImport.data.already_present} were already linked.{participantImport.data.unknown_roll_numbers.length ? ` Unknown active roll numbers: ${participantImport.data.unknown_roll_numbers.join(", ")}` : ""}</p>}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (participantFile) participantImport.mutate();
+        }}
+        className="mt-4 grid gap-3 rounded-xl border p-4 md:grid-cols-3"
+      >
+        <select
+          required
+          value={activityId}
+          onChange={(e) => setActivityId(e.target.value)}
+          className="rounded border p-2"
+        >
+          <option value="">Choose activity for participant Excel</option>
+          {activeActivities.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+        <input
+          required
+          accept=".xlsx"
+          type="file"
+          onChange={(event) =>
+            setParticipantFile(event.target.files?.[0] ?? null)
+          }
+          className="rounded border p-2"
+        />
+        <button
+          disabled={!participantFile || participantImport.isPending}
+          className="rounded bg-slate-900 p-2 text-white"
+        >
+          Import participant Excel
+        </button>
+      </form>
+      {participantImport.data && (
+        <p role="status" className="mt-2 text-sm text-green-700">
+          Imported {participantImport.data.added} participants;{" "}
+          {participantImport.data.already_present} were already linked.
+          {participantImport.data.unknown_roll_numbers.length
+            ? ` Unknown active roll numbers: ${participantImport.data.unknown_roll_numbers.join(", ")}`
+            : ""}
+        </p>
+      )}
       {error && (
         <p role="alert" className="mt-3 rounded bg-red-50 p-3 text-red-700">
           {error}
@@ -296,99 +388,190 @@ export function ActivitiesPage({ role }: { role: "ADMIN" | "SUPER_ADMIN" }) {
           <Skeleton className="h-64 w-full" />
         ) : (
           <div>
-          <h2 className="mb-3 text-xl font-semibold">Activity list</h2>
-          <ul className="space-y-3">
-            {activeActivities.map((item) => (
-              <li key={item.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex flex-wrap items-center justify-between gap-3"><div><strong>{item.name}</strong><p className="mt-1 text-sm text-slate-500">{item.activity_date}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">Status: {item.status}</span></div>
-                <div className="mt-3 flex flex-wrap gap-3">
-                  <select
-                    aria-label={`Status for ${item.name}`}
-                    value={item.status}
-                    onChange={(e) =>
-                      status.mutate({ id: item.id, value: e.target.value })
-                    }
-                    className="rounded border p-1"
-                  >
-                    <option value={item.status}>{item.status}</option>
-                    {item.status === "DRAFT" && (
-                      <option value="READY">READY</option>
-                    )}
-                    {item.status === "PUBLISHED" && (
-                      <option value="ARCHIVED">ARCHIVED</option>
-                    )}
-                  </select>
-                  {item.status === "DRAFT" && <p className="self-center text-sm text-amber-700 dark:text-amber-300">Next step: move to READY once prepared.</p>}
-                  <button
-                    onClick={() => setViewId(item.id)}
-                    className="rounded border px-3 py-2 text-sm font-semibold"
-                  >
-                    Participants
-                  </button>
-                  <button
-                    onClick={() => issue.mutate(item.id)}
-                    disabled={item.status !== "READY" && item.status !== "PUBLISHED"}
-                    className="rounded bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Issue and publish certificates
-                  </button>
-                </div>
-                {(item.status !== "READY" && item.status !== "PUBLISHED") && <p className="mt-2 text-sm text-slate-500">Certificate issuance becomes available when this activity is READY or PUBLISHED.</p>}
-                {!item.template_id && <p className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">No certificate template is attached. Use Edit activity below to select an approved template before moving this activity to READY.</p>}
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-sm underline">
-                    Edit activity
-                  </summary>
-                  <form
-                    onSubmit={(e) => edit(e, item)}
-                    className="mt-3 grid gap-2 md:grid-cols-3"
-                  >
-                    <input
-                      aria-label={`Name for ${item.name}`}
-                      name="name"
-                      defaultValue={item.name}
-                      required
-                      className="rounded border p-2"
-                    />
-                    <input
-                      aria-label={`Date for ${item.name}`}
-                      name="activity_date"
-                      defaultValue={item.activity_date}
-                      required
-                      type="date"
-                      className="rounded border p-2"
-                    />
+            <h2 className="mb-3 text-xl font-semibold">Activity list</h2>
+            <ul className="space-y-3">
+              {activeActivities.map((item) => (
+                <li
+                  key={item.id}
+                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <strong>{item.name}</strong>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {item.activity_date}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                      Status: {item.status}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-3">
                     <select
-                      aria-label={`Template for ${item.name}`}
-                      name="template_id"
-                      defaultValue={item.template_id ?? ""}
-                      className="rounded border p-2"
+                      aria-label={`Status for ${item.name}`}
+                      value={item.status}
+                      onChange={(e) =>
+                        status.mutate({ id: item.id, value: e.target.value })
+                      }
+                      className="rounded border p-1"
                     >
-                      <option value="">No template selected</option>
-                      {templates.data?.map((template) => (
-                        <option key={template.id} value={template.id}>
-                          {template.name}
-                        </option>
-                      ))}
+                      <option value={item.status}>{item.status}</option>
+                      {item.status === "DRAFT" && (
+                        <option value="READY">READY</option>
+                      )}
+                      {item.status === "PUBLISHED" && (
+                        <option value="ARCHIVED">ARCHIVED</option>
+                      )}
                     </select>
-                    <button className="rounded border p-2">Save</button>
-                    <textarea
-                      name="description"
-                      defaultValue={item.description ?? ""}
-                      placeholder="Description"
-                      className="rounded border p-2 md:col-span-3"
-                    />
-                  </form>
-                </details>
-                <button onClick={() => remove.mutate(item.id)} disabled={remove.isPending} className="mt-4 rounded border border-red-600 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">{remove.isPending ? "Deleting…" : "Delete activity"}</button>
-              </li>
-            ))}
-          </ul>
-          <section className="mt-6 rounded-xl border border-slate-300 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900">
-            <h2 className="font-semibold">Archived activities ({archivedActivities.length})</h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Archived activities remain visible here. Restoring one returns it to PUBLISHED without changing any issued certificates.</p>
-            {!archivedActivities.length ? <p className="mt-3 text-sm text-slate-500">No archived activities.</p> : <ul className="mt-3 space-y-2">{archivedActivities.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded border bg-white p-3 dark:bg-slate-950"><span><strong>{item.name}</strong><br /><span className="text-sm text-slate-500">{item.activity_date} · ARCHIVED</span></span><div className="flex flex-wrap gap-2"><button type="button" disabled={status.isPending} onClick={() => status.mutate({ id: item.id, value: "PUBLISHED" })} className="rounded border px-3 py-2 text-sm">Restore to PUBLISHED</button>{role === "SUPER_ADMIN" && <button type="button" disabled={permanentlyDelete.isPending} onClick={() => { if (window.confirm(`Permanently delete ${item.name}, every participant link, and all certificates issued for it? This cannot be undone.`)) permanentlyDelete.mutate(item.id); }} className="rounded border border-red-700 px-3 py-2 text-sm text-red-700 disabled:opacity-60">Delete permanently</button>}</div></li>)}</ul>}
-          </section>
+                    {item.status === "DRAFT" && (
+                      <p className="self-center text-sm text-amber-700 dark:text-amber-300">
+                        Next step: move to READY once prepared.
+                      </p>
+                    )}
+                    <button
+                      onClick={() => setViewId(item.id)}
+                      className="rounded border px-3 py-2 text-sm font-semibold"
+                    >
+                      Participants
+                    </button>
+                    <button
+                      onClick={() => issue.mutate(item.id)}
+                      disabled={
+                        item.status !== "READY" && item.status !== "PUBLISHED"
+                      }
+                      className="rounded bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Issue and publish certificates
+                    </button>
+                  </div>
+                  {item.status !== "READY" && item.status !== "PUBLISHED" && (
+                    <p className="mt-2 text-sm text-slate-500">
+                      Certificate issuance becomes available when this activity
+                      is READY or PUBLISHED.
+                    </p>
+                  )}
+                  {!item.template_id && (
+                    <p className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                      No certificate template is attached. Use Edit activity
+                      below to select an approved template before moving this
+                      activity to READY.
+                    </p>
+                  )}
+                  <details className="mt-3">
+                    <summary className="cursor-pointer text-sm underline">
+                      Edit activity
+                    </summary>
+                    <form
+                      onSubmit={(e) => edit(e, item)}
+                      className="mt-3 grid gap-2 md:grid-cols-3"
+                    >
+                      <input
+                        aria-label={`Name for ${item.name}`}
+                        name="name"
+                        defaultValue={item.name}
+                        required
+                        className="rounded border p-2"
+                      />
+                      <input
+                        aria-label={`Date for ${item.name}`}
+                        name="activity_date"
+                        defaultValue={item.activity_date}
+                        required
+                        type="date"
+                        className="rounded border p-2"
+                      />
+                      <select
+                        aria-label={`Template for ${item.name}`}
+                        name="template_id"
+                        defaultValue={item.template_id ?? ""}
+                        className="rounded border p-2"
+                      >
+                        <option value="">No template selected</option>
+                        {templates.data?.map((template) => (
+                          <option key={template.id} value={template.id}>
+                            {template.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button className="rounded border p-2">Save</button>
+                      <textarea
+                        name="description"
+                        defaultValue={item.description ?? ""}
+                        placeholder="Description"
+                        className="rounded border p-2 md:col-span-3"
+                      />
+                    </form>
+                  </details>
+                  <button
+                    onClick={() => remove.mutate(item.id)}
+                    disabled={remove.isPending}
+                    className="mt-4 rounded border border-red-600 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                  >
+                    {remove.isPending ? "Deleting…" : "Delete activity"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <section className="mt-6 rounded-xl border border-slate-300 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900">
+              <h2 className="font-semibold">
+                Archived activities ({archivedActivities.length})
+              </h2>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                Archived activities remain visible here. Restoring one returns
+                it to PUBLISHED without changing any issued certificates.
+              </p>
+              {!archivedActivities.length ? (
+                <p className="mt-3 text-sm text-slate-500">
+                  No archived activities.
+                </p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {archivedActivities.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded border bg-white p-3 dark:bg-slate-950"
+                    >
+                      <span>
+                        <strong>{item.name}</strong>
+                        <br />
+                        <span className="text-sm text-slate-500">
+                          {item.activity_date} · ARCHIVED
+                        </span>
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={status.isPending}
+                          onClick={() =>
+                            status.mutate({ id: item.id, value: "PUBLISHED" })
+                          }
+                          className="rounded border px-3 py-2 text-sm"
+                        >
+                          Restore to PUBLISHED
+                        </button>
+                        {role === "SUPER_ADMIN" && (
+                          <button
+                            type="button"
+                            disabled={permanentlyDelete.isPending}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Permanently delete ${item.name}, every participant link, and all certificates issued for it? This cannot be undone.`,
+                                )
+                              )
+                                permanentlyDelete.mutate(item.id);
+                            }}
+                            className="rounded border border-red-700 px-3 py-2 text-sm text-red-700 disabled:opacity-60"
+                          >
+                            Delete permanently
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </div>
         )}
         <aside className="rounded-xl border p-4">
