@@ -12,6 +12,7 @@ import { Skeleton } from "../components/ui/Skeleton";
 import { canonicalRollNumber } from "../lib/utils";
 import { usePublicTheme } from "../lib/publicTheme";
 import { PublicThemeToggle } from "../components/PublicThemeToggle";
+import { SupportRequestDialog } from "../components/SupportRequestDialog";
 
 function Arrow() {
   return (
@@ -328,6 +329,7 @@ export function StudentPortal() {
     null,
   );
   const [rollNumber, setRollNumber] = useState("");
+  const [supportOpen, setSupportOpen] = useState(false);
   const query = useQuery({
     queryKey: ["student-documents", submittedRollNumber],
     queryFn: () => getStudentDocuments(submittedRollNumber!),
@@ -429,14 +431,10 @@ export function StudentPortal() {
               </>
             )}
             {query.isError && (
-              <p
-                ref={lookupAlertRef}
-                tabIndex={-1}
-                role="alert"
-                className="mt-5 rounded-lg border border-red-300/30 bg-red-950/50 p-3 text-sm text-red-100"
-              >
-                {query.error.message}
-              </p>
+              <div ref={lookupAlertRef} tabIndex={-1} role="alert" className="lookup-support-error mt-5">
+                <p>{query.error.message}</p>
+                <button type="button" onClick={() => setSupportOpen(true)}>Still need help? Send us the details <Arrow /></button>
+              </div>
             )}
             {query.data && (
               <section className="mt-6 rounded-2xl border border-white/15 bg-white/95 p-5 text-slate-900 shadow-2xl">
@@ -572,10 +570,13 @@ export function StudentPortal() {
             <a href="#how-it-works">How it works</a>
             <a href="#document-types">Document types</a>
             <Link to="/verify">Verify</Link>
+            <button type="button" onClick={() => setSupportOpen(true)}>Get help</button>
           </div>
           <div className="landing-nfc-mark"><img src="/assets/logos/nfc-iet-logo.png" alt="NFC-IET Multan" className="h-12 w-12 object-contain" /><span>NFC-IET<br />MULTAN</span></div>
         </div>
       </footer>
+      <button type="button" className="support-launcher" onClick={() => setSupportOpen(true)} aria-haspopup="dialog"><span aria-hidden="true">?</span><span>Need help?</span></button>
+      <SupportRequestDialog open={supportOpen} initialRollNumber={rollNumber} onClose={() => setSupportOpen(false)} />
     </main>
   );
 }

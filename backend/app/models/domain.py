@@ -31,6 +31,7 @@ class DocumentType(str, enum.Enum): ACTIVITY_CERTIFICATE = "ACTIVITY_CERTIFICATE
 class AdminRole(str, enum.Enum): ADMIN = "ADMIN"; SUPER_ADMIN = "SUPER_ADMIN"
 class StudentAccountTokenPurpose(str, enum.Enum): ACTIVATION = "ACTIVATION"; PASSWORD_RESET = "PASSWORD_RESET"
 class EmailChangeRequestStatus(str, enum.Enum): PENDING = "PENDING"; APPROVED = "APPROVED"; REJECTED = "REJECTED"
+class SupportRequestStatus(str, enum.Enum): OPEN = "OPEN"; IN_PROGRESS = "IN_PROGRESS"; RESOLVED = "RESOLVED"
 
 
 class Timestamped:
@@ -345,3 +346,26 @@ class PublicStudentUsage(Timestamped, Base):
     last_lookup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     first_download_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_download_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SupportRequest(Timestamped, Base):
+    """A private help request submitted from the public student portal."""
+
+    __tablename__ = "support_requests"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_number: Mapped[str] = mapped_column(String(24), unique=True, nullable=False, index=True)
+    roll_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    contact_email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    problem_category: Mapped[str] = mapped_column(String(48), nullable=False)
+    problem_details: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[SupportRequestStatus] = mapped_column(
+        Enum(SupportRequestStatus, name="support_request_status"),
+        default=SupportRequestStatus.OPEN,
+        nullable=False,
+        index=True,
+    )
+    admin_notes: Mapped[str | None] = mapped_column(Text)
+    resolution_message: Mapped[str | None] = mapped_column(Text)
+    resolved_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admins.id"))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -18,6 +18,7 @@ from app.api.admin.sessions import router as admin_sessions_router
 from app.api.admin.signatories import router as admin_signatories_router
 from app.api.admin.student_recovery import router as admin_student_recovery_router
 from app.api.admin.students import router as admin_students_router
+from app.api.admin.support import router as admin_support_router
 from app.api.admin.templates import router as admin_templates_router
 from app.api.public.router import router as public_router
 from app.api.student_auth import router as student_auth_router
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_signatories_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_students_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_student_recovery_router, prefix=f"{settings.api_prefix}/admin")
+    app.include_router(admin_support_router, prefix=f"{settings.api_prefix}/admin")
     app.include_router(admin_templates_router, prefix=f"{settings.api_prefix}/admin")
     return app
 

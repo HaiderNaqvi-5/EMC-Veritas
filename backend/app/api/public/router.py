@@ -1,5 +1,6 @@
 import json
 import logging
+import secrets
 from io import BytesIO
 from threading import Lock
 from time import monotonic
@@ -24,10 +25,13 @@ from app.models.domain import (
     LeadershipTemplateField,
     Signatory,
     Student,
+    SupportRequest,
+    SupportRequestStatus,
     Template,
     TemplateField,
 )
 from app.schemas.public import PublicDocument, StudentDocumentsResponse, VerificationResponse
+from app.schemas.support import SupportRequestCreate, SupportRequestCreated
 from app.services.documents.lifecycle import DocumentLifecycleError, generate_on_first_download
 from app.services.executive.letters import (
     leadership_fields_for_rendering,
@@ -48,6 +52,52 @@ _PUBLIC_DOCUMENT_CACHE_TTL_SECONDS = 5.0
 _public_documents_cache: dict[str, StudentDocumentsResponse] = {}
 _public_documents_cache_expires_at = 0.0
 _public_documents_cache_lock = Lock()
+
+
+@router.post(
+    "/support-requests",
+    response_model=SupportRequestCreated,
+    status_code=201,
+)
+@limiter.limit("5/hour")
+def create_support_request(
+    request: Request,
+    payload: SupportRequestCreate,
+    db: Session = Depends(get_db),
+) -> SupportRequestCreated:
+    del request
+    if payload.website:
+        raise HTTPException(status_code=400, detail="The request could not be submitted")
+
+    duplicate = db.scalar(
+        select(SupportRequest).where(
+            SupportRequest.roll_number == payload.roll_number,
+            SupportRequest.contact_email == payload.contact_email,
+            SupportRequest.status.in_([
+                SupportRequestStatus.OPEN,
+                SupportRequestStatus.IN_PROGRESS,
+            ]),
+        )
+    )
+    if duplicate is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"An active request already exists: {duplicate.ticket_number}",
+        )
+
+    ticket_number = f"EMC-HELP-{secrets.token_hex(4).upper()}"
+    item = SupportRequest(
+        ticket_number=ticket_number,
+        roll_number=payload.roll_number,
+        full_name=payload.full_name,
+        contact_email=payload.contact_email,
+        problem_category=payload.problem_category,
+        problem_details=payload.problem_details,
+        status=SupportRequestStatus.OPEN,
+    )
+    db.add(item)
+    db.commit()
+    return SupportRequestCreated(ticket_number=ticket_number, status=item.status)
 
 
 def _record_usage_safely(db: Session, *, roll_number: str, event: UsageEvent) -> None:
