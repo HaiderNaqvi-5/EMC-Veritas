@@ -260,6 +260,7 @@ def issue_ec_certificates(
                 detail="Configured signatories are unavailable for: " + ", ".join(unavailable),
             )
     storage = SupabaseStorage()
+    storage_cache: dict[str, bytes] = {}
     try:
         template_pdf = storage.download(template.storage_key)
         signature_images = {
@@ -305,6 +306,7 @@ def issue_ec_certificates(
                 actor_admin_id=admin.id,
                 image_values=signature_images,
                 rendering_profile="executive_council",
+                storage_cache=storage_cache,
             )
             # Preserve the currently published certificate until the new PDF
             # exists in Storage. If rendering or upload fails, the database

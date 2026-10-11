@@ -73,19 +73,22 @@ def _admin_document_response(
 
 
 def _signature_images_for_reserved_document(
-    db: Session, document: IssuedDocument, storage: SupabaseStorage
+    rows: list[tuple[DocumentSignatory, Signatory]],
+    storage: SupabaseStorage,
+    storage_cache: dict[str, bytes] | None = None,
 ) -> dict[str, bytes]:
-    rows = db.execute(
-        select(DocumentSignatory, Signatory)
-        .join(Signatory, DocumentSignatory.signatory_id == Signatory.id)
-        .where(DocumentSignatory.issued_document_id == document.id)
-    ).all()
     if not rows:
         raise DocumentLifecycleError("The document has no reserved signature snapshot")
-    return {
-        signature_field_name(snapshot.official_title): storage.download(signatory.signature_storage_key)
-        for snapshot, signatory in rows
-    }
+    if storage_cache is None:
+        storage_cache = {}
+
+    result = {}
+    for snapshot, signatory in rows:
+        key = signatory.signature_storage_key
+        if key not in storage_cache:
+            storage_cache[key] = storage.download(key)
+        result[signature_field_name(snapshot.official_title)] = storage_cache[key]
+    return result
 
 
 @router.get("", response_model=list[AdminDocumentResponse])
@@ -352,22 +355,57 @@ def _pre_generate_activity_document_batch(
     )
     pending = [document for document in valid_documents if not document.storage_key][:limit]
     ready_before = len(valid_documents) - sum(1 for document in valid_documents if not document.storage_key)
+
+    # Bulk fetch students
+    student_ids = {doc.student_id for doc in pending}
+    students = {s.id: s for s in db.scalars(select(Student).where(Student.id.in_(student_ids))).all()}
+
+    # Bulk fetch templates and their fields
+    template_ids = {
+        doc.template_id or (activity.template_id if document_type is DocumentType.ACTIVITY_CERTIFICATE else None)
+        for doc in pending
+    }
+    template_ids.discard(None)
+    templates = {t.id: t for t in db.scalars(select(Template).where(Template.id.in_(template_ids))).all()}
+
+    template_fields_by_template: dict[UUID, list[TemplateField]] = {}
+    if template_ids:
+        all_fields = db.scalars(select(TemplateField).where(TemplateField.template_id.in_(template_ids))).all()
+        for field in all_fields:
+            template_fields_by_template.setdefault(field.template_id, []).append(field)
+
+    # Bulk fetch document signatories
+    pending_ids = [doc.id for doc in pending]
+    signatory_rows = []
+    if pending_ids:
+        signatory_rows = db.execute(
+            select(DocumentSignatory, Signatory)
+            .join(Signatory, DocumentSignatory.signatory_id == Signatory.id)
+            .where(DocumentSignatory.issued_document_id.in_(pending_ids))
+        ).all()
+
+    signatories_by_document: dict[UUID, list[tuple[DocumentSignatory, Signatory]]] = {}
+    for doc_sig, sig in signatory_rows:
+        signatories_by_document.setdefault(doc_sig.issued_document_id, []).append((doc_sig, sig))
+
     generated = 0
     failed_document_ids: list[UUID] = []
     storage = SupabaseStorage()
+    storage_cache: dict[str, bytes] = {}
+
     for document in pending:
         document_id = document.id
         try:
-            student = db.get(Student, document.student_id)
+            student = students.get(document.student_id)
             template_id = document.template_id or (
                 activity.template_id
                 if document_type is DocumentType.ACTIVITY_CERTIFICATE
                 else None
             )
-            template = db.get(Template, template_id) if template_id is not None else None
+            template = templates.get(template_id) if template_id is not None else None
             if student is None or template is None:
                 raise DocumentLifecycleError("The issued document is missing its student or template")
-            fields = list(db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all())
+            fields = template_fields_by_template.get(template.id, [])
             try:
                 values = json.loads(document.render_payload_json or "")
             except json.JSONDecodeError as error:
@@ -383,12 +421,16 @@ def _pre_generate_activity_document_batch(
                     "issue_date": document.issue_date.isoformat(),
                 }
             values["verification_id"] = document.verification_id
-            template_pdf = storage.download(template.storage_key)
-            image_values = (
-                _signature_images_for_reserved_document(db, document, storage)
-                if should_replace_signatures(template.signature_handling, fields)
-                else None
-            )
+
+            if template.storage_key not in storage_cache:
+                storage_cache[template.storage_key] = storage.download(template.storage_key)
+            template_pdf = storage_cache[template.storage_key]
+
+            image_values = None
+            if should_replace_signatures(template.signature_handling, fields):
+                doc_sigs = signatories_by_document.get(document.id, [])
+                image_values = _signature_images_for_reserved_document(doc_sigs, storage, storage_cache)
+
             generate_on_first_download(
                 db,
                 document=document,
@@ -400,6 +442,7 @@ def _pre_generate_activity_document_batch(
                 actor_admin_id=admin.id,
                 image_values=image_values,
                 rendering_profile=rendering_profile,
+                storage_cache=storage_cache,
             )
             db.commit()
             generated += 1

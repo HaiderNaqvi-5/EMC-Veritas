@@ -33,6 +33,7 @@ def generate_on_first_download(
     image_values: Mapping[str, bytes] | None = None,
     required_field_names: frozenset[str] | None = None,
     rendering_profile: str = "default",
+    storage_cache: dict[str, bytes] | None = None,
 ) -> bytes:
     """Return an issued PDF, creating and caching it only on the first valid download."""
     if document.status is not DocumentStatus.VALID:
@@ -41,13 +42,18 @@ def generate_on_first_download(
     if document.storage_key:
         return storage.download(document.storage_key)
 
+    if storage_cache is None:
+        storage_cache = {}
+
     try:
         field_list = list(template_fields)
-        custom_fonts = {
-            field.custom_font_storage_key: storage.download(field.custom_font_storage_key)
-            for field in field_list
-            if getattr(field, "custom_font_storage_key", None)
-        }
+        custom_fonts = {}
+        for field in field_list:
+            key = getattr(field, "custom_font_storage_key", None)
+            if key:
+                if key not in storage_cache:
+                    storage_cache[key] = storage.download(key)
+                custom_fonts[key] = storage_cache[key]
         output = render_certificate(
             template_pdf,
             field_list,

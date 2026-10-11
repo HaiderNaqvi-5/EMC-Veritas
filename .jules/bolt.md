@@ -1,0 +1,3 @@
+## 2024-06-25 - Bulk Fetching Cloud Assets
+**Learning:** In batch processing functions (like generating certificates), even if database rows are bulk-fetched, repetitive fetching of cloud assets (like `storage.download` for custom fonts and template PDFs) inside the batch loop causes massive hidden N+1 performance issues through redundant network I/O.
+**Action:** When bulk processing items that share the same cloud assets, initialize a shared `storage_cache: dict[str, bytes] = {}` outside the loop, pass it to internal asset-retrieving functions, and evaluate `storage.download` hits lazily to ensure each unique asset is downloaded exactly once per batch.
