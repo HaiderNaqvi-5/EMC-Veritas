@@ -70,45 +70,76 @@ def _preflight_session_recognition(db: Session, session: EmcSession) -> list[_Re
         .order_by(ExecutiveMembership.role, ExecutiveMembership.id)
     ).all()
     signatories, availability = _active_signatories(db)
+
+    # Pre-fetch existing documents to prevent N+1 queries during batch session recognition
+    membership_ids = [membership.id for membership, _, _ in rows]
+    roles = list({membership.role for membership, _, _ in rows})
+
+    existing_docs = set()
+    if membership_ids:
+        # Fetch only the required columns to minimize memory footprint
+        existing_doc_records = db.execute(
+            select(IssuedDocument.executive_membership_id, IssuedDocument.document_type).where(
+                IssuedDocument.executive_membership_id.in_(membership_ids),
+                IssuedDocument.document_type.in_(RECOGNITION_DOCUMENT_TYPES)
+            )
+        ).all()
+        for member_id, doc_type in existing_doc_records:
+            existing_docs.add((member_id, doc_type))
+
+    # Pre-fetch templates to prevent N+1 queries
+    # A recipient-specific design wins; an older role-wide template remains a backwards-compatible fallback.
+    templates_by_key = {}
+    template_ids = []
+    if roles:
+        fetched_templates = db.scalars(
+            select(LeadershipTemplate).where(
+                LeadershipTemplate.role.in_(roles),
+                LeadershipTemplate.document_type.in_(RECOGNITION_DOCUMENT_TYPES),
+                LeadershipTemplate.active.is_(True),
+                LeadershipTemplate.archived.is_(False),
+                or_(
+                    LeadershipTemplate.executive_membership_id.in_(membership_ids),
+                    LeadershipTemplate.executive_membership_id.is_(None)
+                )
+            ).order_by(LeadershipTemplate.executive_membership_id.is_(None))
+        ).all()
+        for t in fetched_templates:
+            # Since we order by executive_membership_id.is_(None), the more specific one
+            # (where it is NOT none) comes first. Only set if not already set by a more specific one.
+            key = (t.role, t.document_type, t.executive_membership_id)
+            if key not in templates_by_key:
+                templates_by_key[key] = t
+                template_ids.append(t.id)
+
+    # Pre-fetch template fields to prevent N+1 queries
+    fields_by_template_id = defaultdict(list)
+    if template_ids:
+        fetched_fields = db.scalars(
+            select(LeadershipTemplateField).where(
+                LeadershipTemplateField.leadership_template_id.in_(template_ids)
+            )
+        ).all()
+        for f in fetched_fields:
+            fields_by_template_id[f.leadership_template_id].append(f)
+
     plans: list[_RecognitionPlan] = []
     for membership, student, society_name in rows:
         role_end_date = membership.end_date or session.end_date
         for document_type in RECOGNITION_DOCUMENT_TYPES:
-            existing = db.scalar(
-                select(IssuedDocument.id).where(
-                    IssuedDocument.executive_membership_id == membership.id,
-                    IssuedDocument.document_type == document_type,
-                )
-            )
-            if existing is not None:
+            if (membership.id, document_type) in existing_docs:
                 continue
-            template = db.scalar(
-                select(LeadershipTemplate)
-                .where(
-                    LeadershipTemplate.role == membership.role,
-                    LeadershipTemplate.document_type == document_type,
-                    LeadershipTemplate.active.is_(True),
-                    LeadershipTemplate.archived.is_(False),
-                    or_(
-                        LeadershipTemplate.executive_membership_id == membership.id,
-                        LeadershipTemplate.executive_membership_id.is_(None),
-                    ),
-                )
-                # A recipient-specific design wins; an older role-wide template
-                # remains a backwards-compatible fallback.
-                .order_by(LeadershipTemplate.executive_membership_id.is_(None))
-            )
+
+            template = templates_by_key.get((membership.role, document_type, membership.id))
+            if template is None:
+                template = templates_by_key.get((membership.role, document_type, None))
+
             if template is None:
                 raise RecognitionPrerequisiteError(
                     f"No active {document_type.value} template is configured for {membership.role}"
                 )
-            fields = list(
-                db.scalars(
-                    select(LeadershipTemplateField).where(
-                        LeadershipTemplateField.leadership_template_id == template.id
-                    )
-                ).all()
-            )
+
+            fields = fields_by_template_id[template.id]
             missing_fields = missing_leadership_template_fields(
                 {field.field_name for field in fields}, membership.role
             )

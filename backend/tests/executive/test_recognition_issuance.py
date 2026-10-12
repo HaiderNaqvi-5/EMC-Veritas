@@ -30,13 +30,16 @@ class _RecognitionDb:
         self.rows = rows
 
     def execute(self, query: object) -> _Rows:
+        if isinstance(self.rows, list) and len(self.rows) > 0 and isinstance(self.rows[0], list):
+            # If it's a list of lists, pop the first one
+            return _Rows(self.rows.pop(0))
         return _Rows(self.rows)
 
     def scalar(self, query: object) -> object:
-        return self.scalar_values.pop(0)
+        return self.scalar_values.pop(0) if self.scalar_values else None
 
     def scalars(self, query: object) -> _Scalars:
-        return _Scalars(self.scalar_lists.pop(0))
+        return _Scalars(self.scalar_lists.pop(0) if self.scalar_lists else [])
 
 
 def _field(name: str) -> object:
@@ -71,10 +74,19 @@ def test_session_recognition_preflight_reserves_two_fixed_template_plans() -> No
         signature_handling="retain", active=True, archived=False,
     )
     fields = [_field(name) for name in REQUIRED_LEADERSHIP_TEMPLATE_FIELDS]
+    for f in fields:
+        f.leadership_template_id = recognition.id
+    fields2 = [_field(name) for name in REQUIRED_LEADERSHIP_TEMPLATE_FIELDS]
+    for f in fields2:
+        f.leadership_template_id = appreciation.id
+
+    recognition.executive_membership_id = None
+    appreciation.executive_membership_id = None
+
     db = _RecognitionDb(
-        scalar_values=[None, recognition, None, appreciation],
-        scalar_lists=[[dsa, hod], fields, fields],
-        rows=[(membership, student, None)],
+        scalar_values=[],
+        scalar_lists=[[dsa, hod], [recognition, appreciation], fields + fields2],
+        rows=[[(membership, student, None)], []], # First query returns membership row, second query (existing docs) returns empty
     )
 
     plans = _preflight_session_recognition(db, session)
@@ -94,10 +106,13 @@ def test_session_recognition_preflight_skips_existing_membership_letters() -> No
         id=uuid4(), student_id=uuid4(), role="President", start_date=date(2025, 9, 1),
         end_date=date(2026, 8, 31), status=MembershipStatus.COMPLETED,
     )
+    from app.services.executive.recognition import RECOGNITION_DOCUMENT_TYPES
+    # In the optimized version we use db.execute() instead of db.scalars() and it returns tuples
+    existing_rows = [(membership.id, RECOGNITION_DOCUMENT_TYPES[0]), (membership.id, RECOGNITION_DOCUMENT_TYPES[1])]
     db = _RecognitionDb(
-        scalar_values=[uuid4(), uuid4()],
-        scalar_lists=[[]],
-        rows=[(membership, SimpleNamespace(), None)],
+        scalar_values=[],
+        scalar_lists=[[], [], [], []],
+        rows=[[(membership, SimpleNamespace(), None)], existing_rows], # second rows list for db.execute
     )
 
     assert _preflight_session_recognition(db, session) == []
