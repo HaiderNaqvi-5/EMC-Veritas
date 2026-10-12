@@ -1,0 +1,3 @@
+## 2024-10-12 - In-Memory Caching for Supabase Storage Downloads
+**Learning:** During batch pre-generation of documents, external storage downloads (e.g., Supabase `storage.download`) for shared resources like template PDFs and signature images can become a significant performance bottleneck due to redundant network I/O across loop iterations.
+**Action:** Always implement an in-memory dictionary cache (e.g., `file_cache`) within the batch processing function to store and reuse downloaded bytes, passing this cache down to helper functions as needed to prevent repeated network requests for the same assets.
