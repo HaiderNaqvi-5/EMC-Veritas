@@ -1332,31 +1332,100 @@ def _render_ec_farewell_paragraph(
     bold_font = fitz.Font(fontbuffer=bold_font_bytes)
     size = 13.0
     tracking = 2.2
-    lines = text.splitlines()
     line_step = size * 2.078
-    if len(lines) != 4 or len(lines) * line_step > rectangle.height + 0.5:
+    if 4 * line_step > rectangle.height + 0.5:
         raise CertificateRenderingError(
             "EC Farewell paragraph does not fit its dedicated template area"
         )
-    writer = fitz.TextWriter(page.rect)
-    baseline = rectangle.y0 + size
-    for line in lines:
-        bold_characters = [False] * len(line)
+
+    def bold_mask(line: str) -> list[bool]:
+        mask = [False] * len(line)
         for field_name in tagged_names & _BOLD_CERTIFICATE_FIELDS:
             value = values.get(field_name, "")
             start = line.find(value) if value else -1
             while start >= 0:
-                bold_characters[start : start + len(value)] = [True] * len(value)
+                mask[start : start + len(value)] = [True] * len(value)
                 start = line.find(value, start + len(value))
+        return mask
+
+    def measured_width(line: str, mask: list[bool]) -> float:
         width = sum(
             (bold_font if bold else font).text_length(character, fontsize=size)
-            for character, bold in zip(line, bold_characters, strict=True)
+            for character, bold in zip(line, mask, strict=True)
         )
-        width += tracking * max(0, len(line) - 1)
-        if width > rectangle.width:
+        return width + tracking * max(0, len(line) - 1)
+
+    lines = text.splitlines()
+    line_masks = [bold_mask(line) for line in lines]
+    if len(lines) != 4 or any(
+        measured_width(line, mask) > rectangle.width
+        for line, mask in zip(lines, line_masks, strict=True)
+    ):
+        # Activity names vary considerably in length. The Canva source stores
+        # four explicit lines, but substituting a longer activity into line two
+        # must rebalance the complete paragraph rather than fail issuance or
+        # silently reduce its typography. Keep dynamic values bold even when a
+        # multi-word value crosses a newly chosen line break.
+        collapsed = re.sub(r"\s+", " ", text).strip()
+        collapsed_mask = bold_mask(collapsed)
+        matches = list(re.finditer(r"\S+", collapsed))
+        words = [match.group(0) for match in matches]
+        word_masks = [collapsed_mask[match.start() : match.end()] for match in matches]
+        candidate_cache: dict[tuple[int, int], tuple[str, list[bool], float]] = {}
+
+        def candidate(start: int, end: int) -> tuple[str, list[bool], float]:
+            key = (start, end)
+            cached = candidate_cache.get(key)
+            if cached is not None:
+                return cached
+            line = " ".join(words[start:end])
+            mask: list[bool] = []
+            for index in range(start, end):
+                if mask:
+                    mask.append(False)
+                mask.extend(word_masks[index])
+            result = line, mask, measured_width(line, mask)
+            candidate_cache[key] = result
+            return result
+
+        one_line_width = candidate(0, len(words))[2]
+        target_width = min(rectangle.width, one_line_width / 4)
+        # dp[(line_count, word_count)] = (raggedness cost, previous word index)
+        dp: dict[tuple[int, int], tuple[float, int]] = {(0, 0): (0.0, -1)}
+        for line_count in range(1, 5):
+            for end in range(line_count, len(words) + 1):
+                best: tuple[float, int] | None = None
+                for start in range(line_count - 1, end):
+                    previous = dp.get((line_count - 1, start))
+                    if previous is None:
+                        continue
+                    width = candidate(start, end)[2]
+                    if width > rectangle.width:
+                        continue
+                    cost = previous[0] + (width - target_width) ** 2
+                    if best is None or cost < best[0]:
+                        best = (cost, start)
+                if best is not None:
+                    dp[(line_count, end)] = best
+        if (4, len(words)) not in dp:
             raise CertificateRenderingError(
                 "EC Farewell paragraph does not fit its dedicated template area"
             )
+        ranges: list[tuple[int, int]] = []
+        end = len(words)
+        for line_count in range(4, 0, -1):
+            start = dp[(line_count, end)][1]
+            ranges.append((start, end))
+            end = start
+        ranges.reverse()
+        wrapped = [candidate(start, end) for start, end in ranges]
+        lines = [line for line, _mask, _width in wrapped]
+        line_masks = [mask for _line, mask, _width in wrapped]
+
+    writer = fitz.TextWriter(page.rect)
+    baseline = rectangle.y0 + size
+    for line, bold_characters in zip(lines, line_masks, strict=True):
+        width = measured_width(line, bold_characters)
         x = rectangle.x0 + (rectangle.width - width) / 2
         for character, bold in zip(line, bold_characters, strict=True):
             character_font = bold_font if bold else font

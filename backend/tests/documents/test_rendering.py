@@ -11,6 +11,7 @@ from app.services.documents.rendering import (
     _leadership_content,
     _paragraph_words,
     _render_activity_paragraph,
+    _render_ec_farewell_paragraph,
     render_certificate,
 )
 from app.services.templates.analysis import detect_certificate_placeholders
@@ -114,6 +115,53 @@ def test_ec_farewell_preset_parses_the_source_paragraph_before_substitution() ->
     assert size == 13
     assert rgb == (0x45, 0x45, 0x45)
     assert parsed_font
+
+
+def test_ec_farewell_reflows_long_activity_name_without_changing_its_style() -> None:
+    document = fitz.open()
+    page = document.new_page(width=842.25, height=595.5)
+    font_bytes = (
+        Path(__file__).parents[2] / "app" / "assets" / "Boston Angel Light.otf"
+    ).read_bytes()
+    values = {
+        "roll_number": "2K22-BSCS-204",
+        "activity_name": "Water Filtration Plant Cleanup",
+        "activity_date": "2025-08-05",
+    }
+    text = (
+        "Having Roll Number 2K22-BSCS-204, In recognition of their outstanding efforts in\n"
+        "organizing and managing Water Filtration Plant Cleanup on 2025-08-05 under the EMC. Their\n"
+        "leadership, coordination, and commitment significantly contributed to the successful\n"
+        "execution of the activity."
+    )
+
+    _render_ec_farewell_paragraph(
+        page,
+        fitz.Rect(99.5, 289.0, 720.5, 400.0),
+        text,
+        font_bytes,
+        values,
+        {"roll_number", "activity_name", "activity_date"},
+    )
+
+    spans = [
+        span
+        for block in page.get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for span in line["spans"]
+    ]
+    rendered_text = "".join(span["text"] for span in spans).replace(" ", "")
+    bold_text = "".join(
+        span["text"] for span in spans if "bold" in span["font"].lower()
+    ).replace(" ", "")
+    document.close()
+
+    assert "WaterFiltrationPlantCleanup" in rendered_text
+    assert "2K22-BSCS-204" in rendered_text
+    assert "2025-08-05" in rendered_text
+    assert "WaterFiltrationPlantCleanup" in bold_text
+    assert "2K22-BSCS-204" in bold_text
+    assert "2025-08-05" in bold_text
 
 
 def test_leadership_content_omits_the_society_clause_for_an_overall_ec_role() -> None:
