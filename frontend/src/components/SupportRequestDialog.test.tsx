@@ -16,8 +16,8 @@ test("submits a student support request and shows its private reference", async 
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}><SupportRequestDialog open initialRollNumber="2k22-bscs-238" onClose={() => undefined} /></QueryClientProvider>);
 
   expect(screen.getByDisplayValue("2K22-BSCS-238")).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Student Name" } });
-  fireEvent.change(screen.getByLabelText("Email to contact you"), { target: { value: "student@example.com" } });
+  fireEvent.change(screen.getByLabelText(/Full name/), { target: { value: "Student Name" } });
+  fireEvent.change(screen.getByLabelText(/Email to contact you/), { target: { value: "student@example.com" } });
   fireEvent.change(screen.getByLabelText(/Problem details/), { target: { value: "My activity certificate does not appear." } });
   fireEvent.click(screen.getByRole("button", { name: "Send support request" }));
 

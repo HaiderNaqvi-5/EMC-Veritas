@@ -84,28 +84,28 @@ export function SupportRequestDialog({ open, initialRollNumber = "", onClose }: 
             <p className="support-form__intro">Use this form if a record is missing, incorrect, or will not download. Please provide enough detail for the team to investigate.</p>
             <div className="support-form__grid">
               <label>
-                <span>Roll number</span>
+                <span>Roll number<span className="text-red-500 ml-1" aria-hidden="true">*</span></span>
                 <input ref={firstInput} required minLength={3} maxLength={64} value={form.roll_number} onChange={(event) => setForm({ ...form, roll_number: canonicalRollNumber(event.target.value) })} placeholder="e.g. 2K22-BSCS-238" autoComplete="off" />
               </label>
               <label>
-                <span>Full name</span>
+                <span>Full name<span className="text-red-500 ml-1" aria-hidden="true">*</span></span>
                 <input required minLength={2} maxLength={255} value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} placeholder="Name on your university record" autoComplete="name" />
               </label>
             </div>
             <div className="support-form__grid">
               <label>
-                <span>Email to contact you</span>
+                <span>Email to contact you<span className="text-red-500 ml-1" aria-hidden="true">*</span></span>
                 <input required type="email" maxLength={320} value={form.contact_email} onChange={(event) => setForm({ ...form, contact_email: event.target.value })} placeholder="you@example.com" autoComplete="email" />
               </label>
               <label>
-                <span>What happened?</span>
+                <span>What happened?<span className="text-red-500 ml-1" aria-hidden="true">*</span></span>
                 <select value={form.problem_category} onChange={(event) => setForm({ ...form, problem_category: event.target.value as SupportCategory })}>
                   {Object.entries(supportCategoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
               </label>
             </div>
             <label>
-              <span>Problem details</span>
+              <span>Problem details<span className="text-red-500 ml-1" aria-hidden="true">*</span></span>
               <textarea required minLength={15} maxLength={2000} rows={5} value={form.problem_details} onChange={(event) => setForm({ ...form, problem_details: event.target.value })} placeholder="Describe which activity or certificate is affected, what you expected, and what you see instead." />
               <small>{form.problem_details.length}/2000</small>
             </label>

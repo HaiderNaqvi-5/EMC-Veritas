@@ -68,7 +68,7 @@ export function AdminLoginModal({
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           {!rollNumber && (
             <label className="block text-sm font-medium" htmlFor="admin-roll-number">
-              Roll number
+              Roll number<span className="text-red-500 dark:text-red-400 ml-1" aria-hidden="true">*</span>
               <input
                 id="admin-roll-number"
                 className="mt-1 block w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-700"
@@ -81,7 +81,7 @@ export function AdminLoginModal({
             </label>
           )}
           <label className="block text-sm font-medium" htmlFor="admin-password">
-            Password
+            Password<span className="text-red-500 dark:text-red-400 ml-1" aria-hidden="true">*</span>
             <input
               id="admin-password"
               className="mt-1 block w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-700"
