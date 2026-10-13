@@ -1,0 +1,3 @@
+## 2024-05-19 - Fast batch generation by pre-fetching storage metadata
+**Learning:** In backend operations that generate multiple documents (like `_pre_generate_activity_document_batch`), eagerly downloading files from external storage (e.g., `template_pdf = storage.download(template.storage_key)`) inside a loop causes huge network and memory bottlenecks because the same file is requested repeatedly, or downloaded unnecessarily.
+**Action:** Move bulk external storage lookups and downloads outside of the loop where possible, or use a dictionary to cache downloaded assets to prevent redundant network I/O across iterations.
