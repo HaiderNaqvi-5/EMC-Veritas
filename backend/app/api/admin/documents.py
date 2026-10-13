@@ -355,19 +355,58 @@ def _pre_generate_activity_document_batch(
     generated = 0
     failed_document_ids: list[UUID] = []
     storage = SupabaseStorage()
+
+    # Bulk fetch related records outside the loop
+    student_ids = {doc.student_id for doc in pending if doc.student_id}
+    template_ids = {
+        doc.template_id or (activity.template_id if document_type is DocumentType.ACTIVITY_CERTIFICATE else None)
+        for doc in pending
+        if doc.template_id or (activity.template_id if document_type is DocumentType.ACTIVITY_CERTIFICATE else None)
+    }
+
+    students_by_id = {
+        s.id: s for s in db.scalars(select(Student).where(Student.id.in_(student_ids))).all()
+    } if student_ids else {}
+
+    templates_by_id = {
+        t.id: t for t in db.scalars(select(Template).where(Template.id.in_(template_ids))).all()
+    } if template_ids else {}
+
+    fields_by_template_id = {}
+    if template_ids:
+        all_fields = list(db.scalars(select(TemplateField).where(TemplateField.template_id.in_(template_ids))).all())
+        for f in all_fields:
+            fields_by_template_id.setdefault(f.template_id, []).append(f)
+
+    # Cache storage downloads to prevent redundant network I/O
+    class CachedStorage:
+        def __init__(self, original_storage):
+            self._storage = original_storage
+            self._cache = {}
+
+        def download(self, key):
+            if key not in self._cache:
+                self._cache[key] = self._storage.download(key)
+            return self._cache[key]
+
+        def upload(self, key, content, content_type):
+            self._storage.upload(key, content, content_type)
+
+    storage = CachedStorage(storage)
+
     for document in pending:
         document_id = document.id
         try:
-            student = db.get(Student, document.student_id)
+            student = students_by_id.get(document.student_id)
             template_id = document.template_id or (
                 activity.template_id
                 if document_type is DocumentType.ACTIVITY_CERTIFICATE
                 else None
             )
-            template = db.get(Template, template_id) if template_id is not None else None
+            template = templates_by_id.get(template_id) if template_id is not None else None
             if student is None or template is None:
                 raise DocumentLifecycleError("The issued document is missing its student or template")
-            fields = list(db.scalars(select(TemplateField).where(TemplateField.template_id == template.id)).all())
+            fields = fields_by_template_id.get(template.id, [])
             try:
                 values = json.loads(document.render_payload_json or "")
             except json.JSONDecodeError as error:
@@ -383,6 +422,7 @@ def _pre_generate_activity_document_batch(
                     "issue_date": document.issue_date.isoformat(),
                 }
             values["verification_id"] = document.verification_id
+
             template_pdf = storage.download(template.storage_key)
             image_values = (
                 _signature_images_for_reserved_document(db, document, storage)
